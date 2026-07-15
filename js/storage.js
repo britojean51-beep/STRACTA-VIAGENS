@@ -74,17 +74,37 @@ const DB = {
     return db.diaAtual;
   },
 
-  /* Cria o próximo dia copiando KM/Horímetro finais como iniciais */
-  novoDia() {
+  /* Fecha o dia atual e abre outro (padrão: o próximo).
+     O KM/Horímetro finais viram iniciais automaticamente via ultimo(). */
+  novoDia(dataAlvo) {
     const db = this.load();
     const atual = db.diaAtual || this.hojeISO();
-    const proximo = this.proximoDia(atual);
+    const proximo = dataAlvo || this.proximoDia(atual);
     if (!db.dias[proximo]) {
       db.dias[proximo] = { abastecimentos: [], viagens: [], manutencoes: [] };
     }
     db.diaAtual = proximo;
     this.save();
     return { anterior: atual, novo: proximo };
+  },
+
+  /* Resumo consolidado de um dia (reutilizado no Novo Dia, painel, etc.) */
+  resumoDia(iso) {
+    const d = this.getDia(iso) || { abastecimentos: [], viagens: [], manutencoes: [] };
+    const toN = v => { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; };
+    let diesel = 0, km = 0, viagens = 0, horas = 0;
+    const operando = new Set();
+    d.abastecimentos.forEach(a => {
+      diesel += toN(a.litros); km += toN(a.kmRodado); horas += toN(a.horasTrabalhadas);
+      operando.add(a.equipamento);
+    });
+    d.viagens.forEach(v => { viagens += toN(v.quantidade); operando.add(v.equipamento); });
+    const manutencao = [...new Set(d.manutencoes.map(m => m.equipamento))];
+    return {
+      diesel, km, viagens, horas,
+      media: diesel > 0 ? km / diesel : 0,
+      operando: [...operando], manutencao
+    };
   },
 
   /* ---- Estado acumulado por equipamento (auto-preenchimento) ---- */

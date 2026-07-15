@@ -208,3 +208,41 @@ main { padding: 16px; max-width: 640px; margin: 0 auto; animation: fade .25s eas
 .chip { font-size: 12px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; cursor: pointer; }
 .chip:active { border-color: var(--brand); }
 .spacer { height: 8px; }
+
+/* ============================================================
+   RESPONSIVO · TABLET E COMPUTADOR
+   ============================================================ */
+@media (min-width: 700px) {
+  body { font-size: 16px; padding-bottom: calc(80px + var(--safe-b)); }
+  main { max-width: 880px; padding: 24px; }
+  .app-header { padding-left: 24px; padding-right: 24px; }
+  .header-title { font-size: 18px; }
+  .header-sub { font-size: 12px; }
+  .menu-grid { grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .kpi-grid { grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .menu-card .ico { font-size: 34px; }
+  .kpi .k-value { font-size: 30px; }
+  .card { padding: 20px; }
+  /* botões e campos não esticam demais em telas largas */
+  .btn { font-size: 16px; }
+}
+
+@media (min-width: 1000px) {
+  main { max-width: 1080px; padding: 32px; }
+  .menu-grid { grid-template-columns: repeat(4, 1fr); }
+  .kpi-grid { grid-template-columns: repeat(4, 1fr); }
+  .menu-card.wide { grid-column: 1 / -1; }
+  /* barra de navegação centralizada, estilo app de desktop */
+  .tabbar { justify-content: center; gap: 40px; padding-left: 24px; padding-right: 24px; }
+  .tab { flex: 0 0 auto; min-width: 96px; font-size: 12px; }
+  .tab span { font-size: 22px; }
+  .toast { bottom: calc(96px + var(--safe-b)); }
+}
+
+/* mouse: realce ao passar por cima (não afeta o toque no celular) */
+@media (hover: hover) {
+  .menu-card:hover { border-color: var(--brand); transform: translateY(-2px); }
+  .itemrow[data-dia]:hover { border-color: var(--brand); cursor: pointer; }
+  .chip:hover { border-color: var(--brand); }
+  .tab:hover { color: var(--brand-2); }
+}

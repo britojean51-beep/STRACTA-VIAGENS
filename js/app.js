@@ -9,6 +9,8 @@ const app = $("#app");
 let viagensBuffer = [];
 /* Registro em edição (abastecimento) */
 let editando = null;
+/* Dia pré-selecionado ao abrir o Relatório (vindo do histórico) */
+let relatorioDiaPre = null;
 
 /* ---------- Utilidades numéricas ---------- */
 const num = v => { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; };
@@ -116,42 +118,81 @@ function telaHome() {
    ============================================================ */
 function telaNovoDia() {
   $("#headerTitle").textContent = "🟢 Novo Dia";
-  $("#headerSub").textContent = "FECHAR E ABRIR DIA";
-  const atual = DB.garantirDiaAtual();
-
-  // pré-visualiza o estado a copiar
+  $("#headerSub").textContent = "FECHAMENTO E ABERTURA";
   const db = DB.load();
-  const linhas = db.equipamentos.map(eq => {
-    const u = DB.ultimo(eq);
-    return `<div class="itemrow">
-      <div class="info"><b>${eq}</b>
-        <div class="sub">KM final: ${u.kmFinal ?? "—"} · Horím. final: ${u.horimetroFinal ?? "—"}</div>
-      </div>
-    </div>`;
-  }).join("");
+  const atual = DB.garantirDiaAtual();
+  const r = DB.resumoDia(atual);
+  const semMov = db.equipamentos.filter(e => !r.operando.includes(e) && !r.manutencao.includes(e));
+  const sugestao = DB.proximoDia(atual);
+
+  const kpi = (label, val, cls = "") =>
+    `<div class="kpi ${cls}"><div class="k-label">${label}</div><div class="k-value">${val}</div></div>`;
 
   app.innerHTML = `
-    <div class="card">
-      <h3>🟢 Fechar dia atual</h3>
-      <p class="hint">Dia aberto: <b style="color:var(--brand-2)">${DB.fmtBR(atual)}</b></p>
-      <p class="hint">Ao confirmar, o sistema cria automaticamente o <b>próximo dia</b> e copia
-      os valores <b>KM Final → KM Inicial</b> e <b>Horímetro Final → Horímetro Inicial</b> de cada equipamento.</p>
-      <button class="btn btn-green" id="btnNovoDia">🟢 FECHAR ${DB.fmtBR(atual)} E ABRIR PRÓXIMO</button>
+    <p class="section-title">Resumo do dia aberto · ${DB.fmtBR(atual)}</p>
+    <div class="kpi-grid" style="margin-bottom:14px">
+      ${kpi("⛽ Diesel", fmt(r.diesel) + '<span class="k-unit"> L</span>')}
+      ${kpi("📈 Média", fmt(r.media, 2) + '<span class="k-unit"> km/L</span>', "k-green")}
+      ${kpi("🚚 Viagens", r.viagens, "k-blue")}
+      ${kpi("🛣️ KM", fmt(r.km) + '<span class="k-unit"> km</span>')}
+      ${kpi("🟢 Operando", String(r.operando.length).padStart(2, "0"), "k-green")}
+      ${kpi("🔧 Manutenção", String(r.manutencao.length).padStart(2, "0"), "k-red")}
     </div>
+
+    <div class="card">
+      <h3>⚠️ Pendências do dia</h3>
+      ${semMov.length
+        ? `<p class="hint">Equipamentos sem nenhum lançamento em ${DB.fmtBR(atual)}:</p>
+           <div class="chip-row">${semMov.map(e => `<span class="chip">${e}</span>`).join("")}</div>`
+        : `<p class="empty" style="padding:8px 0">✅ Todos os equipamentos tiveram movimento hoje.</p>`}
+    </div>
+
+    <div class="card">
+      <h3>🟢 Fechar dia e abrir outro</h3>
+      <p class="hint">O <b>KM Final</b> e o <b>Horímetro Final</b> de cada equipamento já entram como iniciais no novo dia, automaticamente.</p>
+      <div class="field">
+        <label>Data do novo dia</label>
+        <input type="date" id="ndData" value="${sugestao}">
+      </div>
+      <button class="btn btn-green" id="btnNovoDia"></button>
+    </div>
+
     <div class="card">
       <h3>📌 Acumulado que será copiado</h3>
-      <div class="itemlist">${linhas || '<p class="empty">Sem dados ainda.</p>'}</div>
+      <div class="itemlist">${db.equipamentos.map(eq => {
+        const u = DB.ultimo(eq);
+        return `<div class="itemrow"><div class="info"><b>${eq}</b>
+          <div class="sub">KM final: ${u.kmFinal ?? "—"} · Horím. final: ${u.horimetroFinal ?? "—"}</div></div></div>`;
+      }).join("") || '<p class="empty">Sem dados ainda.</p>'}</div>
+    </div>
+
+    <div class="card">
+      <h3>📅 Histórico de dias</h3>
+      <div class="itemlist">${DB.listaDias().map(iso => {
+        const rr = DB.resumoDia(iso);
+        return `<div class="itemrow" data-dia="${iso}"><div class="info"><b>${DB.fmtBR(iso)}</b>${iso === atual ? ' <span class="pill pill-green">aberto</span>' : ""}
+          <div class="sub">${fmt(rr.diesel)} L · ${rr.viagens} viagens · ${fmt(rr.media, 2)} km/L</div></div><span class="mini">ver ›</span></div>`;
+      }).join("") || '<p class="empty">Sem dias registrados.</p>'}</div>
     </div>
   `;
 
-  $("#btnNovoDia").onclick = async () => {
-    const ok = await confirmar(`Fechar o dia ${DB.fmtBR(atual)} e abrir o próximo?`);
+  const dataInput = $("#ndData");
+  const btn = $("#btnNovoDia");
+  const rotulo = () => { btn.textContent = `🟢 FECHAR ${DB.fmtBR(atual)} → ABRIR ${DB.fmtBR(dataInput.value || sugestao)}`; };
+  rotulo();
+  dataInput.oninput = rotulo;
+
+  btn.onclick = async () => {
+    const nova = dataInput.value || sugestao;
+    const ok = await confirmar(`Fechar o dia ${DB.fmtBR(atual)} e abrir ${DB.fmtBR(nova)}?`);
     if (!ok) return;
-    const r = DB.novoDia();
-    toast(`✔ Dia ${DB.fmtBR(r.novo)} aberto!`);
+    const res = DB.novoDia(nova);
+    toast(`✔ Dia ${DB.fmtBR(res.novo)} aberto!`);
     atualizarCabecalho();
     setTimeout(() => navegar("home"), 700);
   };
+
+  $$("[data-dia]").forEach(el => el.onclick = () => { relatorioDiaPre = el.dataset.dia; navegar("relatorio"); });
 }
 
 /* ============================================================
@@ -562,7 +603,9 @@ function telaRelatorio() {
   $("#headerSub").textContent = "GERADO AUTOMÁTICO";
   const dias = DB.listaDias();
   const atual = DB.garantirDiaAtual();
-  const sel = dias.includes(atual) ? atual : (dias[0] || atual);
+  const sel = (relatorioDiaPre && dias.includes(relatorioDiaPre)) ? relatorioDiaPre
+            : (dias.includes(atual) ? atual : (dias[0] || atual));
+  relatorioDiaPre = null;
 
   app.innerHTML = `
     <div class="card">
