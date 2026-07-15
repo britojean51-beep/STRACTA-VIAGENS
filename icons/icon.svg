@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <rect x="56" y="56" width="400" height="400" rx="72" fill="#12203c"/>
+  <g transform="translate(256 268)">
+    <!-- caçamba -->
+    <path d="M-150 -20 L-40 -20 L-20 -70 L60 -70 L60 -20 L150 -20 L150 40 L-150 40 Z"
+          fill="#ff7a1a"/>
+    <path d="M-40 -20 L-20 -70 L60 -70 L60 -20 Z" fill="#ffab5e"/>
+    <!-- rodas -->
+    <circle cx="-90" cy="55" r="42" fill="#0b1220" stroke="#93a2c4" stroke-width="10"/>
+    <circle cx="90" cy="55" r="42" fill="#0b1220" stroke="#93a2c4" stroke-width="10"/>
+    <circle cx="-90" cy="55" r="14" fill="#93a2c4"/>
+    <circle cx="90" cy="55" r="14" fill="#93a2c4"/>
+  </g>
+  <text x="256" y="430" text-anchor="middle" font-family="Arial, sans-serif"
+        font-size="60" font-weight="800" fill="#e8eefc" letter-spacing="4">STRACTA</text>
+</svg>
