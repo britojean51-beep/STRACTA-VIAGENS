@@ -17,13 +17,16 @@ const DB = {
       motoristas: ["Saulo", "José", "Carlos", "Antônio", "Marcos"],
       abastecedores: ["Pedro", "Luiz"],
       estado: {},                      // { "CB-17": { kmFinal, horimetroFinal } } — último acumulado
-      estoqueTanque: 4250,             // litros no tanque
-      status: {},                      // { "CB-17": "operando"|"parado"|"manutencao" }
+      estoque: { s10: 4250, s500: 0, arla: 500 }, // litros por tanque
+      tipoEquip: {},                   // { "CB-17": "km_horimetro"|"horimetro" }
+      status: {},                      // { "CB-17": "operando"|"reserva"|"manutencao"|"parado"|"final_expediente" }
       proximaRevisao: {},              // { "CB-17": 20000 } — horímetro/KM alvo da próxima revisão
       config: {                        // metas de gestão
-        metaMedia: 1.0,                // km/L mínimo esperado
+        metaMedia: 1.0,                // km/L mínimo esperado (equipamento rodante)
+        metaLh: 20,                    // L/h máximo aceito (equipamento de horímetro)
         metaViagens: 140,              // meta de viagens/dia da frota
-        estoqueMin: 1000               // litros: alerta de estoque baixo
+        estoqueMin: 1000,              // litros: alerta de diesel baixo (cada tanque)
+        estoqueArlaMin: 100            // litros: alerta de ARLA baixo
       }
     };
   },
@@ -45,6 +48,18 @@ const DB = {
     this._cache.config = Object.assign(base.config, data.config || {});
     this._cache.status = data.status || {};
     this._cache.proximaRevisao = data.proximaRevisao || {};
+    this._cache.tipoEquip = data.tipoEquip || {};
+    // estoque: migra o antigo estoqueTanque (único) para o novo formato por tanque
+    if (data.estoque) {
+      this._cache.estoque = Object.assign({ s10: 0, s500: 0, arla: 0 }, data.estoque);
+    } else {
+      this._cache.estoque = {
+        s10: data.estoqueTanque != null ? data.estoqueTanque : base.estoque.s10,
+        s500: 0,
+        arla: base.estoque.arla
+      };
+    }
+    delete this._cache.estoqueTanque;
     return this._cache;
   },
 
@@ -94,6 +109,10 @@ const DB = {
      O KM/Horímetro finais viram iniciais automaticamente via ultimo(). */
   novoDia(dataAlvo) {
     const db = this.load();
+    // "Final de expediente" do dia que fecha vira "Reserva" no novo dia
+    Object.keys(db.status).forEach(eq => {
+      if (db.status[eq] === "final_expediente") db.status[eq] = "reserva";
+    });
     const atual = db.diaAtual || this.hojeISO();
     const proximo = dataAlvo || this.proximoDia(atual);
     if (!db.dias[proximo]) {
@@ -108,16 +127,20 @@ const DB = {
   resumoDia(iso) {
     const d = this.getDia(iso) || { abastecimentos: [], viagens: [], manutencoes: [] };
     const toN = v => { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; };
-    let diesel = 0, km = 0, viagens = 0, horas = 0;
+    let diesel = 0, dieselS10 = 0, dieselS500 = 0, arla = 0, km = 0, viagens = 0, horas = 0;
     const operando = new Set();
     d.abastecimentos.forEach(a => {
-      diesel += toN(a.litros); km += toN(a.kmRodado); horas += toN(a.horasTrabalhadas);
+      const l = toN(a.litros);
+      diesel += l;
+      if (a.combustivel === "S-500") dieselS500 += l; else dieselS10 += l;
+      arla += toN(a.litrosArla);
+      km += toN(a.kmRodado); horas += toN(a.horasTrabalhadas);
       operando.add(a.equipamento);
     });
     d.viagens.forEach(v => { viagens += toN(v.quantidade); operando.add(v.equipamento); });
     const manutencao = [...new Set(d.manutencoes.map(m => m.equipamento))];
     return {
-      diesel, km, viagens, horas,
+      diesel, dieselS10, dieselS500, arla, km, viagens, horas,
       media: diesel > 0 ? km / diesel : 0,
       operando: [...operando], manutencao
     };
@@ -134,16 +157,32 @@ const DB = {
     this.save();
   },
 
+  /* Situação escolhida no abastecimento → status do equipamento */
+  statusDaSituacao(sit) {
+    return {
+      "Continua em operação": "operando",
+      "Retorno de manutenção": "operando",
+      "Saída para manutenção": "manutencao",
+      "Reserva": "reserva",
+      "Final de expediente": "final_expediente"
+    }[sit] || "operando";
+  },
+
   /* ---- Abastecimento ---- */
   addAbastecimento(iso, reg) {
     const db = this.load();
     if (!db.dias[iso]) db.dias[iso] = { abastecimentos: [], viagens: [], manutencoes: [] };
     reg.id = Date.now() + "-" + Math.random().toString(36).slice(2, 7);
     db.dias[iso].abastecimentos.push(reg);
-    // atualiza acumulado
+    // atualiza acumulado (KM pode ser nulo em equipamento de horímetro)
     this.setUltimo(reg.equipamento, reg.kmFinal, reg.horimetroFinal);
-    // desconta estoque do tanque
-    db.estoqueTanque = Math.max(0, (db.estoqueTanque || 0) - (Number(reg.litros) || 0));
+    // desconta o tanque de diesel correto
+    const tanque = reg.combustivel === "S-500" ? "s500" : "s10";
+    db.estoque[tanque] = Math.max(0, (db.estoque[tanque] || 0) - (Number(reg.litros) || 0));
+    // desconta o ARLA 32
+    if (reg.litrosArla) db.estoque.arla = Math.max(0, (db.estoque.arla || 0) - (Number(reg.litrosArla) || 0));
+    // aplica o status conforme a situação
+    if (reg.situacao) db.status[reg.equipamento] = this.statusDaSituacao(reg.situacao);
     this.save();
     return reg;
   },
@@ -191,15 +230,28 @@ const DB = {
     }
   },
 
-  /* ---- Estoque do tanque ---- */
-  setEstoque(litros) {
+  /* ---- Estoques dos tanques (tipo: 's10' | 's500' | 'arla') ---- */
+  getEstoque(tipo) { return this.load().estoque[tipo] || 0; },
+  setEstoque(tipo, litros) {
     const db = this.load();
-    db.estoqueTanque = Number(litros) || 0;
+    db.estoque[tipo] = Number(litros) || 0;
     this.save();
   },
-  addEstoque(litros) {
+  addEstoque(tipo, litros) {
     const db = this.load();
-    db.estoqueTanque = (db.estoqueTanque || 0) + (Number(litros) || 0);
+    db.estoque[tipo] = (db.estoque[tipo] || 0) + (Number(litros) || 0);
+    this.save();
+  },
+
+  /* ---- Tipo de medição do equipamento ---- */
+  getTipoEquip(eq) {
+    const t = this.load().tipoEquip[eq];
+    if (t) return t;
+    return /^CB/i.test(eq) ? "km_horimetro" : "horimetro"; // padrão pelo código
+  },
+  setTipoEquip(eq, tipo) {
+    const db = this.load();
+    db.tipoEquip[eq] = tipo;
     this.save();
   },
 
@@ -238,10 +290,15 @@ const DB = {
     const totKm = abast.reduce((s, a) => s + this.toN(a.kmRodado), 0);
     const totHoras = abast.reduce((s, a) => s + this.toN(a.horasTrabalhadas), 0);
     const totViag = viag.reduce((s, v) => s + this.toN(v.quantidade), 0);
+    const tipo = this.getTipoEquip(eq);
     return {
       equip: eq, abast, viag, manut,
       totDiesel, totKm, totHoras, totViag,
-      media: totDiesel > 0 ? totKm / totDiesel : 0,
+      tipo,
+      unidadeMedia: tipo === "horimetro" ? "L/h" : "km/L",
+      media: tipo === "horimetro"
+        ? (totHoras > 0 ? totDiesel / totHoras : 0)   // L/h
+        : (totDiesel > 0 ? totKm / totDiesel : 0),    // km/L
       ultimo: this.ultimo(eq),
       status: this.getStatus(eq),
       proximaRevisao: this.getProximaRevisao(eq)
@@ -255,9 +312,13 @@ const DB = {
     const out = [];
     const push = (nivel, icone, msg) => out.push({ nivel, icone, msg }); // nivel: 'alto' | 'medio'
 
-    // estoque baixo
-    if ((db.estoqueTanque || 0) <= (db.config.estoqueMin || 0))
-      push("alto", "🛢️", `Estoque do tanque baixo: ${Math.round(db.estoqueTanque)} L (mínimo ${db.config.estoqueMin} L)`);
+    // estoque baixo (por tanque)
+    if (db.estoque.s10 <= db.config.estoqueMin)
+      push("alto", "🛢️", `Diesel S-10 baixo: ${Math.round(db.estoque.s10)} L (mínimo ${db.config.estoqueMin} L)`);
+    if (db.estoque.s500 <= db.config.estoqueMin)
+      push("alto", "🛢️", `Diesel S-500 baixo: ${Math.round(db.estoque.s500)} L (mínimo ${db.config.estoqueMin} L)`);
+    if (db.estoque.arla <= db.config.estoqueArlaMin)
+      push("medio", "💧", `ARLA 32 baixo: ${Math.round(db.estoque.arla)} L (mínimo ${db.config.estoqueArlaMin} L)`);
 
     const dia = this.getDia(iso) || { abastecimentos: [] };
     db.equipamentos.forEach(eq => {
@@ -266,11 +327,16 @@ const DB = {
       if (st === "parado") push("alto", "⛔", `${eq} está PARADO`);
       else if (st === "manutencao") push("medio", "🔧", `${eq} está em MANUTENÇÃO`);
 
-      // média abaixo da meta (no dia atual)
+      // consumo fora da meta (no dia atual) — km/L (mínimo) ou L/h (máximo)
       dia.abastecimentos.filter(a => a.equipamento === eq).forEach(a => {
         const m = this.toN(a.media);
-        if (m > 0 && m < db.config.metaMedia)
-          push("medio", "📉", `${eq}: média ${a.media} km/L abaixo da meta (${db.config.metaMedia})`);
+        if (a.unidadeMedia === "L/h") {
+          if (m > 0 && m > db.config.metaLh)
+            push("medio", "📈", `${eq}: consumo ${a.media} L/h acima da meta (${db.config.metaLh})`);
+        } else {
+          if (m > 0 && m < db.config.metaMedia)
+            push("medio", "📉", `${eq}: média ${a.media} km/L abaixo da meta (${db.config.metaMedia})`);
+        }
       });
 
       // revisão vencida / próxima
