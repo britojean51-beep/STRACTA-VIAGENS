@@ -11,10 +11,56 @@ let viagensBuffer = [];
 let editando = null;
 /* Dia pré-selecionado ao abrir o Relatório (vindo do histórico) */
 let relatorioDiaPre = null;
+/* Equipamento selecionado ao abrir a Ficha */
+let fichaEquip = null;
 
 /* ---------- Utilidades numéricas ---------- */
 const num = v => { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; };
 const fmt = (n, d = 0) => Number(n).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+/* ---------- Gráficos simples em SVG (offline, sem bibliotecas) ---------- */
+function grafico(dados, opts = {}) {
+  // dados: [{ label, valor, rotulo? }]  | tipo: 'barra' | 'linha'
+  const w = 340, h = 150, padX = 12, padTop = 18, padBot = 26;
+  const tipo = opts.tipo || "barra";
+  const cor = opts.cor || "#ff7a1a";
+  const max = Math.max(1, ...dados.map(d => d.valor));
+  const areaW = w - padX * 2, areaH = h - padTop - padBot;
+  if (!dados.length) return `<p class="empty">Sem dados para o gráfico.</p>`;
+
+  let corpo = "";
+  if (tipo === "linha") {
+    const step = dados.length > 1 ? areaW / (dados.length - 1) : 0;
+    const pts = dados.map((d, i) => {
+      const x = padX + i * step;
+      const y = padTop + areaH - (d.valor / max) * areaH;
+      return { x, y, d };
+    });
+    const linha = pts.map((p, i) => (i ? "L" : "M") + p.x.toFixed(1) + " " + p.y.toFixed(1)).join(" ");
+    corpo += `<path d="${linha}" fill="none" stroke="${cor}" stroke-width="2.5" stroke-linejoin="round"/>`;
+    corpo += pts.map(p =>
+      `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="${cor}"/>
+       <text x="${p.x.toFixed(1)}" y="${(p.y - 7).toFixed(1)}" text-anchor="middle" font-size="9" fill="#e8eefc">${p.d.rotulo ?? p.d.valor}</text>
+       <text x="${p.x.toFixed(1)}" y="${h - 8}" text-anchor="middle" font-size="8.5" fill="#93a2c4">${p.d.label}</text>`
+    ).join("");
+  } else {
+    const gap = areaW / dados.length;
+    const bw = gap * 0.6;
+    corpo = dados.map((d, i) => {
+      const bh = (d.valor / max) * areaH;
+      const x = padX + i * gap + (gap - bw) / 2;
+      const y = padTop + areaH - bh;
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0, bh).toFixed(1)}" rx="3" fill="${cor}"/>
+        <text x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="9" fill="#e8eefc">${d.rotulo ?? d.valor}</text>
+        <text x="${(x + bw / 2).toFixed(1)}" y="${h - 8}" text-anchor="middle" font-size="8.5" fill="#93a2c4">${d.label}</text>`;
+    }).join("");
+  }
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet"
+            role="img" aria-label="${opts.titulo || "gráfico"}">
+            <line x1="${padX}" y1="${padTop + areaH}" x2="${w - padX}" y2="${padTop + areaH}" stroke="#26344f" stroke-width="1"/>
+            ${corpo}
+          </svg>`;
+}
 
 /* ---------- Toast ---------- */
 function toast(msg, tipo = "ok") {
@@ -48,8 +94,12 @@ const rotas = {
   manutencao:    telaManutencao,
   relatorio:     telaRelatorio,
   dashboard:     telaDashboard,
+  frota:         telaFrota,
+  ficha:         telaFicha,
   corrigir:      telaCorrigir
 };
+
+function abrirFicha(eq) { fichaEquip = eq; navegar("ficha"); }
 
 function navegar(rota) {
   const fn = rotas[rota] || telaHome;
@@ -102,13 +152,17 @@ function telaHome() {
         <span class="ico">📋</span><span class="lbl">Relatório Diário</span>
         <span class="desc">Gerado automático</span>
       </button>
+      <button class="menu-card" data-go="frota">
+        <span class="ico">🚛</span><span class="lbl">Frota</span>
+        <span class="desc">Status e ficha por equipamento</span>
+      </button>
       <button class="menu-card" data-go="dashboard">
-        <span class="ico">📊</span><span class="lbl">Dashboard</span>
-        <span class="desc">Indicadores da frota</span>
+        <span class="ico">📊</span><span class="lbl">Painel</span>
+        <span class="desc">Alertas, gráficos e tendências</span>
       </button>
     </div>
     <div class="spacer"></div>
-    <p class="hint" style="text-align:center">STRACTA V1.0 · funciona 100% no celular · dados salvos neste aparelho</p>
+    <p class="hint" style="text-align:center">STRACTA · Gestão de Frota · funciona no celular, tablet e computador</p>
   `;
   $$("[data-go]").forEach(b => b.onclick = () => navegar(b.dataset.go));
 }
@@ -258,10 +312,11 @@ function telaAbastecimento() {
           <input id="fLitros" inputmode="decimal" value="${ed?.litros ?? ""}">
         </div>
         <div class="field">
-          <label>Média KM/L</label>
+          <label>Média KM/L <span class="mini">(meta ${fmt(db.config.metaMedia, 2)})</span></label>
           <input id="fMedia" class="computed" readonly value="${ed?.media ?? ""}">
         </div>
       </div>
+      <p class="hint" id="fMediaAlerta" style="display:none"></p>
 
       <div class="field">
         <label>Abastecedor</label>
@@ -275,6 +330,11 @@ function telaAbastecimento() {
       <button class="btn btn-primary" id="btnSalvar">💾 ${ed ? "ATUALIZAR" : "SALVAR"}</button>
       ${ed ? '<div class="spacer"></div><button class="btn btn-ghost" id="btnCancelEdit">Cancelar edição</button>' : ""}
     </div>
+
+    <div class="card">
+      <h3>📈 Últimos abastecimentos <span id="fRecTitulo" class="mini"></span></h3>
+      <div id="fRecentes"></div>
+    </div>
   `;
 
   const el = {
@@ -283,25 +343,46 @@ function telaAbastecimento() {
     litros: $("#fLitros"), media: $("#fMedia")
   };
 
+  const meta = db.config.metaMedia;
+
   function preencherAuto() {
-    if (editando) return;
-    const u = DB.ultimo(el.equip.value);
-    el.horiIni.value = u.horimetroFinal ?? "";
-    el.kmIni.value = u.kmFinal ?? "";
+    if (!editando) {
+      const u = DB.ultimo(el.equip.value);
+      el.horiIni.value = u.horimetroFinal ?? "";
+      el.kmIni.value = u.kmFinal ?? "";
+    }
     recalcular();
+    renderRecentes();
   }
   function recalcular() {
     const horas = num(el.horiFim.value) - num(el.horiIni.value);
     const kmRod = num(el.kmFim.value) - num(el.kmIni.value);
     const litros = num(el.litros.value);
+    const media = (litros > 0 && kmRod > 0) ? kmRod / litros : 0;
     el.horas.value = horas > 0 ? fmt(horas, 1) + " h" : "";
     el.kmRod.value = kmRod > 0 ? fmt(kmRod, 0) + " km" : "";
-    el.media.value = (litros > 0 && kmRod > 0) ? fmt(kmRod / litros, 2) + " km/L" : "";
+    el.media.value = media > 0 ? fmt(media, 2) + " km/L" : "";
+    const al = $("#fMediaAlerta");
+    if (media > 0 && media < meta) {
+      al.style.display = "block";
+      al.innerHTML = `⚠️ Média <b>${fmt(media, 2)}</b> km/L abaixo da meta (${fmt(meta, 2)}).`;
+      al.style.color = "var(--red)";
+    } else { al.style.display = "none"; }
+  }
+  function renderRecentes() {
+    const eq = el.equip.value;
+    const f = DB.fichaEquipamento(eq);
+    const ult = f.abast.slice(-3).reverse();
+    $("#fRecTitulo").textContent = `· ${eq}`;
+    $("#fRecentes").innerHTML = ult.length ? ult.map(a =>
+      `<div class="itemrow"><div class="info"><b>${DB.fmtBR(a.iso)}</b>
+        <div class="sub">${fmt(a.litros)} L · ${fmt(a.kmRodado)} km · ${a.media} km/L</div></div></div>`
+    ).join("") : '<p class="empty">Sem abastecimentos anteriores.</p>';
   }
 
   el.equip.onchange = preencherAuto;
   [el.horiIni, el.horiFim, el.kmIni, el.kmFim, el.litros].forEach(i => i.oninput = recalcular);
-  if (!editando) preencherAuto(); else recalcular();
+  if (!editando) preencherAuto(); else { recalcular(); renderRecentes(); }
 
   $("#btnSalvar").onclick = () => {
     const equip = el.equip.value;
@@ -337,7 +418,9 @@ function telaAbastecimento() {
       navegar("corrigir");
     } else {
       DB.addAbastecimento(dia, reg);
-      toast(`✔ ${equip} salvo · ${fmt(litros, 0)} L`);
+      const md = kmRod > 0 ? kmRod / litros : 0;
+      if (md > 0 && md < db.config.metaMedia) toast(`⚠️ ${equip}: média ${fmt(md, 2)} abaixo da meta`, "err");
+      else toast(`✔ ${equip} salvo · ${fmt(litros, 0)} L`);
       telaAbastecimento(); // recarrega limpo (campos limpos, auto refeito)
     }
   };
@@ -427,12 +510,24 @@ function telaViagens() {
     const porEq = {};
     vs.forEach(v => { (porEq[v.equipamento] ||= []).push(v); });
     let total = 0;
-    box.innerHTML = Object.entries(porEq).map(([eq, arr]) => {
+    // ranking: equipamentos ordenados por total de viagens
+    const linhas = Object.entries(porEq).map(([eq, arr]) => {
       const sub = arr.reduce((s, v) => s + Number(v.quantidade), 0); total += sub;
       const rotas = arr.map(v => `O${v.origem}→D${v.destino}=${v.quantidade}`).join(" · ");
-      return `<div class="itemrow"><div class="info"><b>${eq}</b> = ${sub} viagens
-        <div class="sub">${rotas}</div></div></div>`;
-    }).join("") + `<div class="spacer"></div><p class="tag-total">Total frota: ${total} viagens</p>`;
+      return { eq, sub, rotas };
+    }).sort((a, b) => b.sub - a.sub);
+
+    const meta = DB.load().config.metaViagens || 0;
+    const pct = meta > 0 ? Math.min(100, Math.round((total / meta) * 100)) : 0;
+    const barra = meta > 0 ? `
+      <div class="spacer"></div>
+      <div class="list-head"><span class="mini">Meta do dia: ${meta} viagens</span><span class="tag-total">${total} · ${pct}%</span></div>
+      <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>` : "";
+
+    box.innerHTML = linhas.map((l, i) =>
+      `<div class="itemrow"><div class="info">${i === 0 ? "🥇 " : ""}<b>${l.eq}</b> = ${l.sub} viagens
+        <div class="sub">${l.rotas}</div></div></div>`
+    ).join("") + `<div class="spacer"></div><p class="tag-total">Total frota: ${total} viagens</p>` + barra;
   }
 
   $("#btnAdd").onclick = () => {
@@ -462,9 +557,15 @@ function telaViagens() {
 /* ============================================================
    MANUTENÇÃO
    ============================================================ */
+function pillStatus(st) {
+  if (st === "parado") return '<span class="pill pill-red">Parado</span>';
+  if (st === "manutencao") return '<span class="pill pill-blue">Manutenção</span>';
+  return '<span class="pill pill-green">Operando</span>';
+}
+
 function telaManutencao() {
   $("#headerTitle").textContent = "🔧 Manutenção";
-  $("#headerSub").textContent = "PREVENTIVA · CORRETIVA";
+  $("#headerSub").textContent = "SERVIÇOS · STATUS · REVISÕES";
   const db = DB.load();
   const dia = DB.garantirDiaAtual();
   const optsEquip = db.equipamentos.map(e => `<option>${e}</option>`).join("");
@@ -485,9 +586,23 @@ function telaManutencao() {
         <label>Serviço executado</label>
         <textarea id="mServico" placeholder="Descreva o serviço"></textarea>
       </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Horímetro / KM atual</label>
+          <input id="mHorKm" inputmode="decimal" placeholder="19910">
+        </div>
+        <div class="field">
+          <label>Situação após o serviço</label>
+          <select id="mStatus">
+            <option value="operando">🟢 Operando</option>
+            <option value="manutencao">🔧 Em manutenção</option>
+            <option value="parado">⛔ Parado</option>
+          </select>
+        </div>
+      </div>
       <div class="field">
-        <label>Horímetro / KM</label>
-        <input id="mHorKm" inputmode="decimal" placeholder="19910">
+        <label>Próxima revisão em (horímetro/KM) <span class="badge-auto">opcional</span></label>
+        <input id="mProxRev" inputmode="decimal" placeholder="ex: 20000">
       </div>
       <div class="field">
         <label>Observações</label>
@@ -497,12 +612,45 @@ function telaManutencao() {
     </div>
 
     <div class="card">
+      <h3>🚦 Situação e próximas revisões</h3>
+      <div id="mRevisoes"></div>
+    </div>
+
+    <div class="card">
       <h3>📅 Manutenções de hoje (${DB.fmtBR(dia)})</h3>
       <div id="mHoje"></div>
     </div>
   `;
 
-  function render() {
+  // ao trocar de equipamento, mostra o status e a revisão já cadastrados
+  const selEquip = $("#mEquip");
+  function carregarEquip() {
+    const eq = selEquip.value;
+    $("#mStatus").value = DB.getStatus(eq);
+    const rev = DB.getProximaRevisao(eq);
+    $("#mProxRev").value = rev == null ? "" : rev;
+  }
+  selEquip.onchange = carregarEquip;
+
+  function renderRevisoes() {
+    const box = $("#mRevisoes");
+    box.innerHTML = db.equipamentos.map(eq => {
+      const st = DB.getStatus(eq);
+      const rev = DB.getProximaRevisao(eq);
+      const hor = DB.ultimo(eq).horimetroFinal;
+      let aviso = '<span class="mini">sem revisão definida</span>';
+      if (rev != null) {
+        if (hor != null && hor >= rev) aviso = '<span class="pill pill-red">revisão vencida</span>';
+        else if (hor != null && hor >= rev - 50) aviso = '<span class="pill pill-blue">revisão próxima</span>';
+        else aviso = `<span class="mini">próxima em ${fmt(rev)}${hor != null ? ` · faltam ${fmt(rev - hor)}` : ""}</span>`;
+      }
+      return `<div class="itemrow" data-ficha="${eq}"><div class="info"><b>${eq}</b> ${pillStatus(st)}
+        <div class="sub">${aviso}</div></div><span class="mini">ver ›</span></div>`;
+    }).join("");
+    $$("#mRevisoes [data-ficha]").forEach(el => el.onclick = () => abrirFicha(el.dataset.ficha));
+  }
+
+  function renderHoje() {
     const d = DB.getDia(dia);
     const ms = d ? d.manutencoes : [];
     const box = $("#mHoje");
@@ -516,17 +664,20 @@ function telaManutencao() {
 
   $("#btnSalvar").onclick = () => {
     const serv = $("#mServico").value.trim();
+    const eq = selEquip.value;
     if (!serv) { toast("Descreva o serviço", "err"); return; }
     DB.addManutencao(dia, {
-      equipamento: $("#mEquip").value, tipo: $("#mTipo").value,
+      equipamento: eq, tipo: $("#mTipo").value,
       servico: serv, horKm: $("#mHorKm").value.trim(), observacoes: $("#mObs").value.trim()
     });
+    DB.setStatus(eq, $("#mStatus").value);
+    DB.setProximaRevisao(eq, $("#mProxRev").value.trim());
     toast("✔ Manutenção registrada");
     $("#mServico").value = ""; $("#mHorKm").value = ""; $("#mObs").value = "";
-    render();
+    renderRevisoes(); renderHoje();
   };
 
-  render();
+  carregarEquip(); renderRevisoes(); renderHoje();
 }
 
 /* ============================================================
@@ -616,6 +767,7 @@ function telaRelatorio() {
       <div class="btn-row">
         <button class="btn btn-green btn-sm" id="btnWhats">📲 WhatsApp</button>
         <button class="btn btn-blue btn-sm" id="btnCopiar">📋 Copiar</button>
+        <button class="btn btn-primary btn-sm" id="btnPdf">📄 PDF</button>
       </div>
     </div>
     <div class="report"><pre id="rTexto"></pre></div>
@@ -633,40 +785,113 @@ function telaRelatorio() {
     const url = "https://wa.me/?text=" + encodeURIComponent($("#rTexto").textContent);
     window.open(url, "_blank");
   };
+  $("#btnPdf").onclick = () => gerarPDF($("#rDia").value);
   render();
+}
+
+/* Gera PDF via impressão do navegador (Imprimir → Salvar como PDF).
+   Funciona offline e no celular, sem bibliotecas externas. */
+function gerarPDF(iso) {
+  const r = DB.resumoDia(iso);
+  const texto = gerarRelatorioTexto(iso);
+  let area = document.getElementById("printArea");
+  if (!area) { area = document.createElement("div"); area.id = "printArea"; document.body.appendChild(area); }
+  area.innerHTML = `
+    <div class="pdf-head">
+      <div class="pdf-logo">🚛 STRACTA MINERAÇÃO</div>
+      <div class="pdf-sub">Controle de Frota · Relatório Diário</div>
+    </div>
+    <h2 class="pdf-date">Data: ${DB.fmtBR(iso)}</h2>
+    <div class="pdf-kpis">
+      <div><b>${fmt(r.diesel)}</b><span>Diesel (L)</span></div>
+      <div><b>${fmt(r.media, 2)}</b><span>Média km/L</span></div>
+      <div><b>${r.viagens}</b><span>Viagens</span></div>
+      <div><b>${fmt(r.km)}</b><span>KM rodado</span></div>
+      <div><b>${String(r.operando.length).padStart(2, "0")}</b><span>Operando</span></div>
+      <div><b>${String(r.manutencao.length).padStart(2, "0")}</b><span>Manutenção</span></div>
+    </div>
+    <pre class="pdf-body">${texto.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]))}</pre>
+    <div class="pdf-foot">Gerado pelo Sistema STRACTA · ${DB.fmtBR(DB.hojeISO())}</div>
+  `;
+  toast("Abrindo impressão · escolha \"Salvar como PDF\"");
+  setTimeout(() => window.print(), 300);
 }
 
 /* ============================================================
    DASHBOARD
    ============================================================ */
 function telaDashboard() {
-  $("#headerTitle").textContent = "📊 Dashboard";
-  $("#headerSub").textContent = "INDICADORES DA FROTA";
+  $("#headerTitle").textContent = "📊 Painel";
+  $("#headerSub").textContent = "ALERTAS · GRÁFICOS · METAS";
   const db = DB.load();
   const dia = DB.garantirDiaAtual();
-  const d = DB.getDia(dia) || { abastecimentos: [], viagens: [], manutencoes: [] };
+  const r = DB.resumoDia(dia);
 
-  let totalDiesel = 0, totalKm = 0, totalViagens = 0;
-  const operando = new Set();
-  d.abastecimentos.forEach(a => { totalDiesel += num(a.litros); totalKm += num(a.kmRodado); operando.add(a.equipamento); });
-  d.viagens.forEach(v => { totalViagens += Number(v.quantidade); operando.add(v.equipamento); });
-  const emManut = new Set(d.manutencoes.map(m => m.equipamento));
-  const mediaFrota = totalDiesel > 0 ? totalKm / totalDiesel : 0;
+  // ---- alertas ----
+  const alertas = DB.alertas();
+  const alertasHtml = alertas.length
+    ? alertas.map(a => `<div class="alert-item alert-${a.nivel}"><span class="ai">${a.icone}</span><span>${a.msg}</span></div>`).join("")
+    : '<p class="empty" style="padding:8px 0">✅ Nenhum alerta. Frota sob controle.</p>';
+
+  // ---- séries (últimos 7 dias) ----
+  const s = DB.serie(7);
+  const gDiesel = grafico(s.map(x => ({ label: DB.fmtBR(x.iso).slice(0, 5), valor: Math.round(x.diesel), rotulo: fmt(x.diesel) })), { tipo: "barra", cor: "#ff7a1a", titulo: "Diesel" });
+  const gMedia = grafico(s.map(x => ({ label: DB.fmtBR(x.iso).slice(0, 5), valor: x.media, rotulo: fmt(x.media, 2) })), { tipo: "linha", cor: "#22c55e", titulo: "Média km/L" });
+  const gViagens = grafico(s.map(x => ({ label: DB.fmtBR(x.iso).slice(0, 5), valor: x.viagens, rotulo: x.viagens })), { tipo: "barra", cor: "#3b82f6", titulo: "Viagens" });
+
+  // ---- status da frota ----
+  const statusHtml = db.equipamentos.map(eq => {
+    const st = DB.getStatus(eq);
+    const f = DB.getDia(dia) || { abastecimentos: [], viagens: [] };
+    const ab = f.abastecimentos.filter(a => a.equipamento === eq);
+    const litros = ab.reduce((x, a) => x + num(a.litros), 0);
+    const md = ab.length ? ab[ab.length - 1].media : "—";
+    const viag = (f.viagens || []).filter(v => v.equipamento === eq).reduce((x, v) => x + num(v.quantidade), 0);
+    return `<div class="itemrow" data-ficha="${eq}"><div class="info"><b>${eq}</b> ${pillStatus(st)}
+      <div class="sub">${fmt(litros)} L · ${md} km/L · ${viag} viagens</div></div><span class="mini">ficha ›</span></div>`;
+  }).join("");
 
   app.innerHTML = `
     <p class="section-title">Dia ${DB.fmtBR(dia)}</p>
     <div class="kpi-grid">
-      <div class="kpi"><div class="k-label">⛽ Diesel S10</div><div class="k-value">${fmt(totalDiesel)}<span class="k-unit"> L</span></div></div>
-      <div class="kpi k-green"><div class="k-label">📈 Média Frota</div><div class="k-value">${fmt(mediaFrota, 2)}<span class="k-unit"> km/L</span></div></div>
-      <div class="kpi k-blue"><div class="k-label">🚚 Total Viagens</div><div class="k-value">${totalViagens}</div></div>
-      <div class="kpi"><div class="k-label">🛣️ Total KM</div><div class="k-value">${fmt(totalKm)}<span class="k-unit"> km</span></div></div>
-      <div class="kpi k-green"><div class="k-label">🟢 Operando</div><div class="k-value">${String(operando.size).padStart(2, "0")}</div></div>
-      <div class="kpi k-red"><div class="k-label">🔧 Manutenção</div><div class="k-value">${String(emManut.size).padStart(2, "0")}</div></div>
+      <div class="kpi"><div class="k-label">⛽ Diesel S10</div><div class="k-value">${fmt(r.diesel)}<span class="k-unit"> L</span></div></div>
+      <div class="kpi k-green"><div class="k-label">📈 Média Frota</div><div class="k-value">${fmt(r.media, 2)}<span class="k-unit"> km/L</span></div></div>
+      <div class="kpi k-blue"><div class="k-label">🚚 Total Viagens</div><div class="k-value">${r.viagens}</div></div>
+      <div class="kpi"><div class="k-label">🛣️ Total KM</div><div class="k-value">${fmt(r.km)}<span class="k-unit"> km</span></div></div>
+      <div class="kpi k-green"><div class="k-label">🟢 Operando</div><div class="k-value">${String(r.operando.length).padStart(2, "0")}</div></div>
+      <div class="kpi k-red"><div class="k-label">🔧 Manutenção</div><div class="k-value">${String(r.manutencao.length).padStart(2, "0")}</div></div>
       <div class="kpi k-yellow"><div class="k-label">🛢️ Estoque Tanque</div><div class="k-value">${fmt(db.estoqueTanque)}<span class="k-unit"> L</span></div></div>
       <div class="kpi k-blue"><div class="k-label">🚛 Frota Total</div><div class="k-value">${String(db.equipamentos.length).padStart(2, "0")}</div></div>
     </div>
 
     <div class="spacer"></div>
+    <div class="card">
+      <h3>🔔 Alertas <span class="mini">${alertas.length ? "(" + alertas.length + ")" : ""}</span></h3>
+      ${alertasHtml}
+    </div>
+
+    <div class="card">
+      <h3>📈 Tendências · últimos 7 dias</h3>
+      <p class="chart-title">⛽ Diesel (L)</p>${gDiesel}
+      <p class="chart-title">📈 Média da frota (km/L)</p>${gMedia}
+      <p class="chart-title">🚚 Viagens</p>${gViagens}
+    </div>
+
+    <div class="card">
+      <h3>🚛 Status da frota</h3>
+      <div class="itemlist">${statusHtml}</div>
+    </div>
+
+    <div class="card">
+      <h3>🎯 Metas de gestão</h3>
+      <div class="metas-grid">
+        <div class="field"><label>Média mínima (km/L)</label><input id="cfgMedia" inputmode="decimal" value="${db.config.metaMedia}"></div>
+        <div class="field"><label>Meta viagens/dia</label><input id="cfgViagens" inputmode="numeric" value="${db.config.metaViagens}"></div>
+        <div class="field"><label>Estoque mínimo (L)</label><input id="cfgEstoque" inputmode="numeric" value="${db.config.estoqueMin}"></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="btnCfg">Salvar metas</button>
+    </div>
+
     <div class="card">
       <h3>🛢️ Abastecer tanque</h3>
       <p class="hint">Cada abastecimento de equipamento desconta o estoque automaticamente.</p>
@@ -680,6 +905,16 @@ function telaDashboard() {
     </div>
   `;
 
+  $$("[data-ficha]").forEach(el => el.onclick = () => abrirFicha(el.dataset.ficha));
+
+  $("#btnCfg").onclick = () => {
+    DB.setConfig({
+      metaMedia: num($("#cfgMedia").value),
+      metaViagens: num($("#cfgViagens").value),
+      estoqueMin: num($("#cfgEstoque").value)
+    });
+    toast("✔ Metas salvas"); telaDashboard();
+  };
   $("#btnTqAdd").onclick = () => {
     const l = num($("#tqAdd").value);
     if (!l) { toast("Informe os litros", "err"); return; }
@@ -688,6 +923,115 @@ function telaDashboard() {
   $("#btnTqSet").onclick = () => {
     const l = num($("#tqSet").value);
     DB.setEstoque(l); toast("✔ Estoque atualizado"); telaDashboard();
+  };
+}
+
+/* ============================================================
+   FROTA · lista de equipamentos com status
+   ============================================================ */
+function telaFrota() {
+  $("#headerTitle").textContent = "🚛 Frota";
+  $("#headerSub").textContent = "STATUS DE CADA EQUIPAMENTO";
+  const db = DB.load();
+
+  app.innerHTML = `
+    <div class="card">
+      <h3>🚛 Equipamentos <span class="mini">(${db.equipamentos.length})</span></h3>
+      <p class="hint">Toque num equipamento para ver a ficha completa.</p>
+      <div class="itemlist">${db.equipamentos.map(eq => {
+        const f = DB.fichaEquipamento(eq);
+        const rev = f.proximaRevisao;
+        const hor = f.ultimo.horimetroFinal;
+        let revInfo = "sem revisão definida";
+        if (rev != null) revInfo = (hor != null && hor >= rev) ? "⚠️ revisão vencida"
+          : `próxima revisão: ${fmt(rev)}`;
+        return `<div class="itemrow" data-ficha="${eq}"><div class="info"><b>${eq}</b> ${pillStatus(f.status)}
+          <div class="sub">${fmt(f.totViag)} viagens · ${fmt(f.media, 2)} km/L · ${revInfo}</div></div><span class="mini">ver ›</span></div>`;
+      }).join("")}</div>
+    </div>
+
+    <div class="card">
+      <h3>➕ Adicionar equipamento</h3>
+      <div class="field-row">
+        <div class="field"><label>Código</label><input id="novoEq" placeholder="ex: CB-30"></div>
+        <div class="field"><label>&nbsp;</label><button class="btn btn-primary" id="btnAddEq">Adicionar</button></div>
+      </div>
+    </div>
+  `;
+  $$("[data-ficha]").forEach(el => el.onclick = () => abrirFicha(el.dataset.ficha));
+  $("#btnAddEq").onclick = () => {
+    const v = $("#novoEq").value.trim();
+    if (!v) { toast("Digite o código", "err"); return; }
+    DB.addEquipamento(v); toast("✔ Equipamento adicionado"); telaFrota();
+  };
+}
+
+/* ============================================================
+   FICHA DO EQUIPAMENTO
+   ============================================================ */
+function telaFicha() {
+  const eq = fichaEquip || DB.load().equipamentos[0];
+  $("#headerTitle").textContent = "🚛 " + eq;
+  $("#headerSub").textContent = "FICHA DO EQUIPAMENTO";
+  const f = DB.fichaEquipamento(eq);
+
+  // série de médias dos abastecimentos (últimos 8)
+  const serieMedia = f.abast.slice(-8).map(a => ({ label: DB.fmtBR(a.iso).slice(0, 5), valor: num(a.media), rotulo: a.media }));
+
+  app.innerHTML = `
+    <div class="card">
+      <h3>🚦 Situação</h3>
+      <div class="field">
+        <label>Status atual</label>
+        <select id="fkStatus">
+          <option value="operando" ${f.status === "operando" ? "selected" : ""}>🟢 Operando</option>
+          <option value="manutencao" ${f.status === "manutencao" ? "selected" : ""}>🔧 Em manutenção</option>
+          <option value="parado" ${f.status === "parado" ? "selected" : ""}>⛔ Parado</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Próxima revisão em (horímetro/KM)</label>
+        <input id="fkRev" inputmode="decimal" value="${f.proximaRevisao ?? ""}" placeholder="ex: 20000">
+      </div>
+      <button class="btn btn-primary btn-sm" id="btnFkSalvar">💾 Salvar situação</button>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="k-label">⛽ Diesel total</div><div class="k-value">${fmt(f.totDiesel)}<span class="k-unit"> L</span></div></div>
+      <div class="kpi k-green"><div class="k-label">📈 Média geral</div><div class="k-value">${fmt(f.media, 2)}<span class="k-unit"> km/L</span></div></div>
+      <div class="kpi k-blue"><div class="k-label">🚚 Viagens</div><div class="k-value">${fmt(f.totViag)}</div></div>
+      <div class="kpi"><div class="k-label">🛣️ KM total</div><div class="k-value">${fmt(f.totKm)}<span class="k-unit"> km</span></div></div>
+      <div class="kpi k-yellow"><div class="k-label">⏱️ Horas</div><div class="k-value">${fmt(f.totHoras, 1)}<span class="k-unit"> h</span></div></div>
+      <div class="kpi"><div class="k-label">📍 Horím. atual</div><div class="k-value">${f.ultimo.horimetroFinal ?? "—"}</div></div>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="card">
+      <h3>📈 Evolução da média (km/L)</h3>
+      ${serieMedia.length ? grafico(serieMedia, { tipo: "linha", cor: "#22c55e" }) : '<p class="empty">Sem abastecimentos registrados.</p>'}
+    </div>
+
+    <div class="card">
+      <h3>⛽ Abastecimentos</h3>
+      <div class="itemlist">${f.abast.slice().reverse().slice(0, 15).map(a =>
+        `<div class="itemrow"><div class="info"><b>${DB.fmtBR(a.iso)}</b>
+          <div class="sub">${fmt(a.litros)} L · ${fmt(a.kmRodado)} km · ${a.media} km/L · ${a.horasTrabalhadas} h</div></div></div>`
+      ).join("") || '<p class="empty">Nenhum.</p>'}</div>
+    </div>
+
+    <div class="card">
+      <h3>🔧 Manutenções</h3>
+      <div class="itemlist">${f.manut.slice().reverse().map(m =>
+        `<div class="itemrow"><div class="info"><b>${DB.fmtBR(m.iso)}</b> <span class="pill pill-red">${m.tipo}</span>
+          <div class="sub">${m.servico || "—"} · ${m.horKm || "—"}</div></div></div>`
+      ).join("") || '<p class="empty">Nenhuma.</p>'}</div>
+    </div>
+  `;
+
+  $("#btnFkSalvar").onclick = () => {
+    DB.setStatus(eq, $("#fkStatus").value);
+    DB.setProximaRevisao(eq, $("#fkRev").value.trim());
+    toast("✔ Situação salva"); telaFicha();
   };
 }
 

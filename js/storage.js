@@ -17,7 +17,14 @@ const DB = {
       motoristas: ["Saulo", "José", "Carlos", "Antônio", "Marcos"],
       abastecedores: ["Pedro", "Luiz"],
       estado: {},                      // { "CB-17": { kmFinal, horimetroFinal } } — último acumulado
-      estoqueTanque: 4250              // litros no tanque
+      estoqueTanque: 4250,             // litros no tanque
+      status: {},                      // { "CB-17": "operando"|"parado"|"manutencao" }
+      proximaRevisao: {},              // { "CB-17": 20000 } — horímetro/KM alvo da próxima revisão
+      config: {                        // metas de gestão
+        metaMedia: 1.0,                // km/L mínimo esperado
+        metaViagens: 140,              // meta de viagens/dia da frota
+        estoqueMin: 1000               // litros: alerta de estoque baixo
+      }
     };
   },
 
@@ -25,14 +32,23 @@ const DB = {
 
   load() {
     if (this._cache) return this._cache;
+    let data;
     try {
       const raw = localStorage.getItem(DB_KEY);
-      this._cache = raw ? JSON.parse(raw) : this._default();
+      data = raw ? JSON.parse(raw) : {};
     } catch (e) {
-      this._cache = this._default();
+      data = {};
     }
+    // mescla com o padrão para dados salvos em versões antigas ganharem os campos novos
+    const base = this._default();
+    this._cache = Object.assign(base, data);
+    this._cache.config = Object.assign(base.config, data.config || {});
+    this._cache.status = data.status || {};
+    this._cache.proximaRevisao = data.proximaRevisao || {};
     return this._cache;
   },
+
+  toN(v) { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; },
 
   save() {
     localStorage.setItem(DB_KEY, JSON.stringify(this._cache));
@@ -185,6 +201,87 @@ const DB = {
     const db = this.load();
     db.estoqueTanque = (db.estoqueTanque || 0) + (Number(litros) || 0);
     this.save();
+  },
+
+  /* ---- Status e revisão por equipamento ---- */
+  getStatus(eq) { return this.load().status[eq] || "operando"; },
+  setStatus(eq, st) { const db = this.load(); db.status[eq] = st; this.save(); },
+  getProximaRevisao(eq) { const v = this.load().proximaRevisao[eq]; return v == null ? null : v; },
+  setProximaRevisao(eq, valor) {
+    const db = this.load();
+    if (valor === "" || valor == null) delete db.proximaRevisao[eq];
+    else db.proximaRevisao[eq] = this.toN(valor);
+    this.save();
+  },
+
+  /* ---- Metas de gestão ---- */
+  setConfig(patch) { const db = this.load(); Object.assign(db.config, patch); this.save(); },
+
+  /* ---- Série dos últimos N dias (para gráficos/tendências) ---- */
+  serie(n = 7) {
+    const dias = this.listaDias().slice(0, n).reverse(); // do mais antigo ao mais novo
+    return dias.map(iso => Object.assign({ iso }, this.resumoDia(iso)));
+  },
+
+  /* ---- Ficha completa de um equipamento (todos os dias) ---- */
+  fichaEquipamento(eq) {
+    const db = this.load();
+    const dias = Object.keys(db.dias).sort();
+    const abast = [], viag = [], manut = [];
+    dias.forEach(iso => {
+      const d = db.dias[iso];
+      d.abastecimentos.filter(a => a.equipamento === eq).forEach(a => abast.push(Object.assign({ iso }, a)));
+      d.viagens.filter(v => v.equipamento === eq).forEach(v => viag.push(Object.assign({ iso }, v)));
+      d.manutencoes.filter(m => m.equipamento === eq).forEach(m => manut.push(Object.assign({ iso }, m)));
+    });
+    const totDiesel = abast.reduce((s, a) => s + this.toN(a.litros), 0);
+    const totKm = abast.reduce((s, a) => s + this.toN(a.kmRodado), 0);
+    const totHoras = abast.reduce((s, a) => s + this.toN(a.horasTrabalhadas), 0);
+    const totViag = viag.reduce((s, v) => s + this.toN(v.quantidade), 0);
+    return {
+      equip: eq, abast, viag, manut,
+      totDiesel, totKm, totHoras, totViag,
+      media: totDiesel > 0 ? totKm / totDiesel : 0,
+      ultimo: this.ultimo(eq),
+      status: this.getStatus(eq),
+      proximaRevisao: this.getProximaRevisao(eq)
+    };
+  },
+
+  /* ---- Alertas automáticos da frota ---- */
+  alertas() {
+    const db = this.load();
+    const iso = this.garantirDiaAtual();
+    const out = [];
+    const push = (nivel, icone, msg) => out.push({ nivel, icone, msg }); // nivel: 'alto' | 'medio'
+
+    // estoque baixo
+    if ((db.estoqueTanque || 0) <= (db.config.estoqueMin || 0))
+      push("alto", "🛢️", `Estoque do tanque baixo: ${Math.round(db.estoqueTanque)} L (mínimo ${db.config.estoqueMin} L)`);
+
+    const dia = this.getDia(iso) || { abastecimentos: [] };
+    db.equipamentos.forEach(eq => {
+      // status parado / manutenção
+      const st = this.getStatus(eq);
+      if (st === "parado") push("alto", "⛔", `${eq} está PARADO`);
+      else if (st === "manutencao") push("medio", "🔧", `${eq} está em MANUTENÇÃO`);
+
+      // média abaixo da meta (no dia atual)
+      dia.abastecimentos.filter(a => a.equipamento === eq).forEach(a => {
+        const m = this.toN(a.media);
+        if (m > 0 && m < db.config.metaMedia)
+          push("medio", "📉", `${eq}: média ${a.media} km/L abaixo da meta (${db.config.metaMedia})`);
+      });
+
+      // revisão vencida / próxima
+      const rev = this.getProximaRevisao(eq);
+      const hor = this.ultimo(eq).horimetroFinal;
+      if (rev != null && hor != null) {
+        if (hor >= rev) push("alto", "🔴", `${eq}: revisão VENCIDA (horímetro ${Math.round(hor)} ≥ ${rev})`);
+        else if (hor >= rev - 50) push("medio", "🟡", `${eq}: revisão próxima (faltam ${Math.round(rev - hor)} h)`);
+      }
+    });
+    return out;
   },
 
   /* ---- Frota / motoristas ---- */

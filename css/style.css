@@ -209,6 +209,45 @@ main { padding: 16px; max-width: 640px; margin: 0 auto; animation: fade .25s eas
 .chip:active { border-color: var(--brand); }
 .spacer { height: 8px; }
 
+/* barra de progresso (metas) */
+.progress { height: 12px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--green), #16a34a); transition: width .3s; }
+
+/* gráficos SVG */
+.chart { display: block; background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
+.chart-title { font-size: 12px; color: var(--muted); font-weight: 600; margin: 10px 0 6px; }
+
+/* alertas */
+.alert-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; margin-bottom: 8px; font-size: 14px; border: 1px solid; }
+.alert-alto { background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.35); }
+.alert-medio { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.35); }
+.alert-item .ai { font-size: 18px; }
+
+/* metas (config) */
+.metas-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+@media (max-width: 480px) { .metas-grid { grid-template-columns: 1fr; } }
+
+/* ============================================================
+   IMPRESSÃO / PDF
+   ============================================================ */
+#printArea { display: none; }
+@media print {
+  @page { margin: 14mm; }
+  body { background: #fff !important; color: #000 !important; padding: 0 !important; }
+  .app-header, .tabbar, main, .toast, .modal-overlay { display: none !important; }
+  #printArea { display: block !important; color: #000; font-family: Arial, sans-serif; }
+  .pdf-head { border-bottom: 3px solid #ff7a1a; padding-bottom: 8px; margin-bottom: 14px; }
+  .pdf-logo { font-size: 20px; font-weight: 800; }
+  .pdf-sub { font-size: 12px; color: #555; letter-spacing: 1px; }
+  .pdf-date { font-size: 16px; margin: 0 0 12px; }
+  .pdf-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+  .pdf-kpis > div { border: 1px solid #ddd; border-radius: 8px; padding: 8px 10px; text-align: center; }
+  .pdf-kpis b { display: block; font-size: 18px; color: #ff7a1a; }
+  .pdf-kpis span { font-size: 10px; color: #555; }
+  .pdf-body { white-space: pre-wrap; font-family: "Courier New", monospace; font-size: 12px; line-height: 1.5; }
+  .pdf-foot { margin-top: 16px; padding-top: 8px; border-top: 1px solid #ddd; font-size: 10px; color: #777; text-align: center; }
+}
+
 /* ============================================================
    RESPONSIVO · TABLET E COMPUTADOR
    ============================================================ */

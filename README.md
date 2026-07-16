@@ -8,17 +8,26 @@ Sistema **web** de controle de frota da **STRACTA Mineração**, projetado para 
   <img src="docs/abastecimento.png" width="30%" alt="Abastecimento" />
 </p>
 
-## ✨ Funcionalidades (V1.0)
+## ✨ Funcionalidades
 
 | Módulo | O que faz |
 |---|---|
-| 🟢 **Novo Dia** | Fecha o dia atual e abre o próximo, **copiando KM Final → KM Inicial** e **Horímetro Final → Horímetro Inicial** de cada equipamento, mantendo o histórico. |
-| ⛽ **Abastecimento** | Busca automaticamente o último KM e horímetro, calcula **Horas Trabalhadas**, **KM Rodado** e **Média km/L**, desconta o diesel do tanque e limpa os campos após salvar. |
-| 🚚 **Viagens** | Registra várias rotas (Origem → Destino) por equipamento, soma por equipamento e o **total da frota**. |
-| 🔧 **Manutenção** | Preventiva, Corretiva, Lubrificação, Calibração e Troca de Óleo. |
+| 🟢 **Novo Dia** | Resumo do dia em KPIs, **pendências** (equipamentos sem movimento), escolha da data do novo dia, histórico de dias e cópia automática **KM/Horímetro Final → Inicial**. |
+| ⛽ **Abastecimento** | Auto-preenche último KM e horímetro, calcula **Horas**, **KM Rodado** e **Média km/L**, **alerta de média abaixo da meta**, mostra os últimos abastecimentos e desconta o diesel do tanque. |
+| 🚚 **Viagens** | Rotas (Origem → Destino) por equipamento, **ranking**, total da frota e **barra de progresso vs meta diária**. |
+| 🔧 **Manutenção** | Preventiva, Corretiva, Lubrificação, Calibração e Troca de Óleo + **status do equipamento** (operando/manutenção/parado) e **próxima revisão** por horímetro/KM. |
+| 🚛 **Frota** | Lista de equipamentos com status; cadastro de novos; abre a **ficha** de cada um. |
+| 🚛 **Ficha do Equipamento** | Histórico completo, totais, **gráfico de evolução da média**, situação e revisões. |
 | ✏️ **Corrigir Dados** | Editar ou excluir qualquer registro por dia. |
-| 📋 **Relatório Diário** | Gerado automaticamente, com resumo geral. Botões de **copiar** e **enviar para o WhatsApp**. |
-| 📊 **Dashboard** | Diesel, média da frota, viagens, KM, equipamentos operando/manutenção e estoque do tanque. |
+| 📋 **Relatório Diário** | Gerado automaticamente. **Copiar**, enviar para o **WhatsApp** e **gerar PDF**. |
+| 📊 **Painel** | KPIs, **alertas automáticos**, **gráficos de tendência** (7 dias), status da frota e **metas de gestão** editáveis. |
+
+### 📈 Recursos de gestão
+- **Alertas automáticos**: média baixa, equipamento parado/em manutenção, revisão vencida/próxima e estoque baixo.
+- **Gráficos** em SVG (funcionam offline, sem bibliotecas): diesel, média e viagens ao longo dos dias.
+- **Metas**: média mínima km/L, meta de viagens/dia e estoque mínimo do tanque.
+- **PDF**: relatório diário formatado, via impressão do navegador (Salvar como PDF).
+- **Layout responsivo**: celular, tablet e computador.
 
 ## 📱 Como usar no celular
 
