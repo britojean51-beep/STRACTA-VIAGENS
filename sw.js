@@ -1,5 +1,7 @@
-/* STRACTA · Service Worker — cache offline */
-const CACHE = "stracta-v1";
+/* STRACTA · Service Worker
+   Estratégia "rede primeiro": online sempre traz a versão mais nova;
+   offline usa a última cópia salva. */
+const CACHE = "stracta-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -24,10 +26,12 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
   e.respondWith(
-    caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
-      const copy = res.clone();
-      caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
-      return res;
-    }).catch(() => caches.match("./index.html")))
+    fetch(e.request)
+      .then(res => {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+        return res;
+      })
+      .catch(() => caches.match(e.request).then(hit => hit || caches.match("./index.html")))
   );
 });
