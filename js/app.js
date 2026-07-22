@@ -1,0 +1,1699 @@
+/* ══════════════════════════════════════════════════════════
+   STRACTA VIAGENS — app.js
+   Bootstrap do app: navegação entre telas, renderização e
+   registro do service worker (offline).
+   ══════════════════════════════════════════════════════════ */
+
+let _turnoAtivoCache = null;
+let _viagemTimerHandle = null;
+let _ultimaViagemConcluidaId = null;
+let _equipamentoSelecionadoId = null;
+
+// Mantido por compatibilidade com todas as telas que já chamam podeGerenciarFrota() —
+// a regra de verdade agora mora só em permissoes.js
+function podeGerenciarFrota() {
+  return Permissoes.podeGerenciarFrota();
+}
+
+// ---------- JANELA MODAL (formulários com layout profissional) ----------
+// campos: [{ id, label, tipo, placeholder, valor, opcoes }]
+// opcoes (se for select): [{ valor, texto }]
+function abrirModalFormulario({ titulo, subtitulo, campos, aoSalvar, textoSalvar = 'Salvar' }) {
+  const antigo = qs('#modal-overlay-ativo');
+  if (antigo) antigo.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'modal-overlay-ativo';
+
+  const camposHtml = campos.map(c => {
+    if (c.tipo === 'select') {
+      return `
+        <div class="field">
+          <label>${c.label}</label>
+          <select id="modal-campo-${c.id}">
+            ${(c.opcoes || []).map(o => `<option value="${o.valor}" ${o.valor === c.valor ? 'selected' : ''}>${o.texto}</option>`).join('')}
+          </select>
+        </div>`;
+    }
+    return `
+      <div class="field">
+        <label>${c.label}</label>
+        <input id="modal-campo-${c.id}" type="${c.tipo || 'text'}" placeholder="${c.placeholder || ''}" value="${c.valor ?? ''}" inputmode="${c.tipo === 'number' ? 'numeric' : 'text'}">
+      </div>`;
+  }).join('');
+
+  overlay.innerHTML = `
+    <div class="modal-card">
+      <div class="modal-titulo">${titulo}</div>
+      ${subtitulo ? `<div class="modal-subtitulo">${subtitulo}</div>` : ''}
+      ${camposHtml}
+      <div class="btn-row mt12">
+        <button class="btn btn-outline" id="modal-btn-cancelar">Cancelar</button>
+        <button class="btn btn-primary" id="modal-btn-salvar">${textoSalvar}</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  const fechar = () => overlay.remove();
+  overlay.addEventListener('click', (ev) => { if (ev.target === overlay) fechar(); });
+  overlay.querySelector('#modal-btn-cancelar').onclick = fechar;
+  overlay.querySelector('#modal-btn-salvar').onclick = () => {
+    const valores = {};
+    campos.forEach(c => { valores[c.id] = qs(`#modal-campo-${c.id}`, overlay).value.trim(); });
+    fechar();
+    aoSalvar(valores);
+  };
+}
+
+// ---------- BOOTSTRAP ----------
+async function iniciarApp() {
+  await abrirBanco();
+  await aplicarConfigPadraoSeNecessario();
+  await Auth.garantirUsuarioPadrao();
+  await registrarVersaoInstalada();
+  await aplicarTemaSalvo();
+  atualizarStatusConexao();
+  iniciarEscutaResetRemoto();
+  Sync.iniciarMonitoramento();
+  Sync.onStatusChange(atualizarStatusConexao);
+  Sync.onStatusChange(atualizarTelasAoVivo);
+
+  window.addEventListener('online', atualizarStatusConexao);
+  window.addEventListener('offline', atualizarStatusConexao);
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./service-worker.js').then((reg) => {
+      // verifica por atualizações assim que o app abre e a cada 5 minutos
+      reg.update().catch(() => {});
+      setInterval(() => reg.update().catch(() => {}), 5 * 60 * 1000);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      });
+    }).catch(() => {});
+
+    // quando uma nova versão assume o controle da página, avisa e recarrega
+    let jaRecarregou = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (jaRecarregou) return;
+      jaRecarregou = true;
+      showToast('🔄 Nova versão disponível — atualizando...', 'var(--blue)', 1800);
+      setTimeout(() => window.location.reload(), 1200);
+    });
+  }
+
+  if (Auth.estaLogado()) {
+    _turnoAtivoCache = await Motorista.turnoAtivo();
+    navigate('home');
+  } else {
+    navigate('login');
+  }
+}
+
+// ---------- TEMA CLARO/ESCURO ----------
+async function aplicarTemaSalvo() {
+  const tema = await DB.getConfig('tema', 'escuro');
+  document.documentElement.setAttribute('data-tema', tema);
+}
+
+async function alternarTema() {
+  const atual = await DB.getConfig('tema', 'escuro');
+  const novo = atual === 'escuro' ? 'claro' : 'escuro';
+  await DB.setConfig('tema', novo);
+  document.documentElement.setAttribute('data-tema', novo);
+  showToast(`🎨 Tema ${novo}`);
+  renderConfig();
+}
+
+// ---------- STATUS DE CONEXÃO ----------
+async function atualizarStatusConexao() {
+  const pill = qs('#conn-pill');
+  if (!pill) return;
+  const pendentes = (await Sync.pendentes()).length;
+  const online = estaOnline();
+  pill.className = 'conn-pill ' + (online ? 'online' : 'offline') + (pendentes ? ' pendente' : '');
+  pill.dataset.pend = pendentes ? `${pendentes} pendente${pendentes > 1 ? 's' : ''}` : '';
+  qs('#conn-pill .txt').textContent = online ? 'Online' : 'Offline';
+}
+
+// Quando chega uma mudança em tempo real (outro aparelho iniciou/concluiu uma
+// viagem, por exemplo), atualiza sozinho as telas de Painel se estiverem abertas
+// — assim "Em Rota" aparece na hora, sem precisar recarregar manualmente.
+function atualizarTelasAoVivo(status) {
+  if (!status || status.tipo !== 'tempo_real') return;
+  const telaPainel = qs('#screen-painel');
+  const telaPainelEquip = qs('#screen-painel-equip');
+  if (telaPainel && telaPainel.classList.contains('active')) renderPainel();
+  if (telaPainelEquip && telaPainelEquip.classList.contains('active')) renderPainelEquip();
+}
+
+// ---------- NAVEGAÇÃO ----------
+async function navigate(tela) {
+  qsa('.screen').forEach(s => s.classList.remove('active'));
+  qsa('.nav-item').forEach(n => n.classList.remove('active'));
+  const el = qs(`#screen-${tela}`);
+  if (el) el.classList.add('active');
+  const nav = qs(`.nav-item[data-tela="${tela}"]`);
+  if (nav) nav.classList.add('active');
+
+  const bottomNav = qs('.bottom-nav');
+  if (bottomNav) bottomNav.style.display = (tela === 'login') ? 'none' : 'flex';
+
+  if (_viagemTimerHandle && tela !== 'operacao') { clearInterval(_viagemTimerHandle); _viagemTimerHandle = null; }
+
+  const renderers = {
+    home: renderHome,
+    turno: renderTurno,
+    operacao: renderOperacao,
+    viagens: renderViagens,
+    'lancar-rotas': renderLancarRotas,
+    frota: renderFrota,
+    painel: renderPainel,
+    'painel-equip': renderPainelEquip,
+    config: renderConfig,
+    usuarios: renderUsuarios,
+    diagnostico: renderDiagnostico
+  };
+  if (tela === 'usuarios') {
+    if (!Permissoes.podeGerenciarUsuarios()) {
+      showToast('Acesso restrito a Administrador ou Desenvolvedor', 'var(--iron)');
+      qsa('.screen').forEach(s => s.classList.remove('active'));
+      qs('#screen-config').classList.add('active');
+      return;
+    }
+  }
+  if (tela === 'lancar-rotas') {
+    if (!podeGerenciarFrota()) {
+      showToast('Acesso restrito a Gerência, Supervisor, Encarregado, Administrador ou Desenvolvedor', 'var(--iron)');
+      qsa('.screen').forEach(s => s.classList.remove('active'));
+      qs('#screen-viagens').classList.add('active');
+      return;
+    }
+  }
+  if (tela === 'diagnostico') {
+    if (!Permissoes.podeVerDiagnostico()) {
+      showToast('Acesso restrito a Desenvolvedor', 'var(--iron)');
+      qsa('.screen').forEach(s => s.classList.remove('active'));
+      qs('#screen-config').classList.add('active');
+      return;
+    }
+  }
+
+  if (renderers[tela]) await renderers[tela]();
+}
+
+// ---------- LOGIN ----------
+async function fazerLogin() {
+  const usuario = qs('#login-usuario').value.trim();
+  const senha = qs('#login-senha').value;
+  if (!usuario || !senha) { showToast('Preencha usuário e senha', 'var(--iron)'); return; }
+  const r = await Auth.login(usuario, senha);
+  if (!r.sucesso) { showToast(r.erro, 'var(--iron)'); return; }
+  showToast(`Bem-vindo, ${r.sessao.nome}!`);
+  Log.registrar('login', { usuario: r.sessao.usuario, nivel: r.sessao.nivel });
+  _turnoAtivoCache = await Motorista.turnoAtivo();
+  navigate('home');
+
+  // sincroniza em segundo plano — a tela não fica esperando o Sheets/Firebase
+  // terminarem, só atualiza sozinha se algo novo chegar
+  if (estaOnline()) {
+    Sync.sincronizarTudo().then(mudou => {
+      if (mudou) {
+        _turnoAtivoCache = null; // força recalcular, caso o turno tenha vindo de outro aparelho
+        const telaAtiva = qs('.screen.active');
+        if (telaAtiva && telaAtiva.id === 'screen-home') renderHome();
+      }
+    });
+  }
+}
+
+function fazerLogout() {
+  Log.registrar('logout');
+  Auth.logout();
+  navigate('login');
+}
+
+// ---------- HOME ----------
+async function renderHome() {
+  const u = Auth.usuarioAtual();
+  qs('#home-saudacao').textContent = u ? `Olá, ${u.nome.split(' ')[0]}` : '';
+  _turnoAtivoCache = await Motorista.turnoAtivo();
+  const box = qs('#home-turno-box');
+
+  if (!_turnoAtivoCache) {
+    box.innerHTML = `
+      <div class="card">
+        <div class="card-title">Turno</div>
+        <div class="text-label" style="font-size:13px;margin-bottom:12px">Nenhum turno em andamento.</div>
+        <button class="btn btn-primary" onclick="navigate('turno')">▶️ Iniciar Turno</button>
+      </div>`;
+  } else {
+    const t = _turnoAtivoCache;
+    const resumo = await Motorista.resumoTurno(t.id);
+    box.innerHTML = `
+      <div class="card">
+        <div class="card-title">Turno em Andamento</div>
+        <div class="row-kv"><span class="k">Equipamento</span><span class="v">${t.equipamentoCodigo}</span></div>
+        <div class="row-kv"><span class="k">Iniciado às</span><span class="v">${fmtHoraBR(t.iniciadoEm)}</span></div>
+        <div class="row-kv"><span class="k">Viagens concluídas</span><span class="v">${resumo.totalViagens}</span></div>
+        <div class="row-kv"><span class="k">Tempo médio/viagem</span><span class="v">${fmtDuracao(resumo.tempoMedioMs)}</span></div>
+        <button class="btn btn-danger mt12" onclick="abrirEncerrarTurno()">⏹️ Encerrar Turno</button>
+      </div>`;
+  }
+}
+
+// ---------- INICIAR TURNO ----------
+async function renderTurno() {
+  const u = Auth.usuarioAtual();
+  const equipamentos = await Equipamentos.ativos();
+  qs('#turno-equip').innerHTML = '<option value="">Selecione...</option>' +
+    equipamentos.map(e => `<option value="${e.id}">${e.codigo} — ${e.modelo}</option>`).join('');
+  qs('#turno-km').value = '';
+  qs('#turno-horimetro').value = '';
+  qs('#turno-motorista-nome').textContent = u ? u.nome : '-';
+
+  // KM/horímetro inicial vem automático do fechamento do turno anterior —
+  // só Gerência/Encarregado/Supervisor/Administrador podem editar manualmente
+  const podeEditar = Permissoes.nivelPeloMenos('Encarregado');
+  qs('#turno-km').readOnly = !podeEditar;
+  qs('#turno-horimetro').readOnly = !podeEditar;
+  qs('#turno-km-aviso').classList.toggle('hidden', podeEditar);
+
+  qs('#turno-checklist-lista').innerHTML = ITENS_CHECKLIST.map((nome, i) => `
+    <div class="checklist-item" id="checklist-item-${i}">
+      <div class="checklist-nome">${nome}</div>
+      <div class="checklist-toggle">
+        <button type="button" class="checklist-btn ativo-ok" onclick="marcarChecklist(${i}, true)">✅ OK</button>
+        <button type="button" class="checklist-btn" onclick="marcarChecklist(${i}, false)">⚠️ Problema</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function marcarChecklist(indice, ok) {
+  const item = qs(`#checklist-item-${indice}`);
+  item.dataset.ok = ok ? 'true' : 'false';
+  item.classList.toggle('problema', !ok);
+  const btnOk = item.querySelector('.checklist-btn:first-child');
+  const btnProblema = item.querySelector('.checklist-btn:last-child');
+  btnOk.classList.toggle('ativo-ok', ok);
+  btnProblema.classList.toggle('ativo-problema', !ok);
+
+  let campoObs = item.querySelector('.checklist-obs');
+  if (!ok) {
+    if (!campoObs) {
+      campoObs = document.createElement('input');
+      campoObs.className = 'checklist-obs';
+      campoObs.placeholder = 'O que está errado? (opcional)';
+      item.appendChild(campoObs);
+      item.style.flexWrap = 'wrap';
+    }
+  } else if (campoObs) {
+    campoObs.remove();
+  }
+}
+
+function coletarRespostasChecklist() {
+  return ITENS_CHECKLIST.map((nome, i) => {
+    const item = qs(`#checklist-item-${i}`);
+    const obsInput = item.querySelector('.checklist-obs');
+    return {
+      nome,
+      ok: item.dataset.ok === 'true',
+      respondido: item.dataset.ok !== undefined,
+      observacao: obsInput ? obsInput.value.trim() : ''
+    };
+  });
+}
+
+function preencherKmHorimetroTurno() {
+  const sel = qs('#turno-equip');
+  const equipId = sel.value;
+  DB.get('equipamentos', equipId).then(e => {
+    if (!e) return;
+    qs('#turno-km').value = e.kmAtual || 0;
+    qs('#turno-horimetro').value = e.horimetroAtual || 0;
+  });
+}
+
+async function confirmarIniciarTurno() {
+  const u = Auth.usuarioAtual();
+  const equipId = qs('#turno-equip').value;
+  const km = qs('#turno-km').value;
+  const horimetro = qs('#turno-horimetro').value;
+  if (!equipId) { showToast('Selecione um equipamento', 'var(--iron)'); return; }
+
+  const respostasChecklist = coletarRespostasChecklist();
+  const faltando = respostasChecklist.filter(r => !r.respondido);
+  if (faltando.length) { showToast(`Responda o checklist: falta "${faltando[0].nome}"`, 'var(--iron)'); return; }
+
+  const equip = await DB.get('equipamentos', equipId);
+  const resultado = await Motorista.iniciarTurno({
+    motoristaId: u.id, motoristaNome: u.nome,
+    equipamentoId: equipId, equipamentoCodigo: equip.codigo,
+    kmInicial: km, horimetroInicial: horimetro
+  });
+  if (resultado && resultado.erro) { showToast(resultado.erro, 'var(--iron)'); return; }
+
+  await Checklist.salvar({
+    turnoId: resultado.id, equipamentoId: equipId, equipamentoCodigo: equip.codigo,
+    motoristaId: u.id, motoristaNome: u.nome, itens: respostasChecklist
+  });
+
+  const problemas = respostasChecklist.filter(r => !r.ok);
+  if (problemas.length) {
+    showToast(`⚠️ ${problemas.length} problema(s) no checklist!`, 'var(--iron)', 4000);
+    const nomesProblemas = problemas.map(p => p.nome).join(', ');
+    if (confirm(`Problemas encontrados: ${nomesProblemas}.\n\nDeseja enviar o equipamento para manutenção agora?`)) {
+      const motivo = `Checklist de pré-uso: ${nomesProblemas}`;
+      await Equipamentos.alternarManutencao(equipId, motivo);
+      showToast('🔧 Equipamento enviado para manutenção');
+    }
+  } else {
+    showToast('✅ Turno iniciado!');
+  }
+  navigate('home');
+}
+
+async function abrirEncerrarTurno() {
+  if (!confirm('Deseja encerrar o turno atual?')) return;
+  const t = _turnoAtivoCache;
+  const km = prompt('KM final:', t.kmInicial || 0);
+  if (km === null) return;
+  const horimetro = prompt('Horímetro final:', t.horimetroInicial || 0);
+  if (horimetro === null) return;
+
+  const kmNum = Number(km);
+  const horimetroNum = Number(horimetro);
+  if (isNaN(kmNum) || kmNum < (t.kmInicial || 0)) {
+    showToast(`KM final não pode ser menor que o inicial (${t.kmInicial || 0})`, 'var(--iron)');
+    return;
+  }
+  if (isNaN(horimetroNum) || horimetroNum < (t.horimetroInicial || 0)) {
+    showToast(`Horímetro final não pode ser menor que o inicial (${t.horimetroInicial || 0})`, 'var(--iron)');
+    return;
+  }
+
+  await Motorista.encerrarTurno(t.id, { kmFinal: kmNum, horimetroFinal: horimetroNum });
+  showToast('🔒 Turno encerrado!');
+  navigate('home');
+}
+
+// ---------- OPERAÇÃO (rotas + cronômetro) ----------
+async function renderOperacao() {
+  const area = qs('#operacao-area');
+  if (!_turnoAtivoCache) {
+    area.innerHTML = `<div class="empty-state"><span class="emoji">🚧</span>Inicie um turno para começar a operar.</div>`;
+    return;
+  }
+
+  const viagemAtiva = await Operacao.viagemEmAndamento(_turnoAtivoCache.id);
+  if (viagemAtiva) {
+    renderTimerViagem(viagemAtiva);
+    return;
+  }
+
+  const rotas = await Operacao.listarRotas();
+  const rotasDesloc = await Operacao.listarRotasDeslocamento();
+
+  area.innerHTML = `
+    <button class="btn btn-outline mt8" onclick="abrirNovaRota()">➕ Cadastrar Rota</button>
+    <button class="btn btn-ghost" onclick="abrirLancamentoAtrasadoUI()">🕐 Lançar Rota Atrasada</button>
+
+    <div class="card-title mt16">Rotas</div>
+    ${rotas.length ? rotas.map(r => {
+      const podeEditar = Permissoes.podeEditarRota(r);
+      return `
+      <div class="list-item" style="${r.status === 'inativa' ? 'opacity:.55' : ''}">
+        <div>
+          <div class="li-main">${r.nome}${r.status === 'inativa' ? ' (inativa)' : ''}</div>
+          <div class="li-sub">${r.origem} → ${r.destino}${r.material ? ' • ' + r.material : ''}${r.equipamentoCargaCodigo ? ' • Carga: ' + r.equipamentoCargaCodigo : ''}${r.distancia ? ' • ' + r.distancia + ' km' : ''}</div>
+          ${r.criadoPorNome ? `<div class="li-sub" style="font-size:11px">Criada por ${r.criadoPorNome}</div>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="li-fav ${r.favorita ? 'on' : ''}" onclick="event.stopPropagation();alternarFavoritaUI('${r.id}')">★</button>
+          ${podeEditar ? `<button class="btn btn-outline btn-sm" onclick="alternarStatusRotaUI('${r.id}')">${r.status === 'inativa' ? 'Ativar' : 'Desativar'}</button>` : ''}
+          ${podeEditar ? `<button class="li-fav" onclick="apagarRotaUI('${r.id}')">🗑️</button>` : ''}
+          ${r.status !== 'inativa' ? `<button class="btn btn-primary btn-sm" onclick="iniciarViagemUI('${r.id}')">Iniciar</button>` : ''}
+        </div>
+      </div>`;
+    }).join('') : `<div class="empty-state"><span class="emoji">🗺️</span>Nenhuma rota cadastrada ainda.</div>`}
+
+    <div class="card-title mt16">🚚 Rotas de Deslocamento</div>
+    <button class="btn btn-outline" onclick="abrirNovaRotaDeslocamento()">➕ Cadastrar Rota de Deslocamento</button>
+    ${rotasDesloc.length ? rotasDesloc.map(r => {
+      const podeEditar = Permissoes.podeEditarRota(r);
+      return `
+      <div class="list-item" style="${r.status === 'inativa' ? 'opacity:.55' : ''}">
+        <div>
+          <div class="li-main">${r.nome}${r.status === 'inativa' ? ' (inativa)' : ''}</div>
+          <div class="li-sub">${r.origem} → ${r.destino}${r.motivo ? ' • ' + r.motivo : ''}</div>
+          ${r.criadoPorNome ? `<div class="li-sub" style="font-size:11px">Criada por ${r.criadoPorNome}</div>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="li-fav ${r.favorita ? 'on' : ''}" onclick="event.stopPropagation();alternarFavoritaDeslocUI('${r.id}')">★</button>
+          ${podeEditar ? `<button class="btn btn-outline btn-sm" onclick="alternarStatusRotaDeslocUI('${r.id}')">${r.status === 'inativa' ? 'Ativar' : 'Desativar'}</button>` : ''}
+          ${podeEditar ? `<button class="li-fav" onclick="apagarRotaDeslocUI('${r.id}')">🗑️</button>` : ''}
+          ${r.status !== 'inativa' ? `<button class="btn btn-primary btn-sm" onclick="iniciarDeslocamentoUI('${r.id}')">Iniciar</button>` : ''}
+        </div>
+      </div>`;
+    }).join('') : `<div class="empty-state"><span class="emoji">🚚</span>Nenhuma rota de deslocamento cadastrada ainda.</div>`}
+  `;
+}
+
+function renderTimerViagem(viagem) {
+  const area = qs('#operacao-area');
+  area.innerHTML = `
+    <div class="timer-wrap">
+      <div class="timer-rota">${viagem.rotaNome}</div>
+      <div class="timer-ring" id="timer-ring">
+        <svg width="220" height="220">
+          <circle class="track" cx="110" cy="110" r="96" stroke-width="10" fill="none"/>
+          <circle class="progress" id="timer-circle" cx="110" cy="110" r="96" stroke-width="10" fill="none"
+            stroke-dasharray="603" stroke-dashoffset="603"/>
+        </svg>
+        <div class="timer-digits" id="timer-digits">00:00</div>
+        <div class="timer-label">em viagem</div>
+      </div>
+      <div class="timer-actions">
+        <button class="btn btn-primary" onclick="descarregarUI('${viagem.id}')">📦 Descarregar</button>
+      </div>
+    </div>
+  `;
+
+  clearInterval(_viagemTimerHandle);
+  const referenciaPromise = Operacao.estatisticasRota(viagem.rotaId, viagem.dia);
+  const raio = 96, circ = 2 * Math.PI * raio;
+
+  const atualizar = async () => {
+    const stats = await referenciaPromise;
+    const referenciaMs = stats.tempoMedioMs || (20 * 60 * 1000);
+    const decorridoMs = Date.now() - new Date(viagem.inicioEm).getTime();
+    qs('#timer-digits').textContent = fmtDuracao(decorridoMs);
+    const fracao = Math.min(decorridoMs / referenciaMs, 1);
+    const offset = circ * (1 - fracao);
+    const circle = qs('#timer-circle');
+    if (circle) {
+      circle.style.strokeDasharray = circ;
+      circle.style.strokeDashoffset = offset;
+      circle.classList.toggle('over', decorridoMs > referenciaMs);
+    }
+  };
+  atualizar();
+  _viagemTimerHandle = setInterval(atualizar, 1000);
+}
+
+async function iniciarViagemUI(rotaId) {
+  const rota = await DB.get('rotas', rotaId);
+  const u = Auth.usuarioAtual();
+  const t = _turnoAtivoCache;
+  await Operacao.iniciarViagem({
+    turnoId: t.id, motoristaId: u.id, motoristaNome: u.nome,
+    equipamentoId: t.equipamentoId, equipamentoCodigo: t.equipamentoCodigo,
+    rotaId: rota.id, rotaNome: rota.nome
+  });
+  renderOperacao();
+}
+
+async function descarregarUI(viagemId) {
+  const viagem = await Operacao.descarregar(viagemId);
+  _ultimaViagemConcluidaId = viagem.id;
+  showToast(`✅ Viagem concluída — ${fmtDuracao(viagem.tempoTotalMs)}`);
+  clearInterval(_viagemTimerHandle);
+  const rotasDesloc = await Operacao.listarRotasDeslocamento();
+  const favorita = rotasDesloc.find(r => r.favorita && r.status !== 'inativa');
+  const area = qs('#operacao-area');
+  area.innerHTML = `
+    <div class="card text-center">
+      <div class="card-title">Viagem concluída</div>
+      <div style="font-family:var(--mono);font-size:26px;font-weight:700;margin:8px 0">${fmtDuracao(viagem.tempoTotalMs)}</div>
+      <div class="text-label" style="margin-bottom:14px">${viagem.rotaNome}</div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="repetirViagemUI('${viagem.id}')">🔁 Repetir Viagem</button>
+        <button class="btn btn-secondary" onclick="renderOperacao()">🗺️ Outra Rota</button>
+      </div>
+      ${favorita
+        ? `<button class="btn btn-outline mt8" onclick="iniciarDeslocamentoUI('${favorita.id}')">🚚 Deslocamento: ${favorita.origem} → ${favorita.destino}</button>`
+        : `<button class="btn btn-outline mt8" onclick="renderOperacao()">🚚 Ver Rotas de Deslocamento</button>`}
+    </div>`;
+}
+
+async function repetirViagemUI(viagemId) {
+  await Operacao.repetirViagem(viagemId);
+  renderOperacao();
+}
+
+async function abrirNovaRota() {
+  abrirModalFormulario({
+    titulo: '➕ Cadastrar Rota',
+    subtitulo: 'Preencha os dados da rota de viagem',
+    campos: [
+      { id: 'nome', label: 'Nome da rota', placeholder: 'Ex: F01 → Britador' },
+      { id: 'origem', label: 'Origem', placeholder: 'Ex: Frente 01' },
+      { id: 'destino', label: 'Destino', placeholder: 'Ex: Britador' },
+      { id: 'material', label: 'Material transportado', placeholder: 'Ex: Minério' },
+      { id: 'cargaCodigo', label: 'Equipamento de carga (código)', placeholder: 'Ex: PC-02 — opcional' },
+      { id: 'distancia', label: 'Distância (km)', tipo: 'number', placeholder: 'Opcional' }
+    ],
+    aoSalvar: async (v) => {
+      if (!v.nome) { showToast('Informe o nome da rota', 'var(--iron)'); return; }
+      let equipamentoCargaId = '', equipamentoCargaCodigo = '';
+      if (v.cargaCodigo) {
+        const equipamentos = await Equipamentos.listar();
+        const encontrado = equipamentos.find(e => e.codigo.toLowerCase() === v.cargaCodigo.toLowerCase());
+        if (encontrado) { equipamentoCargaId = encontrado.id; equipamentoCargaCodigo = encontrado.codigo; }
+        else { equipamentoCargaCodigo = v.cargaCodigo; }
+      }
+      await Operacao.salvarRota({
+        nome: v.nome, origem: v.origem, destino: v.destino, material: v.material,
+        equipamentoCargaId, equipamentoCargaCodigo, distancia: v.distancia
+      });
+      showToast('✅ Rota cadastrada!');
+      renderOperacao();
+    }
+  });
+}
+
+function alternarStatusRotaUI(id) {
+  Operacao.alternarStatusRota(id).then(r => {
+    if (r && r.erro) { showToast(r.erro, 'var(--iron)'); return; }
+    renderOperacao();
+  });
+}
+
+async function apagarRotaUI(id) {
+  if (!confirm('Apagar esta rota?')) return;
+  const r = await Operacao.removerRota(id);
+  if (r && r.erro) { showToast(r.erro, 'var(--iron)'); return; }
+  showToast('🗑️ Rota apagada');
+  renderOperacao();
+}
+
+function alternarFavoritaUI(id) {
+  Operacao.alternarFavorita(id).then(renderOperacao);
+}
+
+// ---------- LANÇAMENTO ATRASADO (viagem ou deslocamento esquecido) ----------
+async function abrirLancamentoAtrasadoUI() {
+  if (!_turnoAtivoCache) { showToast('Inicie um turno primeiro', 'var(--iron)'); return; }
+
+  const tipoTxt = prompt('Lançar rota atrasada de:\n1) Viagem\n2) Deslocamento\n\nDigite 1 ou 2:');
+  if (tipoTxt === null) return;
+  const tipo = tipoTxt.trim();
+
+  if (tipo === '1') {
+    await lancarViagemAtrasadaUI();
+  } else if (tipo === '2') {
+    await lancarDeslocamentoAtrasadoUI();
+  } else {
+    showToast('Opção inválida', 'var(--iron)');
+  }
+}
+
+function _horaParaISOHoje(horaTxt) {
+  if (!horaTxt || !/^\d{1,2}:\d{2}$/.test(horaTxt.trim())) return null;
+  const hoje = new Date().toISOString().slice(0, 10);
+  return new Date(`${hoje}T${horaTxt.trim()}:00`).toISOString();
+}
+
+async function lancarViagemAtrasadaUI() {
+  const rotas = (await Operacao.listarRotas()).filter(r => r.status !== 'inativa');
+  if (!rotas.length) { showToast('Nenhuma rota cadastrada', 'var(--iron)'); return; }
+
+  const lista = rotas.map((r, i) => `${i + 1}) ${r.nome} (${r.origem} → ${r.destino})`).join('\n');
+  const escolhaTxt = prompt(`Qual rota?\n${lista}\n\nDigite o número:`);
+  if (escolhaTxt === null) return;
+  const idx = parseInt(escolhaTxt.trim()) - 1;
+  const rota = rotas[idx];
+  if (!rota) { showToast('Rota inválida', 'var(--iron)'); return; }
+
+  const horaInicioTxt = prompt('Horário de início (ex: 08:15):');
+  if (horaInicioTxt === null) return;
+  const horaFimTxt = prompt('Horário de término (ex: 08:40):');
+  if (horaFimTxt === null) return;
+
+  const inicioEm = _horaParaISOHoje(horaInicioTxt);
+  const fimEm = _horaParaISOHoje(horaFimTxt);
+  if (!inicioEm || !fimEm) { showToast('Horário inválido — use o formato HH:MM', 'var(--iron)'); return; }
+  if (new Date(fimEm) <= new Date(inicioEm)) { showToast('Horário de término deve ser depois do início', 'var(--iron)'); return; }
+
+  const t = _turnoAtivoCache;
+  await Operacao.lancarViagemAtrasada({
+    turnoId: t.id, motoristaId: t.motoristaId, motoristaNome: t.motoristaNome,
+    equipamentoId: t.equipamentoId, equipamentoCodigo: t.equipamentoCodigo,
+    rotaId: rota.id, rotaNome: rota.nome, inicioEm, fimEm
+  });
+  showToast('✅ Viagem atrasada lançada!');
+  renderOperacao();
+}
+
+async function lancarDeslocamentoAtrasadoUI() {
+  const rotas = (await Operacao.listarRotasDeslocamento()).filter(r => r.status !== 'inativa');
+  if (!rotas.length) { showToast('Nenhuma rota de deslocamento cadastrada', 'var(--iron)'); return; }
+
+  const lista = rotas.map((r, i) => `${i + 1}) ${r.nome} (${r.origem} → ${r.destino})`).join('\n');
+  const escolhaTxt = prompt(`Qual rota de deslocamento?\n${lista}\n\nDigite o número:`);
+  if (escolhaTxt === null) return;
+  const idx = parseInt(escolhaTxt.trim()) - 1;
+  const rota = rotas[idx];
+  if (!rota) { showToast('Rota inválida', 'var(--iron)'); return; }
+
+  const horaInicioTxt = prompt('Horário de início (ex: 08:15):');
+  if (horaInicioTxt === null) return;
+  const horaFimTxt = prompt('Horário de término (ex: 08:40):');
+  if (horaFimTxt === null) return;
+
+  const inicioEm = _horaParaISOHoje(horaInicioTxt);
+  const fimEm = _horaParaISOHoje(horaFimTxt);
+  if (!inicioEm || !fimEm) { showToast('Horário inválido — use o formato HH:MM', 'var(--iron)'); return; }
+  if (new Date(fimEm) <= new Date(inicioEm)) { showToast('Horário de término deve ser depois do início', 'var(--iron)'); return; }
+
+  const t = _turnoAtivoCache;
+  await Operacao.lancarDeslocamentoAtrasado({
+    turnoId: t.id, motoristaId: t.motoristaId, equipamentoId: t.equipamentoId,
+    rotaDeslocId: rota.id, inicioEm, fimEm
+  });
+  showToast('✅ Deslocamento atrasado lançado!');
+  renderOperacao();
+}
+
+function abrirNovaRotaDeslocamento() {
+  abrirModalFormulario({
+    titulo: '➕ Cadastrar Rota de Deslocamento',
+    subtitulo: 'Deslocamento sem carga — não conta como produção',
+    campos: [
+      { id: 'origem', label: 'Origem', placeholder: 'Ex: Oficina' },
+      { id: 'destino', label: 'Destino', placeholder: 'Ex: Frente 01' },
+      { id: 'motivo', label: 'Motivo', placeholder: 'Ex: Início de turno' },
+      { id: 'nome', label: 'Nome da rota (opcional)', placeholder: 'Deixe em branco para gerar automático' }
+    ],
+    aoSalvar: (v) => {
+      if (!v.origem) { showToast('Informe a origem', 'var(--iron)'); return; }
+      const nome = v.nome || `${v.origem} -> ${v.destino}`;
+      Operacao.salvarRotaDeslocamento({ nome, origem: v.origem, destino: v.destino, motivo: v.motivo }).then(() => {
+        showToast('✅ Rota de deslocamento cadastrada!');
+        renderOperacao();
+      });
+    }
+  });
+}
+
+function alternarFavoritaDeslocUI(id) {
+  Operacao.alternarFavoritaDeslocamento(id).then(renderOperacao);
+}
+
+function alternarStatusRotaDeslocUI(id) {
+  Operacao.alternarStatusRotaDeslocamento(id).then(r => {
+    if (r && r.erro) { showToast(r.erro, 'var(--iron)'); return; }
+    renderOperacao();
+  });
+}
+
+async function apagarRotaDeslocUI(id) {
+  if (!confirm('Apagar esta rota de deslocamento?')) return;
+  const r = await Operacao.removerRotaDeslocamento(id);
+  if (r && r.erro) { showToast(r.erro, 'var(--iron)'); return; }
+  showToast('🗑️ Rota de deslocamento apagada');
+  renderOperacao();
+}
+
+async function iniciarDeslocamentoUI(rotaDeslocId) {
+  const rota = await DB.get('rotasDeslocamento', rotaDeslocId);
+  if (!rota) return;
+  const t = _turnoAtivoCache;
+  const d = await Operacao.iniciarDeslocamento({
+    turnoId: t.id, motoristaId: t.motoristaId, equipamentoId: t.equipamentoId,
+    origem: rota.origem, destino: rota.destino, motivo: rota.motivo
+  });
+  showToast('🚚 Deslocamento iniciado');
+  renderTimerDeslocamento(d, rota.origem, rota.destino, rota.motivo);
+}
+
+function renderTimerDeslocamento(d, origem, destino, motivo) {
+  const area = qs('#operacao-area');
+  area.innerHTML = `
+    <div class="card text-center">
+      <div class="card-title">🚚 Deslocamento em andamento</div>
+      <div class="text-label mt8">${origem} → ${destino}</div>
+      ${motivo ? `<div class="text-label" style="font-size:12px">${motivo}</div>` : ''}
+      <div style="font-family:var(--mono);font-size:30px;font-weight:700;margin:14px 0" id="desloc-digits">00:00</div>
+      <button class="btn btn-primary" onclick="finalizarDeslocamentoUI('${d.id}')">🏁 Finalizar Deslocamento</button>
+      <button class="btn btn-danger mt8" onclick="cancelarDeslocamentoUI('${d.id}')">✖ Cancelar</button>
+    </div>`;
+
+  clearInterval(_viagemTimerHandle);
+  const atualizar = () => {
+    const el = qs('#desloc-digits');
+    if (!el) { clearInterval(_viagemTimerHandle); return; }
+    el.textContent = fmtDuracao(Date.now() - new Date(d.inicioEm).getTime());
+  };
+  atualizar();
+  _viagemTimerHandle = setInterval(atualizar, 1000);
+}
+
+async function finalizarDeslocamentoUI(id) {
+  const d = await Operacao.finalizarDeslocamento(id);
+  clearInterval(_viagemTimerHandle);
+  showToast(`✅ Deslocamento finalizado — ${fmtDuracao(d.tempoTotalMs)}`);
+
+  // fica na mesma tela — oferece repetir a última viagem ou escolher outra rota,
+  // sem obrigar o motorista a sair da aba
+  const area = qs('#operacao-area');
+  area.innerHTML = `
+    <div class="card text-center">
+      <div class="card-title">Deslocamento concluído</div>
+      <div style="font-family:var(--mono);font-size:26px;font-weight:700;margin:8px 0">${fmtDuracao(d.tempoTotalMs)}</div>
+      <div class="text-label" style="margin-bottom:14px">${d.origem} → ${d.destino}</div>
+      <div class="btn-row">
+        ${_ultimaViagemConcluidaId ? `<button class="btn btn-primary" onclick="repetirViagemUI('${_ultimaViagemConcluidaId}')">🔁 Repetir Viagem</button>` : ''}
+        <button class="btn btn-secondary" onclick="renderOperacao()">🗺️ Outra Rota</button>
+      </div>
+    </div>`;
+}
+
+async function cancelarDeslocamentoUI(id) {
+  if (!confirm('Cancelar este deslocamento?')) return;
+  clearInterval(_viagemTimerHandle);
+  await Operacao.removerDeslocamento(id);
+  showToast('✖ Deslocamento cancelado');
+  renderOperacao();
+}
+
+// ---------- VIAGENS (histórico) ----------
+async function renderViagens() {
+  qs('#btn-lancar-rotas').classList.toggle('hidden', !podeGerenciarFrota());
+  const dias = await Viagens.diasComRegistro();
+  const selDia = qs('#viagens-dia');
+  const diaAtual = todayKey();
+  const todosDias = [...new Set([diaAtual, ...dias])];
+  selDia.innerHTML = todosDias.map(d => `<option value="${d}" ${d === diaAtual ? 'selected' : ''}>${d}</option>`).join('');
+  await renderListaViagensDoDia(diaAtual);
+}
+
+async function renderListaViagensDoDia(dia) {
+  let [viagens, deslocamentos, stats] = await Promise.all([
+    Viagens.historicoDoDia(dia),
+    Operacao.deslocamentosDoDia(dia),
+    Viagens.totalPorDia(dia)
+  ]);
+
+  // Motorista só enxerga os próprios registros; demais perfis veem tudo
+  viagens = Permissoes.filtrarPorVisibilidade(viagens, 'motoristaId');
+  deslocamentos = Permissoes.filtrarPorVisibilidade(deslocamentos, 'motoristaId');
+  if (!Permissoes.podeVerTudoOperacional()) {
+    const totalViagensConcluidas = viagens.filter(v => v.status === 'concluida');
+    const tempoTotalMs = totalViagensConcluidas.reduce((a, v) => a + (v.tempoTotalMs || 0), 0);
+    stats = { totalViagens: totalViagensConcluidas.length, tempoMedioMs: totalViagensConcluidas.length ? tempoTotalMs / totalViagensConcluidas.length : 0 };
+  }
+
+  qs('#viagens-resumo').innerHTML = `
+    <div class="row-kv"><span class="k">Viagens concluídas</span><span class="v">${stats.totalViagens}</span></div>
+    <div class="row-kv"><span class="k">Tempo médio</span><span class="v">${fmtDuracao(stats.tempoMedioMs)}</span></div>
+    <div class="row-kv"><span class="k">Deslocamentos</span><span class="v">${deslocamentos.length}</span></div>`;
+
+  const itensViagem = viagens.map(v => ({ tipo: 'viagem', dado: v, quando: v.inicioEm }));
+  const itensDesloc = deslocamentos.map(d => ({ tipo: 'deslocamento', dado: d, quando: d.inicioEm }));
+  const itens = [...itensViagem, ...itensDesloc].sort((a, b) => new Date(b.quando) - new Date(a.quando));
+
+  qs('#viagens-lista').innerHTML = itens.length ? itens.map(item => {
+    if (item.tipo === 'viagem') {
+      const v = item.dado;
+      return `
+      <div class="list-item">
+        <div>
+          <div class="li-main">${v.rotaNome}</div>
+          <div class="li-sub">${v.motoristaNome} • ${v.equipamentoCodigo} • ${fmtHoraBR(v.inicioEm)}${v.descarregadoEm ? ' → ' + fmtHoraBR(v.descarregadoEm) : ' (em andamento)'}${v.editadoEm ? ' • ✏️ editada' : ''}${v.lancamentoManual ? ' • 🕐 lançamento atrasado' : ''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="v" style="font-family:var(--mono)">${v.tempoTotalMs ? fmtDuracao(v.tempoTotalMs) : '—'}</div>
+          <button class="li-fav" onclick="editarViagemUI('${v.id}')">✏️</button>
+          <button class="li-fav" onclick="apagarViagemUI('${v.id}')">🗑️</button>
+        </div>
+      </div>`;
+    } else {
+      const d = item.dado;
+      return `
+      <div class="list-item" style="opacity:.8;border-style:dashed">
+        <div>
+          <div class="li-main">🚚 Deslocamento — ${d.origem} → ${d.destino}</div>
+          <div class="li-sub">${d.motivo ? d.motivo + ' • ' : ''}${fmtHoraBR(d.inicioEm)}${d.fimEm ? ' → ' + fmtHoraBR(d.fimEm) : ' (em andamento)'} • não conta como produção${d.lancamentoManual ? ' • 🕐 lançamento atrasado' : ''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="v" style="font-family:var(--mono)">${d.tempoTotalMs ? fmtDuracao(d.tempoTotalMs) : '—'}</div>
+          <button class="li-fav" onclick="apagarDeslocamentoUI('${d.id}')">🗑️</button>
+        </div>
+      </div>`;
+    }
+  }).join('') : `<div class="empty-state"><span class="emoji">📭</span>Nenhum registro neste dia.</div>`;
+}
+
+async function editarViagemUI(id) {
+  const v = await DB.get('viagens', id);
+  if (!v) return;
+  const novaRota = prompt('Nome da rota:', v.rotaNome) ?? v.rotaNome;
+  const novoInicio = prompt('Horário de início (ex: 08:30):', fmtHoraBR(v.inicioEm)) ?? null;
+  const novaDescarga = v.descarregadoEm ? (prompt('Horário de descarga (ex: 09:10):', fmtHoraBR(v.descarregadoEm)) ?? null) : null;
+
+  const campos = { rotaNome: novaRota };
+  const dataBase = v.inicioEm.slice(0, 10);
+  if (novoInicio && /^\d{1,2}:\d{2}$/.test(novoInicio)) {
+    campos.inicioEm = new Date(`${dataBase}T${novoInicio}:00`).toISOString();
+  }
+  if (novaDescarga && /^\d{1,2}:\d{2}$/.test(novaDescarga)) {
+    campos.descarregadoEm = new Date(`${dataBase}T${novaDescarga}:00`).toISOString();
+  }
+  await Operacao.editarViagem(id, campos);
+  showToast('✏️ Viagem atualizada');
+  renderListaViagensDoDia(qs('#viagens-dia').value);
+}
+
+async function apagarViagemUI(id) {
+  if (!confirm('Apagar esta viagem? Essa ação não pode ser desfeita.')) return;
+  await Operacao.removerViagem(id);
+  Log.registrar('excluir', { tipo: 'viagem', id });
+  showToast('🗑️ Viagem apagada');
+  renderListaViagensDoDia(qs('#viagens-dia').value);
+}
+
+async function apagarDeslocamentoUI(id) {
+  if (!confirm('Apagar este deslocamento?')) return;
+  await Operacao.removerDeslocamento(id);
+  showToast('🗑️ Deslocamento apagado');
+  renderListaViagensDoDia(qs('#viagens-dia').value);
+}
+
+// ---------- LANÇAR ROTAS (lote administrativo) ----------
+let _loteContadorLinha = 0;
+
+async function renderLancarRotas() {
+  const campoData = qs('#lote-dia');
+  if (!campoData.value) campoData.value = new Date().toISOString().slice(0, 10);
+
+  const equipamentos = await Equipamentos.listar();
+  qs('#lote-equip').innerHTML = '<option value="">Selecione...</option>' +
+    equipamentos.map(e => `<option value="${e.id}">${e.codigo} — ${e.modelo}</option>`).join('');
+
+  const usuarios = await Auth.listarUsuarios();
+  qs('#lote-motorista').innerHTML = '<option value="">Selecione...</option>' +
+    usuarios.map(u => `<option value="${u.id}">${u.nome} (${u.nivel})</option>`).join('');
+
+  qs('#lote-rotas-lista').innerHTML = '';
+  qs('#lote-deslocamentos-lista').innerHTML = '';
+  _loteContadorLinha = 0;
+  await adicionarLinhaLoteRota();
+}
+
+async function adicionarLinhaLoteRota() {
+  const rotas = (await Operacao.listarRotas()).filter(r => r.status !== 'inativa');
+  const idLinha = `lote-linha-${_loteContadorLinha++}`;
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.id = idLinha;
+  div.innerHTML = `
+    <div class="field">
+      <label>Rota</label>
+      <select class="lote-rota-select" onchange="atualizarTotalLote()">
+        <option value="">Selecione...</option>
+        ${rotas.map(r => `<option value="${r.id}" data-nome="${r.nome}">${r.nome} (${r.origem} → ${r.destino})</option>`).join('')}
+      </select>
+    </div>
+    <div class="btn-row">
+      <div class="field" style="flex:1"><label>Quantidade de viagens</label><input type="number" class="lote-qtd-input" value="1" min="0" oninput="atualizarTotalLote()"></div>
+      <div class="field" style="flex:1"><label>Horário (opcional)</label><input type="time" class="lote-horario-input"></div>
+    </div>
+    <button class="btn btn-ghost" style="font-size:12.5px" onclick="document.getElementById('${idLinha}').remove(); atualizarTotalLote();">🗑️ Remover esta rota</button>
+  `;
+  qs('#lote-rotas-lista').appendChild(div);
+  atualizarTotalLote();
+}
+
+async function adicionarLinhaLoteDeslocamento() {
+  const rotasDesloc = (await Operacao.listarRotasDeslocamento()).filter(r => r.status !== 'inativa');
+  const idLinha = `lote-desloc-linha-${_loteContadorLinha++}`;
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.id = idLinha;
+  div.innerHTML = `
+    <div class="field">
+      <label>Rota de Deslocamento</label>
+      <select class="lote-desloc-select" onchange="atualizarTotalLote()">
+        <option value="">Selecione...</option>
+        ${rotasDesloc.map(r => `<option value="${r.id}">${r.nome} (${r.origem} → ${r.destino})</option>`).join('')}
+      </select>
+    </div>
+    <div class="btn-row">
+      <div class="field" style="flex:1"><label>Quantidade</label><input type="number" class="lote-desloc-qtd-input" value="1" min="0" oninput="atualizarTotalLote()"></div>
+      <div class="field" style="flex:1"><label>Horário (opcional)</label><input type="time" class="lote-desloc-horario-input"></div>
+    </div>
+    <button class="btn btn-ghost" style="font-size:12.5px" onclick="document.getElementById('${idLinha}').remove(); atualizarTotalLote();">🗑️ Remover este deslocamento</button>
+  `;
+  qs('#lote-deslocamentos-lista').appendChild(div);
+  atualizarTotalLote();
+}
+
+function atualizarTotalLote() {
+  const qtdInputs = qsa('#lote-rotas-lista .lote-qtd-input');
+  const total = qtdInputs.reduce((soma, input) => soma + (parseInt(input.value) || 0), 0);
+  qs('#lote-total-viagens').textContent = total;
+
+  const qtdDeslocInputs = qsa('#lote-deslocamentos-lista .lote-desloc-qtd-input');
+  const totalDesloc = qtdDeslocInputs.reduce((soma, input) => soma + (parseInt(input.value) || 0), 0);
+  qs('#lote-total-deslocamentos').textContent = totalDesloc;
+}
+
+async function salvarLancamentoLoteUI() {
+  const dia = qs('#lote-dia').value;
+  const equipId = qs('#lote-equip').value;
+  const motoristaId = qs('#lote-motorista').value;
+  const kmInicial = qs('#lote-km-inicial').value;
+  const kmFinal = qs('#lote-km-final').value;
+  const horInicial = qs('#lote-hor-inicial').value;
+  const horFinal = qs('#lote-hor-final').value;
+
+  if (!dia) { showToast('Selecione o dia', 'var(--iron)'); return; }
+  if (!equipId) { showToast('Selecione o equipamento', 'var(--iron)'); return; }
+  if (!motoristaId) { showToast('Selecione o operador', 'var(--iron)'); return; }
+
+  const linhas = qsa('#lote-rotas-lista > .card');
+  const rotasComQtd = [];
+  for (const linha of linhas) {
+    const select = linha.querySelector('.lote-rota-select');
+    const qtdInput = linha.querySelector('.lote-qtd-input');
+    const horarioInput = linha.querySelector('.lote-horario-input');
+    if (select.value && parseInt(qtdInput.value) > 0) {
+      rotasComQtd.push({ rotaId: select.value, quantidade: qtdInput.value, horario: horarioInput.value || null });
+    }
+  }
+
+  const linhasDesloc = qsa('#lote-deslocamentos-lista > .card');
+  const deslocamentosComQtd = [];
+  for (const linha of linhasDesloc) {
+    const select = linha.querySelector('.lote-desloc-select');
+    const qtdInput = linha.querySelector('.lote-desloc-qtd-input');
+    const horarioInput = linha.querySelector('.lote-desloc-horario-input');
+    if (select.value && parseInt(qtdInput.value) > 0) {
+      deslocamentosComQtd.push({ rotaDeslocId: select.value, quantidade: qtdInput.value, horario: horarioInput.value || null });
+    }
+  }
+
+  if (!rotasComQtd.length && !deslocamentosComQtd.length) {
+    showToast('Adicione ao menos uma rota ou deslocamento com quantidade', 'var(--iron)');
+    return;
+  }
+
+  const equip = await DB.get('equipamentos', equipId);
+  const motorista = await DB.get('usuarios', motoristaId);
+  const [ano, mes, diaNum] = dia.split('-');
+  const diaKey = `${diaNum}-${mes}-${ano}`;
+
+  const r = await Operacao.lancarDiaCompleto({
+    dia: diaKey, equipamentoId: equipId, equipamentoCodigo: equip.codigo,
+    motoristaId, motoristaNome: motorista ? motorista.nome : '—',
+    kmInicial, kmFinal, horimetroInicial: horInicial, horimetroFinal: horFinal,
+    rotasComQtd, deslocamentosComQtd
+  });
+
+  showToast(`✅ ${r.totalViagens} viagem(ns) e ${r.totalDeslocamentos} deslocamento(s) lançado(s) com sucesso!`);
+  navigate('viagens');
+}
+
+function mudarDiaViagens() {
+  renderListaViagensDoDia(qs('#viagens-dia').value);
+}
+
+// ---------- FROTA (equipamentos + abastecimento + lubrificação) ----------
+async function renderFrota() {
+  const equipamentos = await Equipamentos.listar();
+  const gestao = podeGerenciarFrota();
+  qs('#frota-cadastrar-btn').classList.toggle('hidden', !gestao);
+
+  qs('#frota-lista').innerHTML = equipamentos.length ? equipamentos.map(e => `
+    <div class="list-item">
+      <div style="cursor:pointer" onclick="abrirPainelEquipamento('${e.id}')">
+        <div class="li-main">${e.codigo} — ${e.modelo}</div>
+        <div class="li-sub">${e.categoria} • KM ${e.kmAtual} • Hor ${e.horimetroAtual} • ${e.status === 'manutencao' ? '🔧 Em manutenção' : (e.status === 'reserva' ? '🅿️ Em reserva' : (e.ativo === false ? '⏸ Desativado' : '✅ Ativo'))}</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-outline btn-sm" onclick="alternarManutencaoUI('${e.id}')">${e.status === 'manutencao' ? 'Retornar' : 'Manutenção'}</button>
+        ${gestao ? `<button class="li-fav" onclick="apagarEquipamentoUI('${e.id}')">🗑️</button>` : ''}
+      </div>
+    </div>`).join('') : `<div class="empty-state"><span class="emoji">🚛</span>Nenhum equipamento cadastrado.</div>`;
+
+  const equipSel = ['abast-equip', 'lub-equip'];
+  const options = '<option value="">Selecione...</option>' + equipamentos.map(e => `<option value="${e.id}">${e.codigo}</option>`).join('');
+  equipSel.forEach(id => { const s = qs('#' + id); if (s) s.innerHTML = options; });
+}
+
+function alternarManutencaoUI(id) {
+  if (!Permissoes.podeAlternarManutencao()) { showToast('Acesso restrito', 'var(--iron)'); return; }
+  DB.get('equipamentos', id).then(e => {
+    if (e.status !== 'manutencao') {
+      abrirModalFormulario({
+        titulo: '🔧 Enviar para Manutenção',
+        subtitulo: e.codigo,
+        campos: [{ id: 'motivo', label: 'Motivo', placeholder: 'Ex: Troca de pneu, revisão programada...' }],
+        textoSalvar: 'Confirmar',
+        aoSalvar: (v) => Equipamentos.alternarManutencao(id, v.motivo).then(renderFrota)
+      });
+    } else {
+      Equipamentos.alternarManutencao(id).then(renderFrota);
+    }
+  });
+}
+
+async function apagarEquipamentoUI(id) {
+  if (!podeGerenciarFrota()) { showToast('Acesso restrito', 'var(--iron)'); return; }
+  if (!confirm('Apagar este equipamento? O histórico de viagens/abastecimentos ligado a ele será mantido, mas o cadastro será removido definitivamente.')) return;
+  await Equipamentos.remover(id);
+  Log.registrar('excluir', { tipo: 'equipamento', id });
+  showToast('🗑️ Equipamento apagado');
+  renderFrota();
+}
+
+function abrirNovoEquipamento() {
+  if (!podeGerenciarFrota()) { showToast('Acesso restrito a Administrador, Gerência, Supervisor ou Encarregado', 'var(--iron)'); return; }
+  abrirModalFormulario({
+    titulo: '➕ Cadastrar Equipamento',
+    campos: [
+      { id: 'codigo', label: 'Código / placa', placeholder: 'Ex: CB-07' },
+      { id: 'modelo', label: 'Modelo', placeholder: 'Ex: Volvo FMX 500' },
+      { id: 'categoria', label: 'Categoria', tipo: 'select', valor: 'Caminhão', opcoes: [
+        { valor: 'Caminhão', texto: 'Caminhão' },
+        { valor: 'Escavadeira', texto: 'Escavadeira' },
+        { valor: 'Pá-carregadeira', texto: 'Pá-carregadeira' },
+        { valor: 'Perfuratriz', texto: 'Perfuratriz' },
+        { valor: 'Outro', texto: 'Outro' }
+      ]},
+      { id: 'kmAtual', label: 'KM atual', tipo: 'number', valor: 0 },
+      { id: 'horimetroAtual', label: 'Horímetro atual', tipo: 'number', valor: 0 },
+      { id: 'expedienteInicio', label: 'Início do expediente', tipo: 'time', valor: '07:00' },
+      { id: 'expedienteFim', label: 'Fim do expediente', tipo: 'time', valor: '19:00' }
+    ],
+    aoSalvar: (v) => {
+      if (!v.codigo) { showToast('Informe o código/placa', 'var(--iron)'); return; }
+      Equipamentos.salvar(v).then(() => {
+        showToast('✅ Equipamento cadastrado!');
+        renderFrota();
+      });
+    }
+  });
+}
+
+async function registrarAbastecimentoUI() {
+  const equipId = qs('#abast-equip').value;
+  const litros = qs('#abast-litros').value;
+  const km = qs('#abast-km').value;
+  const horimetro = qs('#abast-horimetro').value;
+  const situacao = qs('#abast-situacao').value;
+  if (!equipId || !litros) { showToast('Selecione o equipamento e informe os litros', 'var(--iron)'); return; }
+  const equip = await DB.get('equipamentos', equipId);
+  const u = Auth.usuarioAtual();
+  await Abastecimento.registrar({
+    equipamentoId: equipId, equipamentoCodigo: equip.codigo, motoristaId: u.id,
+    litros, kmAtual: km || equip.kmAtual, horimetroAtual: horimetro || equip.horimetroAtual, situacao
+  });
+  showToast('⛽ Abastecimento registrado!');
+  qs('#abast-litros').value = ''; qs('#abast-km').value = ''; qs('#abast-horimetro').value = '';
+  renderFrota();
+}
+
+async function registrarLubrificacaoUI() {
+  const equipId = qs('#lub-equip').value;
+  const tipoServico = qs('#lub-tipo').value;
+  const horimetro = qs('#lub-horimetro').value;
+  if (!equipId) { showToast('Selecione o equipamento', 'var(--iron)'); return; }
+  const equip = await DB.get('equipamentos', equipId);
+  await Lubrificacao.registrar({ equipamentoId: equipId, equipamentoCodigo: equip.codigo, tipoServico, horimetroAtual: horimetro });
+  showToast('🛢️ Lubrificação registrada!');
+  qs('#lub-horimetro').value = '';
+  renderFrota();
+}
+
+// ---------- RELATÓRIO PDF ----------
+async function gerarRelatorioPDFUI() {
+  const campoData = qs('#relatorio-data');
+  const dataISO = (campoData && campoData.value) || new Date().toISOString().slice(0, 10);
+  const [ano, mes, dia] = dataISO.split('-');
+  const diaKey = `${dia}-${mes}-${ano}`;
+
+  showToast('📄 Gerando relatório...', 'var(--amber)');
+  try {
+    const blob = await Relatorio.gerarPDF(diaKey);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `STRACTA_Relatorio_${diaKey}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    showToast('✅ Relatório gerado!');
+  } catch (e) {
+    showToast('Erro ao gerar relatório: ' + e.message, 'var(--iron)');
+  }
+}
+
+async function gerarExcelDiaUI() {
+  const campoData = qs('#relatorio-data');
+  const dataISO = (campoData && campoData.value) || new Date().toISOString().slice(0, 10);
+  const [ano, mes, dia] = dataISO.split('-');
+  const diaKey = `${dia}-${mes}-${ano}`;
+
+  showToast('📊 Gerando Excel...', 'var(--amber)');
+  try {
+    const nomeArquivo = await RelatorioExcel.gerarExcelDia(diaKey);
+    if (nomeArquivo) showToast('✅ Excel gerado!');
+  } catch (e) {
+    showToast('Erro ao gerar Excel: ' + e.message, 'var(--iron)');
+  }
+}
+
+function _lerPeriodoSelecionado() {
+  const inicio = qs('#relatorio-periodo-inicio').value;
+  const fim = qs('#relatorio-periodo-fim').value;
+  if (!inicio || !fim) { showToast('Escolha as duas datas do período', 'var(--iron)'); return null; }
+  if (new Date(fim) < new Date(inicio)) { showToast('A data final deve ser depois da inicial', 'var(--iron)'); return null; }
+  return { inicio, fim };
+}
+
+async function gerarRelatorioPeriodoUI() {
+  const periodo = _lerPeriodoSelecionado();
+  if (!periodo) return;
+  showToast('📄 Gerando relatório de período...', 'var(--amber)');
+  try {
+    const blob = await Relatorio.gerarPDFPeriodo(periodo.inicio, periodo.fim);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `STRACTA_Relatorio_Periodo_${periodo.inicio}_a_${periodo.fim}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    showToast('✅ Relatório de período gerado!');
+  } catch (e) {
+    showToast('Erro ao gerar relatório: ' + e.message, 'var(--iron)');
+  }
+}
+
+async function gerarExcelPeriodoUI() {
+  const periodo = _lerPeriodoSelecionado();
+  if (!periodo) return;
+  showToast('📊 Gerando Excel do período...', 'var(--amber)');
+  try {
+    const nomeArquivo = await RelatorioExcel.gerarExcelPeriodo(periodo.inicio, periodo.fim);
+    if (nomeArquivo) showToast('✅ Excel gerado!');
+  } catch (e) {
+    showToast('Erro ao gerar Excel: ' + e.message, 'var(--iron)');
+  }
+}
+
+// ---------- PAINEL (dashboard) ----------
+async function renderPainel() {
+  const campoData = qs('#relatorio-data');
+  if (campoData && !campoData.value) campoData.value = new Date().toISOString().slice(0, 10);
+
+  const [r, porEquip] = await Promise.all([Dashboard.resumoDoDia(), Dashboard.resumoPorEquipamento()]);
+  qs('#painel-conteudo').innerHTML = `
+    <div class="card">
+      <div class="card-title">Produção — ${r.dia}</div>
+      <div class="row-kv"><span class="k">Viagens concluídas</span><span class="v">${r.totalViagens}</span></div>
+      <div class="row-kv"><span class="k">Tempo médio/viagem</span><span class="v">${fmtDuracao(r.tempoMedioMs)}</span></div>
+      <div class="row-kv"><span class="k">Tempo total em viagens</span><span class="v">${fmtDuracao(r.tempoTotalMs)}</span></div>
+      <div class="row-kv"><span class="k">Deslocamentos</span><span class="v">${r.totalDeslocamentos}</span></div>
+      <div class="row-kv"><span class="k">Tempo em deslocamento</span><span class="v">${fmtDuracao(r.tempoDeslocamentoMs)}</span></div>
+      <div class="row-kv"><span class="k">Tempo parado</span><span class="v text-amber">${fmtDuracao(r.tempoParadoMs)}</span></div>
+      <div class="row-kv"><span class="k">Abastecimentos (litros)</span><span class="v">${r.totalLitros} L</span></div>
+      <div class="row-kv"><span class="k">Lubrificações</span><span class="v">${r.totalLubrificacoes}</span></div>
+      <div class="row-kv"><span class="k">Equipamentos ativos</span><span class="v">${r.equipamentosAtivos}/${r.equipamentosTotal}</span></div>
+      <div class="row-kv"><span class="k">Em manutenção</span><span class="v">${r.equipamentosManutencao}</span></div>
+      <div class="row-kv"><span class="k">Turnos ativos agora</span><span class="v">${r.turnosAtivos}</span></div>
+    </div>
+
+    <div class="card-title mt16">🚛 Por Equipamento</div>
+    <div id="painel-equip-grid">
+    ${porEquip.length ? porEquip.map(item => {
+      const e = item.equipamento;
+      let pill;
+      if (e.status === 'manutencao') pill = `<span class="v" style="color:var(--iron)">🔧 Manutenção</span>`;
+      else if (e.status === 'reserva') pill = `<span class="v" style="color:var(--blue)">🅿️ Reserva</span>`;
+      else if (e.ativo === false) pill = `<span class="v text-label">⏸ Desativado</span>`;
+      else if (item.emRota) pill = `<span class="v" style="color:var(--amber)">🚛 Em Rota</span>`;
+      else if (item.temTurnoAtivo) pill = `<span class="v" style="color:var(--green)">🟢 Operando</span>`;
+      else if (Equipamentos.dentroDoExpediente(e)) pill = `<span class="v" style="color:var(--iron)">🔴 Falta de Operador</span>`;
+      else pill = `<span class="v text-label">🌙 Fora de Expediente</span>`;
+      return `
+      <div class="list-item" onclick="abrirPainelEquipamento('${e.id}')" style="cursor:pointer">
+        <div>
+          <div class="li-main">${e.codigo} — ${e.modelo}</div>
+          <div class="li-sub">🚛 ${item.totalViagens} viagens • ⛽ ${item.totalAbastecimentos} • 🛠 ${item.totalLubrificacoes}${item.emRota && item.rotaAtualNome ? ' • Rota: ' + item.rotaAtualNome : ''}</div>
+        </div>
+        ${pill}
+      </div>`;
+    }).join('') : `<div class="empty-state"><span class="emoji">🚛</span>Nenhum equipamento cadastrado.</div>`}
+    </div>
+  `;
+}
+
+// ---------- PAINEL DO EQUIPAMENTO ----------
+async function abrirPainelEquipamento(equipamentoId) {
+  _equipamentoSelecionadoId = equipamentoId;
+  navigate('painel-equip');
+}
+
+async function renderPainelEquip() {
+  if (!_equipamentoSelecionadoId) { navigate('painel'); return; }
+  const d = await Dashboard.detalheEquipamento(_equipamentoSelecionadoId);
+  if (!d.equipamento) { showToast('Equipamento não encontrado', 'var(--iron)'); navigate('painel'); return; }
+  const e = d.equipamento;
+
+  let pill;
+  if (e.status === 'manutencao') pill = `<span style="color:var(--iron)">🔧 Em Manutenção</span>`;
+  else if (e.status === 'reserva') pill = `<span style="color:var(--blue)">🅿️ Em Reserva</span>`;
+  else if (e.ativo === false) pill = `<span class="text-label">⏸ Desativado</span>`;
+  else if (d.emRota) pill = `<span style="color:var(--amber)">🚛 Em Rota${d.rotaAtualNome ? ' — ' + d.rotaAtualNome : ''}</span>`;
+  else if (d.motoristaAtual) pill = `<span style="color:var(--green)">🟢 Operando</span>`;
+  else if (Equipamentos.dentroDoExpediente(e)) pill = `<span style="color:var(--iron)">🔴 Falta de Operador</span>`;
+  else pill = `<span class="text-label">🌙 Fora de Expediente (${e.expedienteInicio || '-'} às ${e.expedienteFim || '-'})</span>`;
+
+  qs('#painel-equip-conteudo').innerHTML = `
+    <div class="card text-center">
+      <div style="font-family:var(--display);font-weight:700;font-size:22px">${e.codigo}</div>
+      <div class="mt8" style="font-size:15px">${pill}</div>
+    </div>
+    <div class="card">
+      <div class="row-kv"><span class="k">👤 Motorista atual</span><span class="v">${d.motoristaAtual ? d.motoristaAtual : '— (sem turno ativo)'}</span></div>
+      ${d.motoristaAtual ? `<div class="row-kv"><span class="k">Desde</span><span class="v">${fmtHoraBR(d.turnoAtivoDesde)}</span></div>` : ''}
+      <div class="row-kv" style="border-top:1px solid var(--border);margin-top:8px;padding-top:12px"><span class="k">KM</span><span class="v">${e.kmAtual}</span></div>
+      <div class="row-kv"><span class="k">Horímetro</span><span class="v">${e.horimetroAtual}</span></div>
+      <div class="row-kv" style="border-top:1px solid var(--border);margin-top:8px;padding-top:12px"><span class="k">🚛 Viagens</span><span class="v">${d.totalViagens}</span></div>
+      <div class="row-kv"><span class="k">⛽ Abastecimentos</span><span class="v">${d.totalAbastecimentos}</span></div>
+      <div class="row-kv"><span class="k">🛠 Lubrificações</span><span class="v">${d.totalLubrificacoes}</span></div>
+      <div class="row-kv"><span class="k">📅 Última manutenção</span><span class="v">${d.ultimaManutencao ? fmtDataBR(d.ultimaManutencao.entradaEm) : '—'}</span></div>
+    </div>
+    <button class="btn btn-outline" onclick="alternarManutencaoEquipPainelUI('${e.id}')">${e.status === 'manutencao' ? '🔧 Retornar da Manutenção' : '🔧 Enviar para Manutenção'}</button>
+    ${e.status !== 'manutencao' ? `<button class="btn btn-outline" onclick="alternarReservaUI('${e.id}')">${e.status === 'reserva' ? '▶️ Tirar da Reserva' : '🅿️ Colocar em Reserva'}</button>` : ''}
+    <button class="btn btn-secondary" onclick="alternarHistoricoEquipamentoUI()">📋 Histórico</button>
+    <div id="painel-equip-historico" class="hidden"></div>
+    ${podeGerenciarFrota() ? `
+    <div class="btn-row mt12">
+      <button class="btn btn-outline" onclick="editarEquipamentoUI('${e.id}')">✏️ Editar</button>
+      <button class="btn ${e.ativo === false ? 'btn-primary' : 'btn-danger'}" onclick="alternarAtivoEquipamentoUI('${e.id}')">${e.ativo === false ? '▶️ Ativar' : '⏸ Desativar'}</button>
+    </div>` : ''}
+    <button class="btn btn-ghost" onclick="navigate('painel')">Voltar</button>
+  `;
+}
+
+function alternarManutencaoEquipPainelUI(id) {
+  if (!Permissoes.podeAlternarManutencao()) { showToast('Acesso restrito', 'var(--iron)'); return; }
+  DB.get('equipamentos', id).then(e => {
+    // ao ENTRAR em manutenção, pergunta o motivo; ao RETORNAR, não precisa
+    if (e.status !== 'manutencao') {
+      abrirModalFormulario({
+        titulo: '🔧 Enviar para Manutenção',
+        subtitulo: e.codigo,
+        campos: [{ id: 'motivo', label: 'Motivo', placeholder: 'Ex: Troca de pneu, revisão programada...' }],
+        textoSalvar: 'Confirmar',
+        aoSalvar: (v) => {
+          Equipamentos.alternarManutencao(id, v.motivo).then(() => {
+            showToast('🔧 Equipamento em manutenção');
+            renderPainelEquip();
+          });
+        }
+      });
+    } else {
+      Equipamentos.alternarManutencao(id).then(() => {
+        showToast('✅ Retornou da manutenção');
+        renderPainelEquip();
+      });
+    }
+  });
+}
+
+function alternarReservaUI(id) {
+  if (!Permissoes.podeAlternarManutencao()) { showToast('Acesso restrito', 'var(--iron)'); return; }
+  Equipamentos.alternarReserva(id).then(() => {
+    showToast('✅ Atualizado');
+    renderPainelEquip();
+  });
+}
+
+async function alternarHistoricoEquipamentoUI() {
+  const box = qs('#painel-equip-historico');
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+  const d = await Dashboard.detalheEquipamento(_equipamentoSelecionadoId);
+
+  const viagensVisiveis = Permissoes.filtrarPorVisibilidade(d.viagens, 'motoristaId');
+  const deslocVisiveis = Permissoes.filtrarPorVisibilidade(d.deslocamentos, 'motoristaId');
+
+  const podeApagarManutencao = podeGerenciarFrota();
+  const itens = [
+    ...viagensVisiveis.map(v => ({ quando: v.inicioEm, html: `🚛 Viagem — ${v.rotaNome} • ${fmtHoraBR(v.inicioEm)}${v.descarregadoEm ? ' → ' + fmtHoraBR(v.descarregadoEm) : ' (em andamento)'} • ${fmtDataBR(v.inicioEm)}` })),
+    ...deslocVisiveis.map(x => ({ quando: x.inicioEm, html: `🚚 Deslocamento — ${x.origem} → ${x.destino} • ${fmtHoraBR(x.inicioEm)}${x.fimEm ? ' → ' + fmtHoraBR(x.fimEm) : ''} • ${fmtDataBR(x.inicioEm)}` })),
+    ...d.abasts.map(a => ({ quando: a.criadoEm, html: `⛽ Abastecimento — ${a.litros} L • ${fmtDataHoraBR(a.criadoEm)}` })),
+    ...d.lubs.map(l => ({ quando: l.criadoEm, html: `🛠 Lubrificação — ${l.tipoServico} • ${fmtDataHoraBR(l.criadoEm)}` })),
+    ...d.manutencoes.map(m => ({
+      quando: m.entradaEm,
+      html: `🔧 Manutenção${m.motivo ? ' — ' + m.motivo : ''} • entrou ${fmtDataHoraBR(m.entradaEm)}${m.saidaEm ? ' • retornou ' + fmtDataHoraBR(m.saidaEm) : ' • ainda em manutenção'}`,
+      manutencaoId: m.id
+    }))
+  ].sort((a, b) => new Date(b.quando) - new Date(a.quando));
+
+  box.classList.remove('hidden');
+  box.innerHTML = itens.length
+    ? `<div class="card-title mt16">Histórico completo</div>` + itens.map(i => `
+      <div class="list-item">
+        <div class="li-sub">${i.html}</div>
+        ${i.manutencaoId && podeApagarManutencao ? `<button class="li-fav" onclick="apagarManutencaoUI('${i.manutencaoId}')">🗑️</button>` : ''}
+      </div>`).join('')
+    : `<div class="empty-state"><span class="emoji">📭</span>Nenhum registro ainda.</div>`;
+}
+
+async function apagarManutencaoUI(id) {
+  if (!confirm('Apagar este lançamento de manutenção? Use isso se foi lançado por engano.')) return;
+  const r = await Equipamentos.removerManutencao(id);
+  if (r && r.erro) { showToast(r.erro, 'var(--iron)'); return; }
+  showToast('🗑️ Lançamento de manutenção apagado');
+  // fecha e reabre pra recarregar a lista com os dados atualizados
+  alternarHistoricoEquipamentoUI();
+  alternarHistoricoEquipamentoUI();
+}
+
+function editarEquipamentoUI(id) {
+  if (!podeGerenciarFrota()) { showToast('Acesso restrito', 'var(--iron)'); return; }
+  DB.get('equipamentos', id).then(e => {
+    abrirModalFormulario({
+      titulo: '✏️ Editar Equipamento',
+      campos: [
+        { id: 'codigo', label: 'Código / placa', valor: e.codigo },
+        { id: 'modelo', label: 'Modelo', valor: e.modelo },
+        { id: 'categoria', label: 'Categoria', tipo: 'select', valor: e.categoria, opcoes: [
+          { valor: 'Caminhão', texto: 'Caminhão' },
+          { valor: 'Escavadeira', texto: 'Escavadeira' },
+          { valor: 'Pá-carregadeira', texto: 'Pá-carregadeira' },
+          { valor: 'Perfuratriz', texto: 'Perfuratriz' },
+          { valor: 'Outro', texto: 'Outro' }
+        ]},
+        { id: 'kmAtual', label: 'KM atual', tipo: 'number', valor: e.kmAtual },
+        { id: 'horimetroAtual', label: 'Horímetro atual', tipo: 'number', valor: e.horimetroAtual },
+        { id: 'expedienteInicio', label: 'Início do expediente', tipo: 'time', valor: e.expedienteInicio || '07:00' },
+        { id: 'expedienteFim', label: 'Fim do expediente', tipo: 'time', valor: e.expedienteFim || '19:00' }
+      ],
+      aoSalvar: (v) => {
+        Equipamentos.salvar({ id: e.id, ...v, status: e.status }).then(() => {
+          showToast('✅ Equipamento atualizado');
+          renderPainelEquip();
+        });
+      }
+    });
+  });
+}
+
+function alternarAtivoEquipamentoUI(id) {
+  if (!podeGerenciarFrota()) { showToast('Acesso restrito', 'var(--iron)'); return; }
+  Equipamentos.alternarAtivo(id).then(() => {
+    showToast('✅ Atualizado');
+    renderPainelEquip();
+  });
+}
+
+// ---------- CONFIGURAÇÕES / SINCRONIZAÇÃO ----------
+async function renderConfig() {
+  const apiUrl = await DB.getConfig('api_url', '');
+  qs('#config-api-url').value = apiUrl;
+  qs('#config-token').value = await DB.getConfig('sync_token', '');
+  const pendentes = await Sync.pendentes();
+  const ultima = await DB.getConfig('ultima_sincronizacao', null);
+  const tema = await DB.getConfig('tema', 'escuro');
+  qs('#config-versao').textContent = `${APP_BUILD_NOME} — Build ${APP_VERSION}`;
+  qs('#config-tema-btn').textContent = tema === 'escuro' ? '🌙 Tema Escuro (tocar para claro)' : '☀️ Tema Claro (tocar para escuro)';
+
+  const usuarioAtual = Auth.usuarioAtual();
+  qs('#btn-diagnostico').classList.toggle('hidden', !Permissoes.podeVerDiagnostico());
+  qs('#btn-usuarios').classList.toggle('hidden', !Permissoes.podeGerenciarUsuarios());
+
+  let statusLinha;
+  if (!estaOnline()) {
+    statusLinha = `<span style="color:var(--iron)">🔴 Sem internet</span>`;
+  } else if (pendentes.length > 0) {
+    statusLinha = `<span style="color:var(--amber)">🟡 ${pendentes.length} pendente${pendentes.length > 1 ? 's' : ''}</span>`;
+  } else {
+    statusLinha = `<span style="color:var(--green)">🟢 Sincronizado</span>`;
+  }
+
+  qs('#config-status').innerHTML = `
+    <div class="row-kv"><span class="k">☁ Status</span><span class="v">${statusLinha}</span></div>
+    <div class="row-kv"><span class="k">Última sincronização</span><span class="v">${ultima ? fmtDataHoraBR(ultima) : '—'}</span></div>`;
+
+  // status do Firebase (Fase 1 — modo híbrido)
+  const firebaseCfg = await DB.getConfig('firebase_config', null);
+  const campoFirebase = qs('#config-firebase');
+  if (campoFirebase && !campoFirebase.value && firebaseCfg) {
+    campoFirebase.value = JSON.stringify(firebaseCfg, null, 2);
+  }
+  const statusFirebase = qs('#config-firebase-status');
+  if (statusFirebase) {
+    if (!firebaseCfg) {
+      statusFirebase.innerHTML = `<div class="row-kv"><span class="k">Status</span><span class="v text-label">Não configurado</span></div>`;
+    } else {
+      const ok = typeof FirebaseSync !== 'undefined' && FirebaseSync._pronto;
+      statusFirebase.innerHTML = `<div class="row-kv"><span class="k">Status</span><span class="v" style="color:${ok ? 'var(--green)' : 'var(--amber)'}">${ok ? '🟢 Conectado (tempo real ativo)' : '🟡 Configurado — conectando...'}</span></div>`;
+    }
+  }
+}
+
+async function salvarFirebaseConfigUI() {
+  const texto = qs('#config-firebase').value.trim();
+  if (!texto) {
+    await DB.setConfig('firebase_config', null);
+    showToast('Configuração do Firebase removida');
+    renderConfig();
+    return;
+  }
+  let cfg;
+  try {
+    // aceita tanto JSON válido quanto o objeto "cru" que o Firebase mostra no console
+    cfg = Function('"use strict"; return (' + texto + ')')();
+  } catch (e) {
+    showToast('Não consegui ler essa configuração — confira se copiou certinho', 'var(--iron)');
+    return;
+  }
+  if (!cfg || !cfg.projectId) {
+    showToast('Configuração incompleta — falta o projectId', 'var(--iron)');
+    return;
+  }
+  await DB.setConfig('firebase_config', cfg);
+  showToast('✅ Configuração do Firebase salva! Conectando...');
+  const ok = await FirebaseSync.iniciar();
+  if (ok) {
+    showToast('🔥 Firebase conectado — enviando dados existentes...');
+    const r = await Sync.reenviarTudoParaFirebase();
+    if (r.sucesso) showToast(`✅ ${r.total} registro(s) enviado(s) para o Firebase!`);
+    Sync.sincronizarTudo();
+  } else {
+    showToast('Não consegui conectar ao Firebase — confira a configuração', 'var(--iron)');
+  }
+  renderConfig();
+}
+
+async function salvarApiUrl() {
+  const url = qs('#config-api-url').value.trim();
+  const token = qs('#config-token').value.trim();
+  await DB.setConfig('api_url', url);
+  await DB.setConfig('sync_token', token);
+  showToast('✅ Endereço salvo');
+  if (url && estaOnline()) Sync.sincronizarTudo();
+}
+
+async function sincronizarAgora() {
+  showToast('🔄 Sincronizando...', 'var(--amber)');
+  const mudou = await Sync.sincronizarTudo();
+  await renderConfig();
+  await atualizarStatusConexao();
+  showToast(mudou ? '✅ Dados atualizados de outros aparelhos!' : '✅ Sincronização concluída');
+  // atualiza a tela atual caso ela dependa de dados que podem ter mudado
+  const telaAtiva = qs('.screen.active');
+  if (telaAtiva) {
+    const id = telaAtiva.id.replace('screen-', '');
+    const renderers = { home: renderHome, operacao: renderOperacao, viagens: renderViagens, frota: renderFrota, painel: renderPainel, 'painel-equip': renderPainelEquip };
+    if (renderers[id]) renderers[id]();
+  }
+}
+
+// ---------- USUÁRIOS ----------
+async function renderUsuarios() {
+  const usuarios = await Auth.listarUsuarios();
+  const atual = Auth.usuarioAtual();
+  qs('#usuarios-lista').innerHTML = usuarios.length ? usuarios.map(u => `
+    <div class="list-item">
+      <div>
+        <div class="li-main">${u.nome}${atual && atual.id === u.id ? ' (você)' : ''}</div>
+        <div class="li-sub">${u.usuario} • ${u.nivel}</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-outline btn-sm" onclick="resetarSenhaUI('${u.id}')">🔑 Senha</button>
+        ${atual && atual.id !== u.id ? `<button class="li-fav" onclick="apagarUsuarioUI('${u.id}')">🗑️</button>` : ''}
+      </div>
+    </div>`).join('') : `<div class="empty-state"><span class="emoji">👤</span>Nenhum usuário cadastrado.</div>`;
+}
+
+async function resetarSenhaUI(id) {
+  const novaSenha = prompt('Nova senha para este usuário (mínimo 4 caracteres):');
+  if (!novaSenha) return;
+  const r = await Auth.resetarSenha(id, novaSenha);
+  if (!r.sucesso) { showToast(r.erro, 'var(--iron)'); return; }
+  Log.registrar('editar', { tipo: 'usuario_senha', id });
+  showToast('🔑 Senha atualizada!');
+}
+
+async function criarUsuarioUI() {
+  const nome = qs('#user-nome').value.trim();
+  const usuario = qs('#user-login').value.trim();
+  const senha = qs('#user-senha').value;
+  const nivel = qs('#user-nivel').value;
+
+  const r = await Auth.criarUsuario({ usuario, senha, nome, nivel });
+  if (!r.sucesso) { showToast(r.erro, 'var(--iron)'); return; }
+  Log.registrar('criar', { tipo: 'usuario', usuario, nivel });
+
+  showToast(`✅ Usuário ${nome} criado!`);
+  qs('#user-nome').value = ''; qs('#user-login').value = ''; qs('#user-senha').value = '';
+  renderUsuarios();
+}
+
+async function apagarUsuarioUI(id) {
+  if (!confirm('Remover este usuário?')) return;
+  const r = await Auth.removerUsuario(id);
+  if (!r.sucesso) { showToast(r.erro, 'var(--iron)'); return; }
+  Log.registrar('excluir', { tipo: 'usuario', id });
+  showToast('🗑️ Usuário removido');
+  renderUsuarios();
+}
+
+// ---------- DIAGNÓSTICO (só Desenvolvedor) ----------
+async function renderDiagnostico() {
+  qs('#diagnostico-progresso').textContent = '';
+  qs('#diagnostico-resultado').innerHTML = `<div class="empty-state"><span class="emoji">🧪</span>Toque em "Rodar Diagnóstico" para testar o sistema.</div>`;
+}
+
+async function reenviarFirebaseUI() {
+  const progresso = qs('#diagnostico-progresso');
+  progresso.textContent = 'Enviando dados existentes...';
+  const r = await Sync.reenviarTudoParaTudo((origem, i, total, tipo, qtd) => {
+    progresso.textContent = `[${origem}] Enviando ${tipo} (${qtd} registro(s))... (${i}/${total})`;
+  });
+  const partes = [];
+  if (r.firebase.sucesso) partes.push(`Firebase: ${r.firebase.total}`); else partes.push(`Firebase: ${r.firebase.erro}`);
+  if (r.sheets.sucesso) partes.push(`Sheets: ${r.sheets.total}`); else partes.push(`Sheets: ${r.sheets.erro}`);
+  progresso.textContent = `✅ Concluído — ${partes.join(' • ')}`;
+  showToast(`🔥 Reenviado! ${partes.join(' • ')}`);
+}
+
+// Zera todos os dados locais deste aparelho (mantém a configuração de
+// conexão — link do Sheets, token, config do Firebase — pra não precisar
+// reconfigurar). Usado antes de começar a operação de verdade, depois de
+// já ter limpado o Firebase e o Sheets, pra não sincronizar sujeira de volta.
+async function resetarDadosLocaisUI() {
+  const confirmacao = prompt('Isso vai apagar TODOS os dados locais deste aparelho (viagens, turnos, usuários, etc). A configuração de conexão (Firebase/Sheets) é mantida. Digite CONFIRMAR para prosseguir:');
+  if (!confirmacao || confirmacao.trim().toUpperCase() !== 'CONFIRMAR') { showToast('Cancelado'); return; }
+  await executarResetLocal();
+  setTimeout(() => window.location.reload(), 1200);
+}
+
+// A limpeza de verdade — reaproveitada tanto pelo botão manual quanto
+// pelo reset automático disparado remotamente por outro aparelho.
+async function executarResetLocal() {
+  const storesParaLimpar = [
+    'usuarios', 'motoristas', 'equipamentos', 'rotas', 'rotasDeslocamento', 'viagens',
+    'deslocamentos', 'abastecimentos', 'lubrificacoes', 'manutencoes',
+    'turnos', 'logs', 'syncQueue'
+  ];
+  for (const store of storesParaLimpar) {
+    await DB.clear(store);
+  }
+  for (const tipo of Object.keys(Sync._storePorTipo)) {
+    await DB.setConfig(`ultima_busca_${tipo}`, '');
+  }
+  await DB.setConfig('ultima_sincronizacao', null);
+  localStorage.removeItem('stracta_viagens_sessao');
+  localStorage.removeItem('stracta_viagens_turno_ativo_id');
+  showToast('🗑️ Dados locais zerados! Recarregando...');
+}
+
+// Escuta um comando de reset disparado remotamente (por um Desenvolvedor em
+// qualquer aparelho) e reage sozinho, sem precisar abrir o Diagnóstico aqui.
+async function iniciarEscutaResetRemoto() {
+  if (typeof FirebaseSync === 'undefined') return;
+  const configurado = await FirebaseSync.configurado();
+  if (!configurado) return;
+  FirebaseSync.escutarComandoReset(async (comando) => {
+    const jaProcessado = await DB.getConfig('ultimo_reset_processado', '');
+    if (comando.resetEm && comando.resetEm > jaProcessado) {
+      await DB.setConfig('ultimo_reset_processado', comando.resetEm);
+      showToast(`🗑️ Reset remoto disparado por ${comando.disparadoPor} — limpando...`, 'var(--iron)', 4000);
+      await executarResetLocal();
+      setTimeout(() => window.location.reload(), 2000);
+    }
+  });
+}
+
+// Dispara o reset em TODOS os aparelhos conectados de uma vez (Desenvolvedor)
+async function dispararResetRemotoUI() {
+  if (!Permissoes.podeVerDiagnostico()) { showToast('Acesso restrito', 'var(--iron)'); return; }
+  const confirmacao = prompt('Isso vai apagar os dados locais de TODOS os aparelhos conectados ao Firebase (cada um vai se limpar sozinho ao detectar o comando). Digite CONFIRMAR para prosseguir:');
+  if (!confirmacao || confirmacao.trim().toUpperCase() !== 'CONFIRMAR') { showToast('Cancelado'); return; }
+  const usuario = Auth.usuarioAtual();
+  const r = await FirebaseSync.dispararResetRemoto(usuario ? usuario.nome : 'Desenvolvedor');
+  if (!r.sucesso) { showToast(r.erro, 'var(--iron)'); return; }
+  showToast('📡 Comando enviado! Os aparelhos conectados vão se limpar sozinhos em instantes.');
+  // este próprio aparelho também reage ao seu comando, como os outros
+}
+
+async function rodarDiagnosticoUI() {
+  const progresso = qs('#diagnostico-progresso');
+  const area = qs('#diagnostico-resultado');
+  area.innerHTML = '';
+  progresso.textContent = 'Iniciando...';
+
+  const r = await Diagnostico.rodar((i, total, tipo) => {
+    progresso.textContent = `Verificando ${tipo}... (${i}/${total})`;
+  });
+
+  progresso.textContent = `Concluído em ${fmtDataHoraBR(r.geradoEm)}`;
+
+  const corSaude = { ok: 'var(--green)', atencao: 'var(--amber)', erro: 'var(--iron)' }[r.saudeGeral.nivel];
+
+  let html = `
+    <div class="card text-center">
+      <div style="font-size:16px;font-weight:700;color:${corSaude}">${r.saudeGeral.texto}</div>
+    </div>
+    <div class="card">
+      <div class="row-kv"><span class="k">Conexão</span><span class="v">${r.online ? '🟢 Online' : '🔴 Offline'}</span></div>
+      <div class="row-kv"><span class="k">Google Sheets (backup)</span><span class="v">${r.sheetsConfigurado ? '✅ Configurado' : '⚪ Não configurado'}</span></div>
+      <div class="row-kv"><span class="k">Firebase</span><span class="v">${r.firebaseConfigurado ? '✅ Configurado' : '⚪ Não configurado'}</span></div>
+      <div class="row-kv"><span class="k">Listeners em tempo real</span><span class="v">${r.listenersAtivos ? '🟢 Ativos' : '⚪ Inativos'}</span></div>
+      <div class="row-kv"><span class="k">UID Firebase</span><span class="v" style="font-size:11px">${r.firebaseUid || '—'}</span></div>
+      <div class="row-kv"><span class="k">ID do aparelho</span><span class="v" style="font-size:11px">${r.dispositivo}</span></div>
+      <div class="row-kv"><span class="k">Versão do app</span><span class="v">${r.versao}</span></div>
+      <div class="row-kv"><span class="k">Pendentes na fila</span><span class="v">${r.pendentesFila}</span></div>
+      <div class="row-kv"><span class="k">Pendentes com erro</span><span class="v" style="color:${r.erroPendentes ? 'var(--iron)' : 'inherit'}">${r.erroPendentes}</span></div>
+    </div>
+    <div class="card-title mt16">Comparativo por tipo</div>
+  `;
+
+  html += r.porTipo.map(t => {
+    const fmt = (res) => res.ok ? res.total : (res.motivo === 'Não configurado' ? '—' : `❌ ${res.motivo}`);
+    return `
+    <div class="list-item" style="flex-direction:column;align-items:stretch">
+      <div class="li-main">${t.tipo}${t.divergente ? ' ⚠️' : ''}</div>
+      <div class="li-sub" style="${t.divergente ? 'color:var(--amber)' : ''}">
+        IndexedDB: ${t.local ?? '—'} • Sheets (backup): ${fmt(t.sheets)} (${t.sheets.ms ?? '—'}ms) • Firebase: ${fmt(t.firebase)} (${t.firebase.ms ?? '—'}ms)
+      </div>
+    </div>`;
+  }).join('');
+
+  area.innerHTML = html;
+}
+
+document.addEventListener('DOMContentLoaded', iniciarApp);

@@ -1,0 +1,12 @@
+# Evita que o Netlify/navegador guarde em cache por muito tempo os arquivos
+# que controlam a atualização do app (service worker e página principal).
+# Sem isso, uma nova versão pode demorar a aparecer para quem já usou o app antes.
+
+/service-worker.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/manifest.json
+  Cache-Control: no-cache, must-revalidate

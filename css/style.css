@@ -1,0 +1,370 @@
+/* ══════════════════════════════════════════════════════════
+   STRACTA VIAGENS — style.css
+   Identidade visual: pátio de mineração à noite — asfalto,
+   minério e o laranja de segurança dos coletes e sinalizações.
+   O elemento de assinatura é o cronômetro de viagem: grande,
+   monoespaçado, com anel de progresso comparando o tempo atual
+   ao tempo médio histórico daquela rota.
+   ══════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap');
+
+:root {
+  --bg: #14181B;
+  --surface: #1B2023;
+  --surface2: #242B2F;
+  --border: #333B40;
+  --amber: #F5A623;
+  --amber-dim: #F5A62333;
+  --blue: #2E86DE;
+  --blue-dim: #2E86DE33;
+  --iron: #C1440E;
+  --green: #4CAF82;
+  --label: #8FA0A8;
+  --white: #F2F4F5;
+
+  --display: 'Space Grotesk', sans-serif;
+  --body: 'Inter', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+
+:root[data-tema="claro"] {
+  --bg: #F2F4F5;
+  --surface: #FFFFFF;
+  --surface2: #EDEFF1;
+  --border: #D8DDE1;
+  --label: #5B6770;
+  --white: #14181B;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--white);
+  font-family: var(--body);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;
+}
+
+#app {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: var(--bg);
+}
+
+/* ---------- BARRA DE STATUS (conectividade) ---------- */
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .02em;
+}
+.status-bar .brand {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: .04em;
+  color: var(--amber);
+}
+.status-bar .brand .accent { color: var(--blue); }
+.conn-pill {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--label);
+}
+.conn-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--label); }
+.conn-pill.online { color: var(--green); border-color: #4CAF8255; }
+.conn-pill.online .dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.conn-pill.offline { color: var(--iron); border-color: #C1440E55; }
+.conn-pill.offline .dot { background: var(--iron); }
+.conn-pill.pendente::after { content: attr(data-pend); margin-left: 4px; color: var(--amber); }
+
+/* ---------- TELAS ---------- */
+.screen { display: none; flex: 1; padding: 20px 16px 96px; overflow-y: auto; }
+.screen.active { display: block; animation: fadeIn .25s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+h1.page-title {
+  font-family: var(--display);
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.page-sub { color: var(--label); font-size: 13px; margin-bottom: 20px; }
+
+/* ---------- LOGIN ---------- */
+#screen-login.active { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; }
+.login-card { width: 100%; text-align: center; }
+.login-logo {
+  font-family: var(--display); font-weight: 700; font-size: 30px;
+  color: var(--amber); letter-spacing: .03em; margin-bottom: 2px;
+}
+.login-logo span { color: var(--blue); }
+.login-sub { color: var(--label); font-size: 13px; margin-bottom: 28px; }
+
+/* ---------- FORM ---------- */
+.field { margin-bottom: 14px; text-align: left; }
+.field label {
+  display: block; font-size: 12px; color: var(--label);
+  text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px;
+}
+.field input, .field select {
+  width: 100%; padding: 13px 14px; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 10px;
+  color: var(--white); font-size: 15px; font-family: var(--body);
+}
+.field input:focus, .field select:focus { outline: 2px solid var(--amber); border-color: var(--amber); }
+.field input[readonly] { color: var(--label); }
+
+/* ---------- JANELA MODAL (formulários com layout profissional) ---------- */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: #000000cc;
+  display: flex; align-items: flex-end; justify-content: center;
+  animation: fadeIn .2s ease;
+}
+.modal-card {
+  width: 100%; max-width: 480px;
+  background: var(--surface);
+  border-top: 3px solid var(--amber);
+  border-radius: 18px 18px 0 0;
+  padding: 22px 20px calc(20px + env(safe-area-inset-bottom));
+  max-height: 88vh; overflow-y: auto;
+}
+.modal-titulo {
+  font-family: var(--display); font-weight: 700; font-size: 17px;
+  margin-bottom: 4px; color: var(--white);
+}
+.modal-subtitulo { font-size: 12.5px; color: var(--label); margin-bottom: 16px; }
+.modal-card .field { margin-bottom: 12px; }
+.modal-card .btn-row { margin-top: 6px; }
+
+/* ---------- CHECKLIST DE PRÉ-USO ---------- */
+.checklist-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; margin-bottom: 8px;
+}
+.checklist-item.problema { border-color: var(--iron); background: #C1440E14; }
+.checklist-nome { font-size: 13.5px; font-weight: 500; }
+.checklist-toggle { display: flex; gap: 6px; }
+.checklist-btn {
+  padding: 6px 12px; border-radius: 8px; border: 1.5px solid var(--border);
+  background: transparent; color: var(--label); font-size: 12px; font-weight: 600;
+  cursor: pointer;
+}
+.checklist-btn.ativo-ok { background: var(--green); border-color: var(--green); color: #06251a; }
+.checklist-btn.ativo-problema { background: var(--iron); border-color: var(--iron); color: #fff; }
+.checklist-obs {
+  width: 100%; margin-top: 8px; padding: 8px 10px; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 8px; color: var(--white); font-size: 12.5px;
+}
+
+/* ---------- BOTÕES ---------- */
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 15px; border-radius: 10px; border: none;
+  font-family: var(--body); font-weight: 600; font-size: 15px;
+  cursor: pointer; margin-bottom: 10px; transition: transform .08s ease, filter .15s ease;
+}
+.btn:active { transform: scale(.98); }
+.btn-primary { background: var(--amber); color: #1A1300; }
+.btn-primary:hover { filter: brightness(1.08); }
+.btn-outline { background: transparent; border: 1.5px solid var(--border); color: var(--white); }
+.btn-outline:hover { border-color: var(--amber); }
+.btn-secondary { background: var(--blue); color: var(--white); }
+.btn-secondary:hover { filter: brightness(1.1); }
+.btn-danger { background: var(--iron); color: var(--white); }
+.btn-ghost { background: transparent; color: var(--label); font-weight: 500; }
+.btn-row { display: flex; gap: 10px; }
+.btn-row .btn { margin-bottom: 0; }
+.btn-sm { padding: 9px 12px; font-size: 13px; width: auto; }
+
+/* ---------- CARTÕES ---------- */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 16px; margin-bottom: 14px;
+}
+.card-title {
+  font-family: var(--display); font-weight: 600; font-size: 14px;
+  color: var(--label); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 10px;
+}
+.row-kv { display: flex; justify-content: space-between; padding: 5px 0; font-size: 14px; }
+.row-kv .k { color: var(--label); }
+.row-kv .v { font-family: var(--mono); font-weight: 600; }
+
+/* ---------- ELEMENTO DE ASSINATURA: CRONÔMETRO DA VIAGEM ---------- */
+.timer-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 28px 16px; margin-bottom: 16px;
+}
+.timer-rota { font-size: 13px; color: var(--label); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 14px; text-align:center; }
+.timer-ring {
+  position: relative; width: 220px; height: 220px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 18px;
+}
+.timer-ring svg { position: absolute; top: 0; left: 0; transform: rotate(-90deg); }
+.timer-ring circle.track { stroke: var(--surface2); }
+.timer-ring circle.progress { stroke: var(--amber); stroke-linecap: round; transition: stroke-dashoffset .4s linear, stroke .3s; }
+.timer-ring circle.progress.over { stroke: var(--iron); }
+.timer-digits {
+  font-family: var(--mono); font-weight: 700; font-size: 34px;
+  letter-spacing: .02em; z-index: 1;
+}
+.timer-label { font-size: 11px; color: var(--label); z-index: 1; margin-top: 4px; }
+.timer-actions { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.timer-actions .btn-row { width: 100%; }
+
+/* ---------- LISTAS ---------- */
+.list-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 13px 14px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; margin-bottom: 8px;
+}
+.list-item .li-main { font-weight: 600; font-size: 14px; }
+.list-item .li-sub { font-size: 12px; color: var(--label); margin-top: 2px; }
+.list-item .li-fav { color: var(--label); background: none; border: none; font-size: 18px; cursor: pointer; }
+.list-item .li-fav.on { color: var(--amber); }
+.empty-state { text-align: center; padding: 40px 20px; color: var(--label); }
+.empty-state .emoji { font-size: 34px; margin-bottom: 10px; display: block; }
+
+/* ---------- GRID DE ATALHOS (HOME) ---------- */
+.grid-atalhos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
+.atalho {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px 12px; text-align: center; cursor: pointer;
+}
+.atalho:active { background: var(--surface2); }
+.atalho .ic { font-size: 26px; margin-bottom: 8px; display: block; }
+.atalho .lb { font-size: 12.5px; font-weight: 600; }
+
+/* ---------- NAV INFERIOR ---------- */
+.bottom-nav {
+  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 100%; max-width: 480px;
+  display: flex; background: var(--surface); border-top: 1px solid var(--border);
+  padding: 8px 4px calc(8px + env(safe-area-inset-bottom));
+  z-index: 20;
+}
+.nav-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: none; border: none; color: var(--label); font-size: 10.5px;
+  padding: 6px 2px; cursor: pointer; font-family: var(--body); font-weight: 500;
+}
+.nav-item .ic { font-size: 19px; }
+.nav-item.active { color: var(--amber); }
+
+/* ---------- TOASTS ---------- */
+#toast-container { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 100; width: calc(100% - 32px); max-width: 448px; }
+.toast {
+  background: var(--surface2); border-left: 4px solid var(--green);
+  color: var(--white); padding: 12px 14px; border-radius: 8px; margin-bottom: 8px;
+  font-size: 13.5px; box-shadow: 0 6px 20px #0007;
+  opacity: 0; transform: translateY(-10px); transition: all .25s ease;
+}
+.toast.show { opacity: 1; transform: none; }
+
+/* ---------- UTILITÁRIOS ---------- */
+.mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}.mt24{margin-top:24px}
+.text-center{text-align:center}.text-label{color:var(--label)}.text-amber{color:var(--amber)}
+.hidden{display:none !important}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen.active, .toast, .timer-ring circle.progress { animation: none !important; transition: none !important; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   LAYOUT PARA TABLET E COMPUTADOR
+   A mesma PWA se adapta sozinha — sem precisar de outro app.
+   A barra inferior continua embaixo (por escolha), só o
+   conteúdo passa a aproveitar o espaço extra da tela.
+   ══════════════════════════════════════════════════════════ */
+
+/* ---------- TABLET (≥768px) ---------- */
+@media (min-width: 768px) {
+  #app { max-width: 720px; }
+  .bottom-nav { max-width: 720px; }
+  #toast-container { max-width: 680px; }
+
+  .grid-atalhos { grid-template-columns: repeat(4, 1fr); }
+
+  /* listas de cartão viram grade — só nos contêineres que são só lista
+     (Frota, Usuários, linhas do Lançar Rotas, cartões do Painel). */
+  #frota-lista, #usuarios-lista, #lote-rotas-lista, #lote-deslocamentos-lista, #painel-equip-grid {
+    display: flex; flex-wrap: wrap; gap: 12px;
+  }
+  #frota-lista .list-item, #usuarios-lista .list-item, #painel-equip-grid .list-item {
+    flex: 1 1 320px;
+  }
+  #lote-rotas-lista .card, #lote-deslocamentos-lista .card {
+    flex: 1 1 320px;
+  }
+
+  /* formulários com campos lado a lado ganham mais respiro */
+  .field { max-width: 640px; }
+  .btn-row .field { max-width: none; }
+
+  /* modal vira uma janela centralizada de verdade, não uma folha subindo de baixo */
+  .modal-overlay { align-items: center; padding: 20px; }
+  .modal-card {
+    max-width: 460px; border-radius: 16px; border-top: none;
+    border: 1px solid var(--border); border-top: 3px solid var(--amber);
+  }
+
+  .timer-ring { width: 260px; height: 260px; }
+  .timer-ring svg { width: 260px; height: 260px; }
+}
+
+/* ---------- COMPUTADOR (≥1200px) ---------- */
+@media (min-width: 1200px) {
+  #app { max-width: 1140px; }
+  .bottom-nav { max-width: 1140px; }
+  #toast-container { max-width: 1100px; }
+
+  .grid-atalhos { grid-template-columns: repeat(4, 1fr); max-width: 900px; }
+
+  /* telas de conteúdo único (Operação, Turno, Diagnóstico, Configurações)
+     ficam centralizadas com largura confortável de leitura, não esticadas
+     de ponta a ponta numa tela grande */
+  #screen-turno, #screen-config, #screen-diagnostico, #screen-usuarios,
+  #screen-lancar-rotas, #screen-relatorios {
+    max-width: 720px; margin: 0 auto;
+  }
+
+  /* Painel e Frota usam a largura toda, com cartões em várias colunas
+     (só nos contêineres que são lista pura) */
+  #frota-lista .list-item, #usuarios-lista .list-item, #painel-equip-grid .list-item {
+    flex: 1 1 300px;
+  }
+  #lote-rotas-lista .card, #lote-deslocamentos-lista .card {
+    flex: 1 1 340px;
+  }
+
+  /* Painel do Equipamento em duas colunas: dados de um lado, histórico do outro */
+  #screen-painel-equip {
+    max-width: 1000px; margin: 0 auto;
+  }
+
+  .home-card, .atalho { padding: 22px 16px; }
+}
+
+/* ---------- COMPUTADOR GRANDE (≥1600px) ---------- */
+@media (min-width: 1600px) {
+  #app { max-width: 1320px; }
+  .bottom-nav { max-width: 1320px; }
+  #toast-container { max-width: 1280px; }
+}

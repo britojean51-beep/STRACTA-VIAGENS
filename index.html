@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>STRACTA VIAGENS</title>
+<meta name="theme-color" content="#14181B">
+<meta name="description" content="Controle operacional de frota — 100% offline, com sincronização automática.">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="./css/style.css">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ═══ BARRA DE STATUS ═══ -->
+  <div class="status-bar" id="status-bar">
+    <div class="brand">STRACTA <span class="accent">VIAGENS</span></div>
+    <div class="conn-pill offline" id="conn-pill"><span class="dot"></span><span class="txt">Offline</span></div>
+  </div>
+
+  <!-- ═══ LOGIN ═══ -->
+  <div class="screen active" id="screen-login">
+    <div class="login-card">
+      <div class="login-logo">STRACTA <span>VIAGENS</span></div>
+      <div class="login-sub">Controle operacional da frota — offline first</div>
+      <div class="field"><label>Usuário</label><input id="login-usuario" placeholder="usuário" autocomplete="username"></div>
+      <div class="field"><label>Senha</label><input id="login-senha" type="password" placeholder="senha" autocomplete="current-password"></div>
+      <button class="btn btn-primary mt8" onclick="fazerLogin()">Entrar</button>
+    </div>
+  </div>
+
+  <!-- ═══ HOME ═══ -->
+  <div class="screen" id="screen-home">
+    <h1 class="page-title" id="home-saudacao">Olá</h1>
+    <div class="page-sub">O que você precisa fazer agora?</div>
+    <div id="home-turno-box"></div>
+
+    <div class="card-title mt24">Atalhos</div>
+    <div class="grid-atalhos">
+      <div class="atalho" onclick="navigate('operacao')"><span class="ic">🗺️</span><span class="lb">Operação</span></div>
+      <div class="atalho" onclick="navigate('viagens')"><span class="ic">📋</span><span class="lb">Viagens</span></div>
+      <div class="atalho" onclick="navigate('frota')"><span class="ic">🚛</span><span class="lb">Frota</span></div>
+      <div class="atalho" onclick="navigate('painel')"><span class="ic">📊</span><span class="lb">Painel</span></div>
+    </div>
+    <button class="btn btn-ghost mt24" onclick="navigate('config')">⚙️ Configurações e Sincronização</button>
+    <button class="btn btn-ghost" onclick="fazerLogout()">🚪 Sair</button>
+  </div>
+
+  <!-- ═══ INICIAR TURNO ═══ -->
+  <div class="screen" id="screen-turno">
+    <h1 class="page-title">Iniciar Turno</h1>
+    <div class="page-sub">Motorista: <b id="turno-motorista-nome">-</b></div>
+    <div class="field"><label>Equipamento</label>
+      <select id="turno-equip" onchange="preencherKmHorimetroTurno()"></select>
+    </div>
+    <div class="field"><label>KM Inicial</label><input id="turno-km" type="number" inputmode="numeric"></div>
+    <div class="field"><label>Horímetro Inicial</label><input id="turno-horimetro" type="number" inputmode="numeric"></div>
+    <div class="text-label hidden" id="turno-km-aviso" style="font-size:11.5px;margin-top:-8px;margin-bottom:12px">🔒 Preenchido automaticamente com o fim do turno anterior. Só Gerência, Encarregado, Supervisor ou Administrador podem alterar.</div>
+
+    <div class="card-title mt16">✅ Checklist de Pré-Uso</div>
+    <div id="turno-checklist-lista"></div>
+
+    <button class="btn btn-primary mt8" onclick="confirmarIniciarTurno()">▶️ Iniciar Turno</button>
+    <button class="btn btn-ghost" onclick="navigate('home')">Cancelar</button>
+  </div>
+
+  <!-- ═══ OPERAÇÃO ═══ -->
+  <div class="screen" id="screen-operacao">
+    <h1 class="page-title">Operação</h1>
+    <div class="page-sub">Rotas, viagens e deslocamentos</div>
+    <div id="operacao-area"></div>
+  </div>
+
+  <!-- ═══ VIAGENS (histórico) ═══ -->
+  <div class="screen" id="screen-viagens">
+    <h1 class="page-title">Viagens</h1>
+    <button class="btn btn-outline hidden" id="btn-lancar-rotas" onclick="navigate('lancar-rotas')">📋 Lançar Rotas (Administração)</button>
+    <div class="field"><label>Dia</label><select id="viagens-dia" onchange="mudarDiaViagens()"></select></div>
+    <div class="card" id="viagens-resumo"></div>
+    <div class="card-title">Histórico</div>
+    <div id="viagens-lista"></div>
+  </div>
+
+  <!-- ═══ LANÇAR ROTAS (administração) ═══ -->
+  <div class="screen" id="screen-lancar-rotas">
+    <h1 class="page-title">Lançar Rotas</h1>
+    <div class="page-sub">Lançamento retroativo em lote — cria as viagens já com os totais somados automaticamente.</div>
+
+    <div class="field"><label>Dia</label><input type="date" id="lote-dia"></div>
+    <div class="field"><label>Equipamento</label><select id="lote-equip"></select></div>
+    <div class="field"><label>Operador</label><select id="lote-motorista"></select></div>
+
+    <div class="btn-row">
+      <div class="field" style="flex:1"><label>KM Inicial</label><input type="number" id="lote-km-inicial"></div>
+      <div class="field" style="flex:1"><label>KM Final</label><input type="number" id="lote-km-final"></div>
+    </div>
+    <div class="btn-row">
+      <div class="field" style="flex:1"><label>Horímetro Inicial</label><input type="number" id="lote-hor-inicial"></div>
+      <div class="field" style="flex:1"><label>Horímetro Final</label><input type="number" id="lote-hor-final"></div>
+    </div>
+
+    <div class="card-title mt16">Rotas do dia (Viagens)</div>
+    <div id="lote-rotas-lista"></div>
+    <button class="btn btn-outline" onclick="adicionarLinhaLoteRota()">➕ Adicionar Rota</button>
+
+    <div class="card-title mt16">Deslocamentos do dia</div>
+    <div id="lote-deslocamentos-lista"></div>
+    <button class="btn btn-outline" onclick="adicionarLinhaLoteDeslocamento()">➕ Adicionar Deslocamento</button>
+
+    <div class="card mt16">
+      <div class="row-kv"><span class="k">Total de viagens</span><span class="v" id="lote-total-viagens" style="font-size:18px">0</span></div>
+      <div class="row-kv"><span class="k">Total de deslocamentos</span><span class="v" id="lote-total-deslocamentos" style="font-size:18px">0</span></div>
+    </div>
+
+    <button class="btn btn-primary" onclick="salvarLancamentoLoteUI()">💾 Salvar Lançamento</button>
+    <button class="btn btn-ghost" onclick="navigate('viagens')">Voltar</button>
+  </div>
+
+  <!-- ═══ FROTA (equipamentos + abastecimento + lubrificação) ═══ -->
+  <div class="screen" id="screen-frota">
+    <h1 class="page-title">Frota</h1>
+
+    <div class="card-title">Equipamentos</div>
+    <button class="btn btn-outline" id="frota-cadastrar-btn" onclick="abrirNovoEquipamento()">➕ Cadastrar Equipamento</button>
+    <div id="frota-lista" class="mt8"></div>
+
+    <div class="card-title mt24">⛽ Abastecimento</div>
+    <div class="field"><label>Equipamento</label><select id="abast-equip"></select></div>
+    <div class="field"><label>Litros</label><input id="abast-litros" type="number" inputmode="decimal"></div>
+    <div class="field"><label>KM Atual</label><input id="abast-km" type="number" inputmode="numeric" placeholder="opcional"></div>
+    <div class="field"><label>Horímetro Atual</label><input id="abast-horimetro" type="number" inputmode="numeric" placeholder="opcional"></div>
+    <div class="field"><label>Situação do Caminhão</label>
+      <select id="abast-situacao">
+        <option value="operacao">Abastecendo e continua em operação</option>
+        <option value="desloc_manutencao">Em deslocamento para manutenção</option>
+        <option value="retorno_manutencao">Retorno da manutenção</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="registrarAbastecimentoUI()">Registrar Abastecimento</button>
+
+    <div class="card-title mt24">🛢️ Lubrificação</div>
+    <div class="field"><label>Equipamento</label><select id="lub-equip"></select></div>
+    <div class="field"><label>Serviço</label><input id="lub-tipo" placeholder="Ex: Troca de óleo" value="Lubrificação geral"></div>
+    <div class="field"><label>Horímetro Atual</label><input id="lub-horimetro" type="number" inputmode="numeric"></div>
+    <button class="btn btn-primary" onclick="registrarLubrificacaoUI()">Registrar Lubrificação</button>
+  </div>
+
+  <!-- ═══ PAINEL (dashboard) ═══ -->
+  <div class="screen" id="screen-painel">
+    <h1 class="page-title">Painel</h1>
+    <div class="page-sub">Resumo de produção do dia</div>
+
+    <div class="card">
+      <div class="card-title">📄 Relatório do Dia</div>
+      <div class="field"><label>Escolher o dia</label><input type="date" id="relatorio-data"></div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="gerarRelatorioPDFUI()">📄 PDF</button>
+        <button class="btn btn-outline" onclick="gerarExcelDiaUI()">📊 Excel</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📅 Relatório de Período</div>
+      <div class="btn-row">
+        <div class="field" style="flex:1"><label>De</label><input type="date" id="relatorio-periodo-inicio"></div>
+        <div class="field" style="flex:1"><label>Até</label><input type="date" id="relatorio-periodo-fim"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="gerarRelatorioPeriodoUI()">📄 PDF</button>
+        <button class="btn btn-outline" onclick="gerarExcelPeriodoUI()">📊 Excel</button>
+      </div>
+    </div>
+
+    <div id="painel-conteudo"></div>
+  </div>
+
+  <!-- ═══ PAINEL DO EQUIPAMENTO ═══ -->
+  <div class="screen" id="screen-painel-equip">
+    <h1 class="page-title">Painel do Equipamento</h1>
+    <div id="painel-equip-conteudo"></div>
+  </div>
+
+  <!-- ═══ CONFIGURAÇÕES / SINCRONIZAÇÃO ═══ -->
+  <div class="screen" id="screen-config">
+    <h1 class="page-title">Configurações</h1>
+    <div class="page-sub" id="config-versao">STRACTA VIAGENS Enterprise</div>
+    <button class="btn btn-outline" id="config-tema-btn" onclick="alternarTema()">🌙 Tema Escuro (tocar para claro)</button>
+    <button class="btn btn-outline hidden" id="btn-usuarios" onclick="navigate('usuarios')">👥 Gerenciar Usuários</button>
+    <button class="btn btn-outline hidden" id="btn-diagnostico" onclick="navigate('diagnostico')">🧪 Diagnóstico</button>
+    <div class="field mt16"><label>Endereço da API de sincronização</label>
+      <input id="config-api-url" placeholder="https://script.google.com/macros/s/.../exec">
+    </div>
+    <div class="field"><label>Token de Sincronização</label>
+      <input id="config-token" placeholder="mesma senha configurada no Apps Script">
+    </div>
+    <button class="btn btn-outline" onclick="salvarApiUrl()">💾 Salvar Endereço</button>
+    <div class="card mt16" id="config-status"></div>
+    <button class="btn btn-primary" onclick="sincronizarAgora()">🔄 Sincronizar Agora</button>
+
+    <div class="card-title mt24">🔥 Firebase (Fase 1 — modo híbrido)</div>
+    <div class="page-sub" style="margin-bottom:10px">Cole aqui o objeto <b>firebaseConfig</b> que o Firebase te deu ao criar o app Web. Funciona junto com o Google Sheets — nada é substituído.</div>
+    <div class="field">
+      <label>Configuração do Firebase</label>
+      <textarea id="config-firebase" rows="6" style="width:100%;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--white);font-family:var(--mono);font-size:12px" placeholder='{
+  apiKey: "...",
+  authDomain: "...",
+  projectId: "...",
+  storageBucket: "...",
+  messagingSenderId: "...",
+  appId: "..."
+}'></textarea>
+    </div>
+    <button class="btn btn-secondary" onclick="salvarFirebaseConfigUI()">💾 Salvar Configuração do Firebase</button>
+    <div class="card mt12" id="config-firebase-status"></div>
+
+    <button class="btn btn-ghost mt16" onclick="navigate('home')">Voltar</button>
+  </div>
+
+  <!-- ═══ DIAGNÓSTICO (só Desenvolvedor) ═══ -->
+  <div class="screen" id="screen-diagnostico">
+    <h1 class="page-title">🧪 Diagnóstico</h1>
+    <div class="page-sub">Testa Firebase, Google Sheets e IndexedDB, e compara as quantidades entre os três. Só leitura — não altera nada.</div>
+    <button class="btn btn-primary" onclick="rodarDiagnosticoUI()">▶️ Rodar Diagnóstico</button>
+    <button class="btn btn-secondary" onclick="reenviarFirebaseUI()">🔥 Reenviar tudo (Firebase + Sheets)</button>
+    <button class="btn btn-danger" onclick="resetarDadosLocaisUI()">🗑️ Zerar Dados Locais deste Aparelho</button>
+    <button class="btn btn-danger" onclick="dispararResetRemotoUI()">📡 Zerar TODOS os Aparelhos (remoto, via Firebase)</button>
+    <div id="diagnostico-progresso" class="text-label mt8" style="font-size:12px"></div>
+    <div id="diagnostico-resultado" class="mt16"></div>
+    <button class="btn btn-ghost mt16" onclick="navigate('config')">Voltar</button>
+  </div>
+
+  <!-- ═══ USUÁRIOS ═══ -->
+  <div class="screen" id="screen-usuarios">
+    <h1 class="page-title">Usuários</h1>
+    <div class="page-sub">Criação de novos usuários do sistema.</div>
+
+    <div class="field"><label>Nome</label><input id="user-nome" placeholder="Nome completo"></div>
+    <div class="field"><label>Usuário (login)</label><input id="user-login" placeholder="login"></div>
+    <div class="field"><label>Senha</label><input id="user-senha" type="password" placeholder="senha"></div>
+    <div class="field"><label>Nível</label>
+      <select id="user-nivel">
+        <option value="Motorista">Motorista</option>
+        <option value="Encarregado">Encarregado</option>
+        <option value="Supervisor">Supervisor</option>
+        <option value="Gerente">Gerente</option>
+        <option value="Administrador">Administrador</option>
+        <option value="Desenvolvedor">Desenvolvedor</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="criarUsuarioUI()">➕ Criar Usuário</button>
+
+    <div class="card-title mt24">Usuários Cadastrados</div>
+    <div id="usuarios-lista"></div>
+    <button class="btn btn-ghost mt16" onclick="navigate('config')">Voltar</button>
+  </div>
+
+  <!-- ═══ NAV INFERIOR ═══ -->
+  <div class="bottom-nav" style="display:none">
+    <button class="nav-item" data-tela="home" onclick="navigate('home')"><span class="ic">🏠</span>Início</button>
+    <button class="nav-item" data-tela="operacao" onclick="navigate('operacao')"><span class="ic">🗺️</span>Operação</button>
+    <button class="nav-item" data-tela="viagens" onclick="navigate('viagens')"><span class="ic">📋</span>Viagens</button>
+    <button class="nav-item" data-tela="frota" onclick="navigate('frota')"><span class="ic">🚛</span>Frota</button>
+    <button class="nav-item" data-tela="painel" onclick="navigate('painel')"><span class="ic">📊</span>Painel</button>
+  </div>
+
+</div>
+
+<script src="./js/utils.js"></script>
+<script src="./js/db.js"></script>
+<script src="./js/config-padrao.js"></script>
+<script src="./js/version.js"></script>
+<script src="./js/firebase-sync.js"></script>
+<script src="./js/sync.js"></script>
+<script src="./js/log.js"></script>
+<script src="./js/auth.js"></script>
+<script src="./js/permissoes.js"></script>
+<script src="./js/equipamentos.js"></script>
+<script src="./js/motorista.js"></script>
+<script src="./js/operacao.js"></script>
+<script src="./js/checklist.js"></script>
+<script src="./js/viagens.js"></script>
+<script src="./js/abastecimento.js"></script>
+<script src="./js/lubrificacao.js"></script>
+<script src="./js/dashboard.js"></script>
+<script src="./js/pdf-lite.js"></script>
+<script src="./js/relatorio.js"></script>
+<script src="./js/relatorio-excel.js"></script>
+<script src="./js/diagnostico.js"></script>
+<script src="./js/app.js"></script>
+</body>
+</html>
