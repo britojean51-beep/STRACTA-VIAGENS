@@ -356,6 +356,16 @@ const DB = {
     nome = nome.trim().toUpperCase();
     if (nome && !db.equipamentos.includes(nome)) { db.equipamentos.push(nome); this.save(); }
   },
+  /* Remove o equipamento da frota. Mantém o histórico nos dias/relatórios. */
+  removerEquipamento(eq) {
+    const db = this.load();
+    db.equipamentos = db.equipamentos.filter(e => e !== eq);
+    delete db.tipoEquip[eq];
+    delete db.status[eq];
+    delete db.proximaRevisao[eq];
+    delete db.estado[eq];
+    this.save();
+  },
   addMotorista(nome) {
     const db = this.load();
     nome = nome.trim();

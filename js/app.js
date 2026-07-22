@@ -1068,15 +1068,36 @@ function telaFrota() {
           <option value="horimetro">🚜 Somente Horímetro (mede em L/h)</option>
         </select>
       </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Horímetro atual</label>
+          <input id="novoHori" inputmode="decimal" placeholder="ex: 5000">
+        </div>
+        <div class="field" id="novoKmWrap">
+          <label>KM atual</label>
+          <input id="novoKm" inputmode="decimal" placeholder="ex: 12000">
+        </div>
+      </div>
       <button class="btn btn-primary" id="btnAddEq">Adicionar equipamento</button>
     </div>
   `;
   $$("[data-ficha]").forEach(el => el.onclick = () => abrirFicha(el.dataset.ficha));
+
+  $("#novoTipo").onchange = e => {
+    $("#novoKmWrap").style.display = e.target.value === "horimetro" ? "none" : "";
+  };
+
   $("#btnAddEq").onclick = () => {
     const v = $("#novoEq").value.trim().toUpperCase();
     if (!v) { toast("Digite o código", "err"); return; }
+    const tipo = $("#novoTipo").value;
     DB.addEquipamento(v);
-    DB.setTipoEquip(v, $("#novoTipo").value);
+    DB.setTipoEquip(v, tipo);
+    const horiVal = $("#novoHori").value.trim();
+    const kmVal = $("#novoKm").value.trim();
+    const horimetro = horiVal === "" ? null : num(horiVal);
+    const km = (tipo === "horimetro" || kmVal === "") ? null : num(kmVal);
+    DB.setUltimo(v, km, horimetro);
     toast("✔ Equipamento adicionado"); telaFrota();
   };
 }
@@ -1146,6 +1167,15 @@ function telaFicha() {
           <div class="sub">${m.servico || "—"} · ${m.horKm || "—"}</div></div></div>`
       ).join("") || '<p class="empty">Nenhuma.</p>'}</div>
     </div>
+
+    <div class="card">
+      <h3>⚠️ Excluir equipamento</h3>
+      <p class="hint">Remove <b>${eq}</b> da frota. O histórico dos dias anteriores é mantido. Para confirmar, digite <b>CONFIRMAR</b> abaixo.</p>
+      <div class="field">
+        <input id="fkExcluirConf" placeholder="Digite CONFIRMAR" autocomplete="off">
+      </div>
+      <button class="btn btn-danger" id="btnExcluirEq">🗑️ Excluir ${eq}</button>
+    </div>
   `;
 
   $("#btnFkSalvar").onclick = () => {
@@ -1153,6 +1183,15 @@ function telaFicha() {
     DB.setTipoEquip(eq, $("#fkTipo").value);
     DB.setProximaRevisao(eq, $("#fkRev").value.trim());
     toast("✔ Situação salva"); telaFicha();
+  };
+
+  $("#btnExcluirEq").onclick = async () => {
+    if ($("#fkExcluirConf").value.trim().toUpperCase() !== "CONFIRMAR") {
+      toast("Digite CONFIRMAR para excluir", "err"); return;
+    }
+    DB.removerEquipamento(eq);
+    toast("✔ Equipamento excluído");
+    navegar("frota");
   };
 }
 
