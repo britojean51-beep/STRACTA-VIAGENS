@@ -1,7 +1,7 @@
 /* STRACTA · Service Worker
-   Estratégia "rede primeiro": online sempre traz a versão mais nova;
-   offline usa a última cópia salva. */
-const CACHE = "stracta-v2";
+   Estratégia "rede primeiro, sem cache HTTP": quando há internet, sempre
+   baixa a versão mais nova do servidor; offline usa a última cópia salva. */
+const CACHE = "stracta-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -26,7 +26,8 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
   e.respondWith(
-    fetch(e.request)
+    // busca sempre no servidor, ignorando o cache HTTP do navegador
+    fetch(e.request, { cache: "no-store" })
       .then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});

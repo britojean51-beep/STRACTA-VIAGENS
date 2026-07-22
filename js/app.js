@@ -1,6 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
+const VERSION = "22/07/2026 · r4 (equipamentos)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -163,6 +164,7 @@ function telaHome() {
     </div>
     <div class="spacer"></div>
     <p class="hint" style="text-align:center">STRACTA · Gestão de Frota · funciona no celular, tablet e computador</p>
+    <p class="hint" style="text-align:center">versão ${VERSION}</p>
   `;
   $$("[data-go]").forEach(b => b.onclick = () => navegar(b.dataset.go));
 }
