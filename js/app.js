@@ -284,7 +284,7 @@ async function renderTurno() {
     <div class="checklist-item" id="checklist-item-${i}">
       <div class="checklist-nome">${nome}</div>
       <div class="checklist-toggle">
-        <button type="button" class="checklist-btn ativo-ok" onclick="marcarChecklist(${i}, true)">✅ OK</button>
+        <button type="button" class="checklist-btn" onclick="marcarChecklist(${i}, true)">✅ OK</button>
         <button type="button" class="checklist-btn" onclick="marcarChecklist(${i}, false)">⚠️ Problema</button>
       </div>
     </div>
