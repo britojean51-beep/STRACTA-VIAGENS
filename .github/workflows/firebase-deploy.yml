@@ -3,6 +3,9 @@ name: Deploy Firebase Hosting
 # Publica o app no Firebase Hosting automaticamente a cada mudança
 # enviada para a branch de trabalho. Tambem pode ser disparado
 # manualmente pela aba "Actions" do GitHub (botao "Run workflow").
+#
+# Autenticacao: usa uma conta de servico (service account) guardada
+# no segredo FIREBASE_SERVICE_ACCOUNT do repositorio.
 on:
   push:
     branches:
@@ -25,7 +28,12 @@ jobs:
       - name: Instalar Firebase CLI
         run: npm install -g firebase-tools@13
 
+      - name: Preparar credencial
+        run: printf '%s' "$SA" > "$RUNNER_TEMP/gcp-key.json"
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
       - name: Deploy no Firebase Hosting
         run: firebase deploy --only hosting --project stracta-viagens --non-interactive
         env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-key.json
