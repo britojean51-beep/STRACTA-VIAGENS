@@ -16,3 +16,6 @@ dist/
 
 # Temporários
 *.tmp
+
+# Firebase
+.firebase/

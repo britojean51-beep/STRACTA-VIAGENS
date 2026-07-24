@@ -4,10 +4,15 @@
     "ignore": [
       "firebase.json",
       ".firebaserc",
-      "**/.*",
-      "**/node_modules/**",
+      ".gitignore",
       "README.md",
-      ".github/**"
+      ".git/**",
+      ".github/**",
+      ".firebase/**",
+      ".claude/**",
+      "node_modules/**",
+      "**/node_modules/**",
+      "**/.*"
     ],
     "headers": [
       {
