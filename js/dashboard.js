@@ -50,6 +50,54 @@ const Dashboard = {
     };
   },
 
+  // Resumo do PRÓPRIO motorista, baseado no turno dele (ativo, ou o mais
+  // recente do dia, ou o último que existir). Usado no Painel simplificado
+  // que o motorista pode enviar por WhatsApp.
+  async resumoMotorista(motoristaId, dia = todayKey()) {
+    const turnos = await DB.getByIndex('turnos', 'motoristaId', motoristaId);
+    const turno =
+      turnos.find(t => t.status === 'ativo') ||
+      turnos.filter(t => t.dia === dia).sort((a, b) => new Date(b.iniciadoEm) - new Date(a.iniciadoEm))[0] ||
+      turnos.slice().sort((a, b) => new Date(b.iniciadoEm) - new Date(a.iniciadoEm))[0] ||
+      null;
+
+    if (!turno) return { turno: null };
+
+    const equip = await DB.get('equipamentos', turno.equipamentoId);
+    const emAndamento = turno.status === 'ativo';
+
+    const kmInicial = turno.kmInicial != null ? turno.kmInicial : null;
+    const horInicial = turno.horimetroInicial != null ? turno.horimetroInicial : null;
+    // se o turno ainda está aberto, usa o valor atual do equipamento como "parcial"
+    const kmFinal = turno.kmFinal != null ? turno.kmFinal : (emAndamento && equip ? equip.kmAtual : null);
+    const horFinal = turno.horimetroFinal != null ? turno.horimetroFinal : (emAndamento && equip ? equip.horimetroAtual : null);
+
+    // litros abastecidos por este motorista, neste equipamento, dentro do período do turno
+    const ini = new Date(turno.iniciadoEm).getTime();
+    const fim = turno.encerradoEm ? new Date(turno.encerradoEm).getTime() : Date.now();
+    const abasts = (await DB.getAll('abastecimentos')).filter(a => {
+      if (a.motoristaId !== motoristaId) return false;
+      if (a.equipamentoId !== turno.equipamentoId) return false;
+      const q = new Date(a.criadoEm).getTime();
+      return q >= ini && q <= fim;
+    });
+    const litros = abasts.reduce((s, a) => s + (a.litros || 0), 0);
+
+    const kmRodados = (kmFinal != null && kmInicial != null) ? (kmFinal - kmInicial) : null;
+    const horas = (horFinal != null && horInicial != null) ? (horFinal - horInicial) : null;
+    const mediaKmL = (kmRodados != null && kmRodados >= 0 && litros > 0) ? (kmRodados / litros) : null;
+    const mediaLh = (horas != null && horas > 0 && litros > 0) ? (litros / horas) : null;
+
+    const viagensTurno = await Viagens.historicoPorTurno(turno.id);
+    const viagensConcluidas = viagensTurno.filter(v => v.status === 'concluida').length;
+
+    return {
+      turno, equip, emAndamento,
+      kmInicial, kmFinal, horInicial, horFinal,
+      litros, kmRodados, horas, mediaKmL, mediaLh, viagensConcluidas
+    };
+  },
+
   // Um cartão-resumo por caminhão, para o Painel dividido por equipamento
   async resumoPorEquipamento() {
     const [equipamentos, turnosAtivos] = await Promise.all([

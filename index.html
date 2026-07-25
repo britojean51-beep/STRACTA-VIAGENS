@@ -161,26 +161,28 @@
   <!-- ═══ PAINEL (dashboard) ═══ -->
   <div class="screen" id="screen-painel">
     <h1 class="page-title">Painel</h1>
-    <div class="page-sub">Resumo de produção do dia</div>
+    <div class="page-sub" id="painel-subtitulo">Resumo de produção do dia</div>
 
-    <div class="card">
-      <div class="card-title">📄 Relatório do Dia</div>
-      <div class="field"><label>Escolher o dia</label><input type="date" id="relatorio-data"></div>
-      <div class="btn-row">
-        <button class="btn btn-secondary" onclick="gerarRelatorioPDFUI()">📄 PDF</button>
-        <button class="btn btn-outline" onclick="gerarExcelDiaUI()">📊 Excel</button>
+    <div id="painel-relatorios">
+      <div class="card">
+        <div class="card-title">📄 Relatório do Dia</div>
+        <div class="field"><label>Escolher o dia</label><input type="date" id="relatorio-data"></div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="gerarRelatorioPDFUI()">📄 PDF</button>
+          <button class="btn btn-outline" onclick="gerarExcelDiaUI()">📊 Excel</button>
+        </div>
       </div>
-    </div>
 
-    <div class="card">
-      <div class="card-title">📅 Relatório de Período</div>
-      <div class="btn-row">
-        <div class="field" style="flex:1"><label>De</label><input type="date" id="relatorio-periodo-inicio"></div>
-        <div class="field" style="flex:1"><label>Até</label><input type="date" id="relatorio-periodo-fim"></div>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-secondary" onclick="gerarRelatorioPeriodoUI()">📄 PDF</button>
-        <button class="btn btn-outline" onclick="gerarExcelPeriodoUI()">📊 Excel</button>
+      <div class="card">
+        <div class="card-title">📅 Relatório de Período</div>
+        <div class="btn-row">
+          <div class="field" style="flex:1"><label>De</label><input type="date" id="relatorio-periodo-inicio"></div>
+          <div class="field" style="flex:1"><label>Até</label><input type="date" id="relatorio-periodo-fim"></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="gerarRelatorioPeriodoUI()">📄 PDF</button>
+          <button class="btn btn-outline" onclick="gerarExcelPeriodoUI()">📊 Excel</button>
+        </div>
       </div>
     </div>
 

@@ -493,10 +493,12 @@ async function renderOperacao() {
 
   const rotas = await Operacao.listarRotas();
   const rotasDesloc = await Operacao.listarRotasDeslocamento();
+  const gestaoRotas = Permissoes.podeGerenciarRotas();
+  const podeAtrasado = Permissoes.podeLancarAtrasado();
 
   area.innerHTML = `
-    <button class="btn btn-outline mt8" onclick="abrirNovaRota()">➕ Cadastrar Rota</button>
-    <button class="btn btn-ghost" onclick="abrirLancamentoAtrasadoUI()">🕐 Lançar Rota Atrasada</button>
+    ${gestaoRotas ? `<button class="btn btn-outline mt8" onclick="abrirNovaRota()">➕ Cadastrar Rota</button>` : ''}
+    ${podeAtrasado ? `<button class="btn btn-ghost" onclick="abrirLancamentoAtrasadoUI()">🕐 Lançar Rota Atrasada</button>` : ''}
 
     <div class="card-title mt16">Rotas</div>
     ${rotas.length ? rotas.map(r => {
@@ -518,7 +520,7 @@ async function renderOperacao() {
     }).join('') : `<div class="empty-state"><span class="emoji">🗺️</span>Nenhuma rota cadastrada ainda.</div>`}
 
     <div class="card-title mt16">🚚 Rotas de Deslocamento</div>
-    <button class="btn btn-outline" onclick="abrirNovaRotaDeslocamento()">➕ Cadastrar Rota de Deslocamento</button>
+    ${gestaoRotas ? `<button class="btn btn-outline" onclick="abrirNovaRotaDeslocamento()">➕ Cadastrar Rota de Deslocamento</button>` : ''}
     ${rotasDesloc.length ? rotasDesloc.map(r => {
       const podeEditar = Permissoes.podeEditarRota(r);
       return `
@@ -622,6 +624,7 @@ async function repetirViagemUI(viagemId) {
 }
 
 async function abrirNovaRota() {
+  if (!Permissoes.podeGerenciarRotas()) { showToast('Apenas a gestão pode cadastrar rotas', 'var(--iron)'); return; }
   abrirModalFormulario({
     titulo: '➕ Cadastrar Rota',
     subtitulo: 'Preencha os dados da rota de viagem',
@@ -642,10 +645,11 @@ async function abrirNovaRota() {
         if (encontrado) { equipamentoCargaId = encontrado.id; equipamentoCargaCodigo = encontrado.codigo; }
         else { equipamentoCargaCodigo = v.cargaCodigo; }
       }
-      await Operacao.salvarRota({
+      const res = await Operacao.salvarRota({
         nome: v.nome, origem: v.origem, destino: v.destino, material: v.material,
         equipamentoCargaId, equipamentoCargaCodigo, distancia: v.distancia
       });
+      if (res && res.erro) { showToast(res.erro, 'var(--iron)'); return; }
       showToast('✅ Rota cadastrada!');
       renderOperacao();
     }
@@ -673,6 +677,7 @@ function alternarFavoritaUI(id) {
 
 // ---------- LANÇAMENTO ATRASADO (viagem ou deslocamento esquecido) ----------
 async function abrirLancamentoAtrasadoUI() {
+  if (!Permissoes.podeLancarAtrasado()) { showToast('Apenas a gestão pode fazer lançamento atrasado', 'var(--iron)'); return; }
   if (!_turnoAtivoCache) { showToast('Inicie um turno primeiro', 'var(--iron)'); return; }
 
   const tipoTxt = prompt('Lançar rota atrasada de:\n1) Viagem\n2) Deslocamento\n\nDigite 1 ou 2:');
@@ -756,6 +761,7 @@ async function lancarDeslocamentoAtrasadoUI() {
 }
 
 function abrirNovaRotaDeslocamento() {
+  if (!Permissoes.podeGerenciarRotas()) { showToast('Apenas a gestão pode cadastrar rotas de deslocamento', 'var(--iron)'); return; }
   abrirModalFormulario({
     titulo: '➕ Cadastrar Rota de Deslocamento',
     subtitulo: 'Deslocamento sem carga — não conta como produção',
@@ -768,7 +774,8 @@ function abrirNovaRotaDeslocamento() {
     aoSalvar: (v) => {
       if (!v.origem) { showToast('Informe a origem', 'var(--iron)'); return; }
       const nome = v.nome || `${v.origem} -> ${v.destino}`;
-      Operacao.salvarRotaDeslocamento({ nome, origem: v.origem, destino: v.destino, motivo: v.motivo }).then(() => {
+      Operacao.salvarRotaDeslocamento({ nome, origem: v.origem, destino: v.destino, motivo: v.motivo }).then((res) => {
+        if (res && res.erro) { showToast(res.erro, 'var(--iron)'); return; }
         showToast('✅ Rota de deslocamento cadastrada!');
         renderOperacao();
       });
@@ -1291,6 +1298,19 @@ async function renderPainel() {
   const campoData = qs('#relatorio-data');
   if (campoData && !campoData.value) campoData.value = new Date().toISOString().slice(0, 10);
 
+  const relBox = qs('#painel-relatorios');
+  const subt = qs('#painel-subtitulo');
+
+  // Motorista vê um painel simplificado, só com os números do turno dele
+  if (!Permissoes.podeVerTudoOperacional()) {
+    if (relBox) relBox.style.display = 'none';           // sem relatórios da frota
+    if (subt) subt.textContent = 'Os seus números do turno';
+    await renderPainelMotorista();
+    return;
+  }
+  if (relBox) relBox.style.display = '';
+  if (subt) subt.textContent = 'Resumo de produção do dia';
+
   const [r, porEquip] = await Promise.all([Dashboard.resumoDoDia(), Dashboard.resumoPorEquipamento()]);
   qs('#painel-conteudo').innerHTML = `
     <div class="card">
@@ -1331,6 +1351,87 @@ async function renderPainel() {
     }).join('') : `<div class="empty-state"><span class="emoji">🚛</span>Nenhum equipamento cadastrado.</div>`}
     </div>
   `;
+}
+
+// ---------- PAINEL DO MOTORISTA (simplificado + WhatsApp) ----------
+function _fmtNum(n, dec = 0) {
+  if (n == null || isNaN(n)) return '—';
+  return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+
+async function renderPainelMotorista() {
+  const u = Auth.usuarioAtual();
+  const cont = qs('#painel-conteudo');
+  const r = await Dashboard.resumoMotorista(u.id);
+
+  if (!r.turno) {
+    cont.innerHTML = `<div class="empty-state"><span class="emoji">📊</span>Você ainda não tem turno registrado.<br>Inicie um turno para ver seus números aqui.</div>`;
+    return;
+  }
+  const t = r.turno;
+  const periodo = `${fmtHoraBR(t.iniciadoEm)} → ${r.emAndamento ? 'em andamento' : fmtHoraBR(t.encerradoEm)}`;
+  const parcial = r.emAndamento ? ' (parcial)' : '';
+
+  cont.innerHTML = `
+    <div class="card">
+      <div class="card-title">Meu turno — ${fmtDataBR(t.iniciadoEm)}</div>
+      <div class="row-kv"><span class="k">Equipamento</span><span class="v">${t.equipamentoCodigo || '—'}</span></div>
+      <div class="row-kv"><span class="k">Período</span><span class="v">${periodo}</span></div>
+      <div class="row-kv"><span class="k">Viagens concluídas</span><span class="v">${r.viagensConcluidas}</span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">KM & Horímetro</div>
+      <div class="row-kv"><span class="k">KM inicial</span><span class="v">${_fmtNum(r.kmInicial)}</span></div>
+      <div class="row-kv"><span class="k">KM final${parcial}</span><span class="v">${_fmtNum(r.kmFinal)}</span></div>
+      <div class="row-kv"><span class="k">KM rodados</span><span class="v">${_fmtNum(r.kmRodados)}</span></div>
+      <div class="row-kv"><span class="k">Horímetro inicial</span><span class="v">${_fmtNum(r.horInicial, 1)}</span></div>
+      <div class="row-kv"><span class="k">Horímetro final${parcial}</span><span class="v">${_fmtNum(r.horFinal, 1)}</span></div>
+      <div class="row-kv"><span class="k">Horas trabalhadas</span><span class="v">${_fmtNum(r.horas, 1)}</span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Combustível</div>
+      <div class="row-kv"><span class="k">Litros abastecidos</span><span class="v">${_fmtNum(r.litros, 1)} L</span></div>
+      <div class="row-kv"><span class="k">Média consumo</span><span class="v">${r.mediaKmL != null ? _fmtNum(r.mediaKmL, 2) + ' km/L' : '—'}</span></div>
+      <div class="row-kv"><span class="k">Média por hora</span><span class="v">${r.mediaLh != null ? _fmtNum(r.mediaLh, 2) + ' L/h' : '—'}</span></div>
+    </div>
+    <button class="btn btn-primary" onclick="enviarPainelWhatsApp()">📲 Enviar no WhatsApp</button>
+  `;
+}
+
+function _textoPainelMotorista(u, r) {
+  const t = r.turno;
+  const parcial = r.emAndamento ? ' (parcial)' : '';
+  return [
+    'STRACTA VIAGENS — Resumo do turno',
+    `Motorista: ${u ? u.nome : '—'}`,
+    `Equipamento: ${t.equipamentoCodigo || '—'}`,
+    `Data: ${fmtDataBR(t.iniciadoEm)}`,
+    `Período: ${fmtHoraBR(t.iniciadoEm)} → ${r.emAndamento ? 'em andamento' : fmtHoraBR(t.encerradoEm)}`,
+    '',
+    `KM inicial: ${_fmtNum(r.kmInicial)}`,
+    `KM final${parcial}: ${_fmtNum(r.kmFinal)}`,
+    `KM rodados: ${_fmtNum(r.kmRodados)}`,
+    `Horímetro inicial: ${_fmtNum(r.horInicial, 1)}`,
+    `Horímetro final${parcial}: ${_fmtNum(r.horFinal, 1)}`,
+    `Horas trabalhadas: ${_fmtNum(r.horas, 1)}`,
+    '',
+    `Litros abastecidos: ${_fmtNum(r.litros, 1)} L`,
+    `Média consumo: ${r.mediaKmL != null ? _fmtNum(r.mediaKmL, 2) + ' km/L' : '—'}`,
+    `Média por hora: ${r.mediaLh != null ? _fmtNum(r.mediaLh, 2) + ' L/h' : '—'}`,
+    `Viagens concluídas: ${r.viagensConcluidas}`
+  ].join('\n');
+}
+
+async function enviarPainelWhatsApp() {
+  const u = Auth.usuarioAtual();
+  const r = await Dashboard.resumoMotorista(u.id);
+  if (!r.turno) { showToast('Sem turno para enviar', 'var(--iron)'); return; }
+  const texto = _textoPainelMotorista(u, r);
+  // copia como reserva, caso o WhatsApp não abra
+  if (navigator.clipboard) navigator.clipboard.writeText(texto).catch(() => {});
+  // whatsapp:// abre o app direto — funciona mesmo sem internet (o WhatsApp
+  // envia sozinho quando reconectar). Sem depender de carregar página externa.
+  window.location.href = `whatsapp://send?text=${encodeURIComponent(texto)}`;
 }
 
 // ---------- PAINEL DO EQUIPAMENTO ----------

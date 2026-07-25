@@ -16,6 +16,7 @@ const Operacao = {
   },
 
   async salvarRota({ id, nome, origem, destino, material, equipamentoCargaId, equipamentoCargaCodigo, distancia, status }) {
+    if (!Permissoes.podeGerenciarRotas()) return { erro: 'Apenas a gestão pode cadastrar ou editar rotas' };
     const existente = id ? await DB.get('rotas', id) : null;
     const usuario = Permissoes.usuarioAtual();
     const rota = {
@@ -82,6 +83,7 @@ const Operacao = {
   },
 
   async salvarRotaDeslocamento({ id, nome, origem, destino, motivo, status }) {
+    if (!Permissoes.podeGerenciarRotas()) return { erro: 'Apenas a gestão pode cadastrar ou editar rotas de deslocamento' };
     const existente = id ? await DB.get('rotasDeslocamento', id) : null;
     const usuario = Permissoes.usuarioAtual();
     const rota = {

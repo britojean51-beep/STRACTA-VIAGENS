@@ -36,6 +36,14 @@ const Permissoes = {
   // Cadastrar/editar/apagar/desativar equipamentos
   podeGerenciarFrota() { return this.nivelPeloMenos('Encarregado'); },
 
+  // Cadastrar/editar/apagar/ativar rotas (viagem e deslocamento).
+  // Motorista NÃO cria rotas — apenas usa as que já existem.
+  podeGerenciarRotas() { return this.nivelPeloMenos('Encarregado'); },
+
+  // Lançamento atrasado (registrar viagem/deslocamento esquecido com horário manual).
+  // Restrito à gestão, para evitar lançamentos manuais indevidos.
+  podeLancarAtrasado() { return this.nivelPeloMenos('Encarregado'); },
+
   // Colocar/tirar equipamento de manutenção — todo mundo pode, inclusive Motorista
   // (é uma ação operacional do dia a dia, diferente de gerir o cadastro da frota)
   podeAlternarManutencao() { return !!this.usuarioAtual(); },
@@ -46,11 +54,9 @@ const Permissoes = {
   // Painel de diagnóstico técnico
   podeVerDiagnostico() { return this.nivelPeloMenos('Administrador'); },
 
-  // Rotas: motorista só mexe nas que ele mesmo criou; demais perfis mexem em qualquer uma
-  podeEditarRota(rota) {
-    if (this.nivelPeloMenos('Encarregado')) return true;
-    const u = this.usuarioAtual();
-    return !!(u && rota && rota.criadoPorId === u.id);
+  // Rotas: só a gestão (Encarregado+) cria/edita/apaga. Motorista apenas usa.
+  podeEditarRota() {
+    return this.podeGerenciarRotas();
   },
 
   // Filtra uma lista de registros (viagens, abastecimentos, deslocamentos...) pelo
