@@ -12,10 +12,10 @@ const Mapa = {
   _timerStale: null,
   _ultimasPosicoes: [],
   _ajustou: false,
-  STALE_MS: 5 * 60 * 1000, // esconde quem não atualiza há mais de 5 min
+  FRESH_MS: 2 * 60 * 1000,  // até 2 min = "recente" (verde)
+  STALE_MS: 5 * 60 * 1000,  // acima de 5 min = some do mapa
 
   async abrir() {
-    const container = qs('#mapa-container');
     const info = qs('#mapa-info');
 
     if (typeof L === 'undefined') {
@@ -28,77 +28,147 @@ const Mapa = {
     }
 
     if (!this._map) {
-      // vista inicial no Brasil; ajusta sozinho quando chegam posições
-      this._map = L.map('mapa-container').setView([-15.78, -47.93], 4);
+      this._map = L.map('mapa-container', { zoomControl: true }).setView([-15.78, -47.93], 4);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '© OpenStreetMap'
       }).addTo(this._map);
     }
-    // o container só tem tamanho depois que a tela fica ativa
     setTimeout(() => { if (this._map) this._map.invalidateSize(); }, 250);
 
     if (info) info.textContent = 'Carregando posições...';
     this._ajustou = false;
     this._assinar();
-    this._timerStale = setInterval(() => this._render(this._ultimasPosicoes), 60000);
+    // re-renderiza sozinho para atualizar o "há X min" e sumir com os antigos
+    this._timerStale = setInterval(() => this._render(this._ultimasPosicoes), 30000);
   },
 
   _assinar() {
-    if (this._unsub) return; // já assinado
+    if (this._unsub) return;
     this._unsub = FirebaseSync.escutarPosicoes(posicoes => this._render(posicoes));
+  },
+
+  _corPorIdade(idade) {
+    if (idade <= this.FRESH_MS) return '#12B886'; // verde
+    return '#F0A020';                             // âmbar (mais antigo)
+  },
+
+  _ativos() {
+    const agora = Date.now();
+    return (this._ultimasPosicoes || [])
+      .filter(p => p && !p._removido && typeof p.lat === 'number' && typeof p.lng === 'number')
+      .map(p => ({ ...p, _idade: agora - new Date(p.atualizadoEm || 0).getTime() }))
+      .filter(p => !isNaN(p._idade) && p._idade <= this.STALE_MS)
+      .sort((a, b) => a._idade - b._idade);
+  },
+
+  _tempoRelativo(ms) {
+    if (isNaN(ms) || ms < 0) return '';
+    const min = Math.floor(ms / 60000);
+    if (min <= 0) return 'agora mesmo';
+    if (min === 1) return 'há 1 min';
+    if (min < 60) return `há ${min} min`;
+    const h = Math.floor(min / 60);
+    return h === 1 ? 'há 1 h' : `há ${h} h`;
   },
 
   _render(posicoes) {
     if (!this._map) return;
-    this._ultimasPosicoes = posicoes || [];
-    const agora = Date.now();
-    const ativos = new Set();
+    this._ultimasPosicoes = posicoes || this._ultimasPosicoes || [];
+    const ativos = this._ativos();
+    const idsAtivos = new Set(ativos.map(p => p.id));
     const bounds = [];
 
-    this._ultimasPosicoes.forEach(p => {
-      if (!p || p._removido) return;
-      if (typeof p.lat !== 'number' || typeof p.lng !== 'number') return;
-      const idade = agora - new Date(p.atualizadoEm || 0).getTime();
-      if (isNaN(idade) || idade > this.STALE_MS) return; // antigo demais — esconde
-
-      ativos.add(p.id);
+    ativos.forEach(p => {
       const latlng = [p.lat, p.lng];
       bounds.push(latlng);
-      const quando = (typeof fmtHoraBR !== 'undefined') ? fmtHoraBR(p.atualizadoEm) : '';
+      const cor = this._corPorIdade(p._idade);
       const popup =
         `<b>${p.motoristaNome || '—'}</b><br>` +
         `${p.equipamentoCodigo || 'sem equipamento'}<br>` +
-        `Atualizado às ${quando}` +
+        `Atualizado ${this._tempoRelativo(p._idade)}` +
         (p.precisao != null ? ` • ±${p.precisao} m` : '');
 
       if (this._markers[p.id]) {
-        this._markers[p.id].setLatLng(latlng).setPopupContent(popup);
+        this._markers[p.id].setLatLng(latlng).setStyle({ fillColor: cor, color: '#fff' });
+        this._markers[p.id].setPopupContent(popup);
       } else {
-        this._markers[p.id] = L.marker(latlng).addTo(this._map).bindPopup(popup);
+        this._markers[p.id] = L.circleMarker(latlng, {
+          radius: 9, weight: 3, color: '#fff', fillColor: cor, fillOpacity: 1
+        }).addTo(this._map).bindPopup(popup);
+        if (p.equipamentoCodigo) {
+          this._markers[p.id].bindTooltip(p.equipamentoCodigo, {
+            permanent: true, direction: 'top', offset: [0, -8], className: 'mk-tooltip'
+          });
+        }
       }
     });
 
     // remove marcadores de quem saiu / ficou antigo
     Object.keys(this._markers).forEach(id => {
-      if (!ativos.has(id)) {
+      if (!idsAtivos.has(id)) {
         this._map.removeLayer(this._markers[id]);
         delete this._markers[id];
       }
     });
 
-    // enquadra todos na primeira vez que aparecem posições
     if (bounds.length && !this._ajustou) {
       this._map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
       this._ajustou = true;
     }
 
+    this._renderInfoELista(ativos);
+  },
+
+  _renderInfoELista(ativos) {
     const info = qs('#mapa-info');
     if (info) {
-      info.textContent = ativos.size
-        ? `${ativos.size} ${ativos.size === 1 ? 'motorista' : 'motoristas'} em operação agora`
+      info.textContent = ativos.length
+        ? `${ativos.length} ${ativos.length === 1 ? 'motorista' : 'motoristas'} em operação agora`
         : 'Ninguém em operação no momento.';
     }
+
+    const lista = qs('#mapa-lista');
+    if (!lista) return;
+    if (!ativos.length) {
+      lista.innerHTML = `<div class="empty-state" style="padding:24px"><span class="emoji">🛰️</span>Aguardando posições dos motoristas com turno ativo.</div>`;
+      return;
+    }
+    lista.innerHTML = ativos.map(p => {
+      const cor = this._corPorIdade(p._idade);
+      const detalhe = `${p.equipamentoCodigo || 'sem equipamento'} • ${this._tempoRelativo(p._idade)}` +
+        (p.precisao != null ? ` • ±${p.precisao} m` : '');
+      return `
+      <div class="list-item mapa-item" onclick="Mapa.focar('${p.id}')">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="mapa-dot" style="background:${cor}"></span>
+          <div>
+            <div class="li-main">${p.motoristaNome || '—'}</div>
+            <div class="li-sub">${detalhe}</div>
+          </div>
+        </div>
+        <span class="mapa-item-ir">Ver ›</span>
+      </div>`;
+    }).join('');
+  },
+
+  // Reenquadra o mapa para mostrar todos os motoristas ativos
+  recentralizar() {
+    if (!this._map) return;
+    const ativos = this._ativos();
+    if (!ativos.length) { if (typeof showToast !== 'undefined') showToast('Ninguém em operação agora', 'var(--iron)'); return; }
+    const bounds = ativos.map(p => [p.lat, p.lng]);
+    this._map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+  },
+
+  // Centraliza num motorista específico e abre o balão de detalhes
+  focar(id) {
+    const m = this._markers[id];
+    if (!m || !this._map) return;
+    this._map.setView(m.getLatLng(), 15, { animate: true });
+    m.openPopup();
+    const cont = qs('#mapa-container');
+    if (cont && cont.scrollIntoView) cont.scrollIntoView({ behavior: 'smooth', block: 'start' });
   },
 
   fechar() {

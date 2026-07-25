@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="./css/style.css?v=4.6.2">
+<link rel="stylesheet" href="./css/style.css?v=4.6.3">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -269,9 +269,14 @@
 
   <!-- ═══ MAPA AO VIVO ═══ -->
   <div class="screen" id="screen-mapa">
-    <h1 class="page-title">🗺️ Mapa ao vivo</h1>
+    <div class="mapa-topo">
+      <h1 class="page-title" style="margin:0">🗺️ Mapa ao vivo</h1>
+      <button class="mapa-btn-acao" onclick="Mapa.recentralizar()" title="Recentralizar">🎯</button>
+    </div>
     <div class="page-sub" id="mapa-info">Carregando...</div>
     <div id="mapa-container"></div>
+    <div class="card-title mt16">Em operação agora</div>
+    <div id="mapa-lista"></div>
     <button class="btn btn-ghost mt16" onclick="navigate('painel')">Voltar</button>
   </div>
 
