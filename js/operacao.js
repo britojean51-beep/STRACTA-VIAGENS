@@ -190,6 +190,11 @@ const Operacao = {
     return viagens.find(v => v.status === 'em_andamento') || null;
   },
 
+  async deslocamentoEmAndamento(turnoId) {
+    const ds = await DB.getByIndex('deslocamentos', 'turnoId', turnoId);
+    return ds.find(d => !d.fimEm) || null;
+  },
+
   // ---------- DESLOCAMENTO (sem carga, ex: deslocamento até a frente de serviço) ----------
   // Não conta como produção — é registrado separadamente das viagens.
   async iniciarDeslocamento({ turnoId, motoristaId, equipamentoId, origem, destino, motivo }) {
@@ -217,6 +222,110 @@ const Operacao = {
     await DB.put('deslocamentos', d);
     await Sync.enfileirar('deslocamento', d);
     if (typeof Geo !== 'undefined') Geo.anexarLocal('deslocamentos', d.id, 'localFim', 'deslocamento');
+    return d;
+  },
+
+  // ---------- ROTA / VIAGEM AUTOMÁTICA POR GEOLOCALIZAÇÃO ----------
+  // Cria (ou reaproveita) uma rota "Origem → Destino" gerada pelo GPS.
+  // Não passa pela permissão de gestão: é o SISTEMA registrando onde o
+  // motorista esteve, não um usuário cadastrando rota manualmente.
+  async rotaAutomatica(origem, destino) {
+    const nome = `${origem} → ${destino}`;
+    const rotas = await DB.getAll('rotas');
+    const existe = rotas.find(r => (r.nome || '').toLowerCase() === nome.toLowerCase());
+    if (existe) return existe;
+    const rota = {
+      id: gerarId('rota'), tipo: 'rota',
+      nome, origem, destino, material: '',
+      equipamentoCargaId: '', equipamentoCargaCodigo: '',
+      distancia: null, status: 'ativa', favorita: false,
+      automatica: true,
+      criadoPorId: null, criadoPorNome: 'Automática (GPS)', criadoEm: agoraISO()
+    };
+    await DB.put('rotas', rota);
+    if (typeof Sync !== 'undefined') Sync.enfileirar('rota', rota);
+    return rota;
+  },
+
+  // Inicia uma viagem SEM rota pré-escolhida. A origem vem da posição atual
+  // (área identificada). O destino é definido ao descarregar.
+  async iniciarViagemAutomatica({ turnoId, motoristaId, motoristaNome, equipamentoId, equipamentoCodigo, posInicio }) {
+    const areaInicio = posInicio && posInicio.area ? posInicio.area : null;
+    const viagem = {
+      id: gerarId('viagem'),
+      turnoId, motoristaId, motoristaNome,
+      equipamentoId, equipamentoCodigo,
+      rotaId: null,
+      rotaNome: areaInicio ? `${areaInicio} → …` : 'Viagem (identificando origem)',
+      origemArea: areaInicio,
+      material: '', equipamentoCargaId: '', equipamentoCargaCodigo: '',
+      automatica: true,
+      tipo: 'viagem',
+      dia: todayKey(),
+      status: 'em_andamento',
+      inicioEm: agoraISO(),
+      descarregadoEm: null,
+      tempoTotalMs: null,
+      localInicio: posInicio || null
+    };
+    await DB.put('viagens', viagem);
+    return viagem;
+  },
+
+  // Descarrega uma viagem automática: identifica o destino pela posição atual
+  // e monta/associa a rota "Origem → Destino".
+  async descarregarAutomatica(viagemId, posFim) {
+    const viagem = await DB.get('viagens', viagemId);
+    if (!viagem) return null;
+    viagem.descarregadoEm = agoraISO();
+    viagem.status = 'concluida';
+    viagem.tempoTotalMs = new Date(viagem.descarregadoEm) - new Date(viagem.inicioEm);
+    if (posFim) viagem.localFim = posFim;
+    const destinoArea = posFim && posFim.area ? posFim.area : null;
+    viagem.destinoArea = destinoArea;
+
+    const origem = viagem.origemArea || 'Local não identificado';
+    const destino = destinoArea || 'Local não identificado';
+    const rota = await this.rotaAutomatica(origem, destino);
+    if (rota) { viagem.rotaId = rota.id; viagem.rotaNome = rota.nome; }
+    else viagem.rotaNome = `${origem} → ${destino}`;
+
+    await DB.put('viagens', viagem);
+    await Sync.enfileirar('viagem', viagem);
+    return viagem;
+  },
+
+  async iniciarDeslocamentoAutomatico({ turnoId, motoristaId, equipamentoId, posInicio }) {
+    const areaInicio = posInicio && posInicio.area ? posInicio.area : null;
+    const deslocamento = {
+      id: gerarId('desloc'),
+      turnoId, motoristaId, equipamentoId,
+      origem: areaInicio || 'Identificando...', destino: '', motivo: '',
+      origemArea: areaInicio,
+      automatica: true,
+      tipo: 'deslocamento',
+      inicioEm: agoraISO(),
+      fimEm: null,
+      tempoTotalMs: null,
+      dia: todayKey(),
+      localInicio: posInicio || null
+    };
+    await DB.put('deslocamentos', deslocamento);
+    return deslocamento;
+  },
+
+  async finalizarDeslocamentoAutomatico(id, posFim) {
+    const d = await DB.get('deslocamentos', id);
+    if (!d) return null;
+    d.fimEm = agoraISO();
+    d.tempoTotalMs = new Date(d.fimEm) - new Date(d.inicioEm);
+    if (posFim) d.localFim = posFim;
+    const destinoArea = posFim && posFim.area ? posFim.area : null;
+    d.destinoArea = destinoArea;
+    if (!d.origem || d.origem === 'Identificando...') d.origem = d.origemArea || 'Local não identificado';
+    d.destino = destinoArea || 'Local não identificado';
+    await DB.put('deslocamentos', d);
+    await Sync.enfileirar('deslocamento', d);
     return d;
   },
 

@@ -509,16 +509,29 @@ async function renderOperacao() {
     return;
   }
 
+  const deslocAtivo = await Operacao.deslocamentoEmAndamento(_turnoAtivoCache.id);
+  if (deslocAtivo) {
+    renderTimerDeslocamento(deslocAtivo, deslocAtivo.origem || 'Origem', deslocAtivo.destino || '…', deslocAtivo.motivo);
+    return;
+  }
+
   const rotas = await Operacao.listarRotas();
   const rotasDesloc = await Operacao.listarRotasDeslocamento();
   const gestaoRotas = Permissoes.podeGerenciarRotas();
   const podeAtrasado = Permissoes.podeLancarAtrasado();
 
   area.innerHTML = `
+    <div class="card">
+      <div class="card-title">🛰️ Registro automático por GPS</div>
+      <div class="text-label" style="font-size:12.5px;margin-bottom:12px">Origem e destino são identificados sozinhos pela sua localização.</div>
+      <button class="btn btn-primary" onclick="iniciarViagemAutoUI()">🚀 Iniciar Viagem</button>
+      <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI()">🚚 Iniciar Deslocamento</button>
+    </div>
+
     ${gestaoRotas ? `<button class="btn btn-outline mt8" onclick="abrirNovaRota()">➕ Cadastrar Rota</button>` : ''}
     ${podeAtrasado ? `<button class="btn btn-ghost" onclick="abrirLancamentoAtrasadoUI()">🕐 Lançar Rota Atrasada</button>` : ''}
 
-    <div class="card-title mt16">Rotas</div>
+    <div class="card-title mt16">Rotas ${gestaoRotas ? '' : '(iniciar manualmente)'}</div>
     ${rotas.length ? rotas.map(r => {
       const podeEditar = Permissoes.podeEditarRota(r);
       return `
@@ -580,7 +593,9 @@ function renderTimerViagem(viagem) {
   `;
 
   clearInterval(_viagemTimerHandle);
-  const referenciaPromise = Operacao.estatisticasRota(viagem.rotaId, viagem.dia);
+  const referenciaPromise = viagem.rotaId
+    ? Operacao.estatisticasRota(viagem.rotaId, viagem.dia)
+    : Promise.resolve({ tempoMedioMs: 0 });
   const raio = 96, circ = 2 * Math.PI * raio;
 
   const atualizar = async () => {
@@ -613,14 +628,78 @@ async function iniciarViagemUI(rotaId) {
   renderOperacao();
 }
 
+// Captura a posição atual e já identifica (offline) a área em que ela cai.
+async function _capturarLocalAtual() {
+  if (typeof Geo === 'undefined' || !Geo.disponivel()) return null;
+  const pos = await Geo.capturar({ enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 });
+  if (!Geo.ehValida(pos)) return null;
+  const area = await Geo.codigoAreaDePonto(pos.lat, pos.lng);
+  if (area) pos.area = area;
+  return pos;
+}
+
+// ---------- VIAGEM / DESLOCAMENTO AUTOMÁTICOS (por GPS) ----------
+async function iniciarViagemAutoUI() {
+  const t = _turnoAtivoCache;
+  if (!t) { showToast('Inicie um turno primeiro', 'var(--iron)'); return; }
+  const u = Auth.usuarioAtual();
+  showToast('📍 Obtendo localização de origem...', 'var(--amber)', 4000);
+  const pos = await _capturarLocalAtual();
+  if (!pos) showToast('Sem GPS agora — a viagem inicia sem origem identificada', 'var(--iron)', 3500);
+  await Operacao.iniciarViagemAutomatica({
+    turnoId: t.id, motoristaId: u.id, motoristaNome: u.nome,
+    equipamentoId: t.equipamentoId, equipamentoCodigo: t.equipamentoCodigo,
+    posInicio: pos
+  });
+  showToast(pos && pos.area ? `🚀 Viagem iniciada em ${pos.area}` : '🚀 Viagem iniciada');
+  renderOperacao();
+}
+
+async function iniciarDeslocamentoAutoUI() {
+  const t = _turnoAtivoCache;
+  if (!t) { showToast('Inicie um turno primeiro', 'var(--iron)'); return; }
+  showToast('📍 Obtendo localização de origem...', 'var(--amber)', 4000);
+  const pos = await _capturarLocalAtual();
+  if (!pos) showToast('Sem GPS agora — o deslocamento inicia sem origem identificada', 'var(--iron)', 3500);
+  const d = await Operacao.iniciarDeslocamentoAutomatico({
+    turnoId: t.id, motoristaId: t.motoristaId, equipamentoId: t.equipamentoId, posInicio: pos
+  });
+  showToast(pos && pos.area ? `🚚 Deslocamento iniciado em ${pos.area}` : '🚚 Deslocamento iniciado');
+  renderTimerDeslocamento(d, d.origem || 'Origem', '…', '');
+}
+
 async function descarregarUI(viagemId) {
-  const viagem = await Operacao.descarregar(viagemId);
+  const atual = await DB.get('viagens', viagemId);
+  let viagem;
+  if (atual && atual.automatica) {
+    showToast('📍 Obtendo localização de destino...', 'var(--amber)', 4000);
+    const pos = await _capturarLocalAtual();
+    viagem = await Operacao.descarregarAutomatica(viagemId, pos);
+  } else {
+    viagem = await Operacao.descarregar(viagemId);
+  }
   _ultimaViagemConcluidaId = viagem.id;
   showToast(`✅ Viagem concluída — ${fmtDuracao(viagem.tempoTotalMs)}`);
   clearInterval(_viagemTimerHandle);
+  const area = qs('#operacao-area');
+
+  if (viagem.automatica) {
+    area.innerHTML = `
+      <div class="card text-center">
+        <div class="card-title">Viagem concluída</div>
+        <div style="font-family:var(--mono);font-size:26px;font-weight:700;margin:8px 0">${fmtDuracao(viagem.tempoTotalMs)}</div>
+        <div class="text-label" style="margin-bottom:14px">${viagem.rotaNome}</div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="iniciarViagemAutoUI()">🚀 Nova Viagem</button>
+          <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI()">🚚 Deslocamento</button>
+        </div>
+        <button class="btn btn-outline mt8" onclick="renderOperacao()">🗺️ Voltar</button>
+      </div>`;
+    return;
+  }
+
   const rotasDesloc = await Operacao.listarRotasDeslocamento();
   const favorita = rotasDesloc.find(r => r.favorita && r.status !== 'inativa');
-  const area = qs('#operacao-area');
   area.innerHTML = `
     <div class="card text-center">
       <div class="card-title">Viagem concluída</div>
@@ -855,7 +934,15 @@ function renderTimerDeslocamento(d, origem, destino, motivo) {
 }
 
 async function finalizarDeslocamentoUI(id) {
-  const d = await Operacao.finalizarDeslocamento(id);
+  const atual = await DB.get('deslocamentos', id);
+  let d;
+  if (atual && atual.automatica) {
+    showToast('📍 Obtendo localização de destino...', 'var(--amber)', 4000);
+    const pos = await _capturarLocalAtual();
+    d = await Operacao.finalizarDeslocamentoAutomatico(id, pos);
+  } else {
+    d = await Operacao.finalizarDeslocamento(id);
+  }
   clearInterval(_viagemTimerHandle);
   showToast(`✅ Deslocamento finalizado — ${fmtDuracao(d.tempoTotalMs)}`);
 

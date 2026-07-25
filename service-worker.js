@@ -5,7 +5,7 @@
    atualização em segundo plano quando há conexão.
    ══════════════════════════════════════════════════════════ */
 
-const CACHE_VERSION = 'stracta-viagens-v34-areas-poligonos';
+const CACHE_VERSION = 'stracta-viagens-v35-rota-automatica';
 
 const APP_SHELL = [
   './',
