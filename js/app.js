@@ -519,19 +519,23 @@ async function renderOperacao() {
   const rotasDesloc = await Operacao.listarRotasDeslocamento();
   const gestaoRotas = Permissoes.podeGerenciarRotas();
   const podeAtrasado = Permissoes.podeLancarAtrasado();
+  const totalAreas = (await DB.getAll('areas')).length;
 
   area.innerHTML = `
-    <div class="card">
-      <div class="card-title">🛰️ Registro automático por GPS</div>
-      <div class="text-label" style="font-size:12.5px;margin-bottom:12px">Origem e destino são identificados sozinhos pela sua localização.</div>
-      <button class="btn btn-primary" onclick="iniciarViagemAutoUI()">🚀 Iniciar Viagem</button>
+    <div class="card op-hero">
+      <div class="op-hero-equip">🚛 ${_turnoAtivoCache.equipamentoCodigo || 'Equipamento'}</div>
+      <div class="text-label" style="font-size:12.5px;margin:2px 0 14px">Origem e destino identificados automaticamente pelo GPS.</div>
+      <button class="btn btn-primary btn-hero" onclick="iniciarViagemAutoUI()">🚀 Iniciar Viagem</button>
       <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI()">🚚 Iniciar Deslocamento</button>
+      ${totalAreas === 0 ? `<div class="op-aviso">⚠️ Nenhuma área definida ainda — as rotas sairão como "Local não identificado".</div>` : ''}
     </div>
 
-    ${gestaoRotas ? `<button class="btn btn-outline mt8" onclick="abrirNovaRota()">➕ Cadastrar Rota</button>` : ''}
-    ${podeAtrasado ? `<button class="btn btn-ghost" onclick="abrirLancamentoAtrasadoUI()">🕐 Lançar Rota Atrasada</button>` : ''}
+    <button class="btn btn-ghost mt8" id="btn-rotas-manuais" onclick="toggleRotasManuais()">🗺️ Escolher rota manualmente ▾</button>
+    <div id="rotas-manuais" class="hidden">
+      ${gestaoRotas ? `<button class="btn btn-outline mt8" onclick="abrirNovaRota()">➕ Cadastrar Rota</button>` : ''}
+      ${podeAtrasado ? `<button class="btn btn-ghost" onclick="abrirLancamentoAtrasadoUI()">🕐 Lançar Rota Atrasada</button>` : ''}
 
-    <div class="card-title mt16">Rotas ${gestaoRotas ? '' : '(iniciar manualmente)'}</div>
+    <div class="card-title mt16">Rotas</div>
     ${rotas.length ? rotas.map(r => {
       const podeEditar = Permissoes.podeEditarRota(r);
       return `
@@ -569,7 +573,17 @@ async function renderOperacao() {
         </div>
       </div>`;
     }).join('') : `<div class="empty-state"><span class="emoji">🚚</span>Nenhuma rota de deslocamento cadastrada ainda.</div>`}
+    </div>
   `;
+}
+
+// Mostra/esconde a seção de rotas manuais (plano B — o padrão é a rota automática por GPS)
+function toggleRotasManuais() {
+  const box = qs('#rotas-manuais');
+  const btn = qs('#btn-rotas-manuais');
+  if (!box) return;
+  const escondido = box.classList.toggle('hidden');
+  if (btn) btn.innerHTML = `🗺️ Escolher rota manualmente ${escondido ? '▾' : '▴'}`;
 }
 
 function renderTimerViagem(viagem) {
