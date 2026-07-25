@@ -54,6 +54,7 @@
     <div class="card menu-lista mt24">
       <button class="menu-item" onclick="enviarMinhaLocalizacaoUI()"><span class="mi-ic">📍</span><span class="mi-lb">Enviar minha localização</span><span class="mi-ar">›</span></button>
       <button class="menu-item" id="btn-mapa-vivo" onclick="navigate('mapa')" style="display:none"><span class="mi-ic">🗺️</span><span class="mi-lb">Mapa ao vivo</span><span class="mi-ar">›</span></button>
+      <button class="menu-item" id="btn-areas" onclick="navigate('areas')" style="display:none"><span class="mi-ic">📐</span><span class="mi-lb">Áreas (rotas automáticas)</span><span class="mi-ar">›</span></button>
       <button class="menu-item" onclick="navigate('config')"><span class="mi-ic">⚙️</span><span class="mi-lb">Configurações e Sincronização</span><span class="mi-ar">›</span></button>
       <button class="menu-item menu-sair" onclick="fazerLogout()"><span class="mi-ic">🚪</span><span class="mi-lb">Sair</span><span class="mi-ar">›</span></button>
     </div>
@@ -282,6 +283,21 @@
     <button class="btn btn-ghost mt16" onclick="navigate('painel')">Voltar</button>
   </div>
 
+  <!-- ═══ ÁREAS (POLÍGONOS) ═══ -->
+  <div class="screen" id="screen-areas">
+    <h1 class="page-title">📐 Áreas</h1>
+    <div class="page-sub" id="areas-info">Toque no mapa para marcar os cantos da área.</div>
+    <div id="areas-mapa"></div>
+    <div class="btn-row mt8">
+      <button class="btn btn-outline" onclick="Areas.desfazer()">↩️ Desfazer ponto</button>
+      <button class="btn btn-outline" onclick="Areas.limparDesenho()">🧹 Limpar</button>
+    </div>
+    <button class="btn btn-primary mt8" onclick="Areas.salvarNova()">💾 Salvar área</button>
+    <div class="card-title mt16">Áreas cadastradas</div>
+    <div id="areas-lista"></div>
+    <button class="btn btn-ghost mt16" onclick="navigate('config')">Voltar</button>
+  </div>
+
   <!-- ═══ NAV INFERIOR ═══ -->
   <div class="bottom-nav" style="display:none">
     <button class="nav-item" data-tela="home" onclick="navigate('home')"><span class="ic">🏠</span>Início</button>
@@ -317,6 +333,7 @@
 <script src="./js/diagnostico.js"></script>
 <script src="./js/rastreamento.js"></script>
 <script src="./js/mapa.js"></script>
+<script src="./js/areas.js"></script>
 <script src="./js/app.js"></script>
 </body>
 </html>

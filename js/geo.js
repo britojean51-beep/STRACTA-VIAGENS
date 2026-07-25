@@ -71,6 +71,43 @@ const Geo = {
     return `<a class="geo-chip" href="${Geo.linkMapa(pos)}" target="_blank" rel="noopener">${texto}</a>`;
   },
 
+  // ---------- ÁREAS (polígonos) — tudo offline ----------
+  // Ponto dentro de polígono, pelo algoritmo de "ray casting".
+  // pontos = [[lat,lng], [lat,lng], ...]
+  pontoEmPoligono(lat, lng, pontos) {
+    if (!Array.isArray(pontos) || pontos.length < 3) return false;
+    let dentro = false;
+    for (let i = 0, j = pontos.length - 1; i < pontos.length; j = i++) {
+      const yi = pontos[i][0], xi = pontos[i][1];
+      const yj = pontos[j][0], xj = pontos[j][1];
+      const intersecta = ((yi > lat) !== (yj > lat)) &&
+        (lng < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-12) + xi);
+      if (intersecta) dentro = !dentro;
+    }
+    return dentro;
+  },
+
+  // Dado um ponto e uma lista de áreas, devolve a primeira área que o contém.
+  areaDoPonto(lat, lng, areas) {
+    if (!Array.isArray(areas)) return null;
+    for (const a of areas) {
+      if (a && Array.isArray(a.pontos) && this.pontoEmPoligono(lat, lng, a.pontos)) return a;
+    }
+    return null;
+  },
+
+  // Carrega as áreas do banco e classifica um ponto (usado offline no dia a dia).
+  // Devolve o código da área que contém o ponto, ou null.
+  async codigoAreaDePonto(lat, lng) {
+    try {
+      const areas = await DB.getAll('areas');
+      const a = this.areaDoPonto(lat, lng, areas);
+      return a ? a.codigo : null;
+    } catch (e) {
+      return null;
+    }
+  },
+
   // Captura em SEGUNDO PLANO e anexa a posição a um registro já salvo,
   // sem travar a ação do usuário (a viagem inicia na hora; a posição
   // chega um instante depois). Atualiza o registro local e re-sincroniza.
@@ -78,6 +115,8 @@ const Geo = {
     try {
       const pos = await Geo.capturar();
       if (!Geo.ehValida(pos)) return false;
+      const area = await Geo.codigoAreaDePonto(pos.lat, pos.lng);
+      if (area) pos.area = area;
       const reg = await DB.get(storeName, id);
       if (!reg) return false;
       reg[campo] = pos;

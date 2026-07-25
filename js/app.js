@@ -162,6 +162,7 @@ async function navigate(tela) {
 
   if (_viagemTimerHandle && tela !== 'operacao') { clearInterval(_viagemTimerHandle); _viagemTimerHandle = null; }
   if (typeof Mapa !== 'undefined' && tela !== 'mapa') Mapa.fechar();
+  if (typeof Areas !== 'undefined' && tela !== 'areas') Areas.fechar();
 
   const renderers = {
     home: renderHome,
@@ -173,6 +174,7 @@ async function navigate(tela) {
     painel: renderPainel,
     'painel-equip': renderPainelEquip,
     mapa: renderMapa,
+    areas: renderAreas,
     config: renderConfig,
     usuarios: renderUsuarios,
     diagnostico: renderDiagnostico
@@ -203,6 +205,14 @@ async function navigate(tela) {
   }
   if (tela === 'mapa') {
     if (!Permissoes.podeVerTudoOperacional()) {
+      showToast('Acesso restrito à gestão (Encarregado ou acima)', 'var(--iron)');
+      qsa('.screen').forEach(s => s.classList.remove('active'));
+      qs('#screen-home').classList.add('active');
+      return;
+    }
+  }
+  if (tela === 'areas') {
+    if (!Permissoes.podeGerenciarRotas()) {
       showToast('Acesso restrito à gestão (Encarregado ou acima)', 'var(--iron)');
       qsa('.screen').forEach(s => s.classList.remove('active'));
       qs('#screen-home').classList.add('active');
@@ -252,9 +262,11 @@ async function renderHome() {
   _turnoAtivoCache = await Motorista.turnoAtivo();
   const box = qs('#home-turno-box');
 
-  // botão do mapa ao vivo só aparece para a gestão (Encarregado+)
+  // botão do mapa ao vivo e das áreas só aparecem para a gestão (Encarregado+)
   const btnMapa = qs('#btn-mapa-vivo');
   if (btnMapa) btnMapa.style.display = Permissoes.podeVerTudoOperacional() ? 'flex' : 'none';
+  const btnAreas = qs('#btn-areas');
+  if (btnAreas) btnAreas.style.display = Permissoes.podeGerenciarRotas() ? 'flex' : 'none';
 
   // liga ou desliga o rastreamento em tempo real conforme houver turno ativo
   sincronizarRastreamento();
@@ -329,6 +341,12 @@ async function enviarMinhaLocalizacaoUI() {
 async function renderMapa() {
   if (typeof Mapa === 'undefined') return;
   await Mapa.abrir();
+}
+
+// ---------- ÁREAS / POLÍGONOS (gestão) ----------
+async function renderAreas() {
+  if (typeof Areas === 'undefined') return;
+  await Areas.abrir();
 }
 
 // Liga o rastreamento em tempo real quando há turno ativo; desliga quando não há.
@@ -907,7 +925,7 @@ async function renderListaViagensDoDia(dia) {
       <div class="list-item">
         <div>
           <div class="li-main">${v.rotaNome}</div>
-          <div class="li-sub">${v.motoristaNome} • ${v.equipamentoCodigo} • ${fmtHoraBR(v.inicioEm)}${v.descarregadoEm ? ' → ' + fmtHoraBR(v.descarregadoEm) : ' (em andamento)'}${v.editadoEm ? ' • ✏️ editada' : ''}${v.lancamentoManual ? ' • 🕐 lançamento atrasado' : ''}${typeof Geo !== 'undefined' && v.localInicio ? ' • ' + Geo.chipMapa(v.localInicio, '📍 início') : ''}${typeof Geo !== 'undefined' && v.localFim ? ' ' + Geo.chipMapa(v.localFim, '📍 fim') : ''}</div>
+          <div class="li-sub">${v.motoristaNome} • ${v.equipamentoCodigo} • ${fmtHoraBR(v.inicioEm)}${v.descarregadoEm ? ' → ' + fmtHoraBR(v.descarregadoEm) : ' (em andamento)'}${v.editadoEm ? ' • ✏️ editada' : ''}${v.lancamentoManual ? ' • 🕐 lançamento atrasado' : ''}${typeof Geo !== 'undefined' && v.localInicio ? ' • ' + Geo.chipMapa(v.localInicio, '📍 ' + (v.localInicio.area || 'início')) : ''}${typeof Geo !== 'undefined' && v.localFim ? ' → ' + Geo.chipMapa(v.localFim, '📍 ' + (v.localFim.area || 'fim')) : ''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="v" style="font-family:var(--mono)">${v.tempoTotalMs ? fmtDuracao(v.tempoTotalMs) : '—'}</div>
@@ -921,7 +939,7 @@ async function renderListaViagensDoDia(dia) {
       <div class="list-item" style="opacity:.8;border-style:dashed">
         <div>
           <div class="li-main">🚚 Deslocamento — ${d.origem} → ${d.destino}</div>
-          <div class="li-sub">${d.motivo ? d.motivo + ' • ' : ''}${fmtHoraBR(d.inicioEm)}${d.fimEm ? ' → ' + fmtHoraBR(d.fimEm) : ' (em andamento)'} • não conta como produção${d.lancamentoManual ? ' • 🕐 lançamento atrasado' : ''}${typeof Geo !== 'undefined' && d.localInicio ? ' • ' + Geo.chipMapa(d.localInicio, '📍 início') : ''}${typeof Geo !== 'undefined' && d.localFim ? ' ' + Geo.chipMapa(d.localFim, '📍 fim') : ''}</div>
+          <div class="li-sub">${d.motivo ? d.motivo + ' • ' : ''}${fmtHoraBR(d.inicioEm)}${d.fimEm ? ' → ' + fmtHoraBR(d.fimEm) : ' (em andamento)'} • não conta como produção${d.lancamentoManual ? ' • 🕐 lançamento atrasado' : ''}${typeof Geo !== 'undefined' && d.localInicio ? ' • ' + Geo.chipMapa(d.localInicio, '📍 ' + (d.localInicio.area || 'início')) : ''}${typeof Geo !== 'undefined' && d.localFim ? ' → ' + Geo.chipMapa(d.localFim, '📍 ' + (d.localFim.area || 'fim')) : ''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="v" style="font-family:var(--mono)">${d.tempoTotalMs ? fmtDuracao(d.tempoTotalMs) : '—'}</div>

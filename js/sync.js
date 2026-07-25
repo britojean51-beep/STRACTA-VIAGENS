@@ -177,6 +177,7 @@ const Sync = {
     manutencao: 'manutencoes',
     checklist: 'checklists',
     localizacao: 'localizacoes',
+    area: 'areas',
     log: 'logs'
   },
 

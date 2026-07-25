@@ -5,7 +5,7 @@
    atualização em segundo plano quando há conexão.
    ══════════════════════════════════════════════════════════ */
 
-const CACHE_VERSION = 'stracta-viagens-v33-regras-motorista';
+const CACHE_VERSION = 'stracta-viagens-v34-areas-poligonos';
 
 const APP_SHELL = [
   './',
@@ -36,6 +36,7 @@ const APP_SHELL = [
   './js/diagnostico.js',
   './js/rastreamento.js',
   './js/mapa.js',
+  './js/areas.js',
   './js/app.js',
   './icons/icon-192.png',
   './icons/icon-512.png'
