@@ -51,10 +51,12 @@
       <div class="atalho" onclick="navigate('frota')"><span class="ic">🚛</span><span class="lb">Frota</span></div>
       <div class="atalho" onclick="navigate('painel')"><span class="ic">📊</span><span class="lb">Painel</span></div>
     </div>
-    <button class="btn btn-ghost mt24" onclick="enviarMinhaLocalizacaoUI()">📍 Enviar minha localização</button>
-    <button class="btn btn-ghost" id="btn-mapa-vivo" onclick="navigate('mapa')" style="display:none">🗺️ Mapa ao vivo</button>
-    <button class="btn btn-ghost" onclick="navigate('config')">⚙️ Configurações e Sincronização</button>
-    <button class="btn btn-ghost" onclick="fazerLogout()">🚪 Sair</button>
+    <div class="card menu-lista mt24">
+      <button class="menu-item" onclick="enviarMinhaLocalizacaoUI()"><span class="mi-ic">📍</span><span class="mi-lb">Enviar minha localização</span><span class="mi-ar">›</span></button>
+      <button class="menu-item" id="btn-mapa-vivo" onclick="navigate('mapa')" style="display:none"><span class="mi-ic">🗺️</span><span class="mi-lb">Mapa ao vivo</span><span class="mi-ar">›</span></button>
+      <button class="menu-item" onclick="navigate('config')"><span class="mi-ic">⚙️</span><span class="mi-lb">Configurações e Sincronização</span><span class="mi-ar">›</span></button>
+      <button class="menu-item menu-sair" onclick="fazerLogout()"><span class="mi-ic">🚪</span><span class="mi-lb">Sair</span><span class="mi-ar">›</span></button>
+    </div>
   </div>
 
   <!-- ═══ INICIAR TURNO ═══ -->

@@ -5,7 +5,7 @@
    atualização em segundo plano quando há conexão.
    ══════════════════════════════════════════════════════════ */
 
-const CACHE_VERSION = 'stracta-viagens-v29-mapa-tempo-real';
+const CACHE_VERSION = 'stracta-viagens-v30-home-menu';
 
 const APP_SHELL = [
   './',

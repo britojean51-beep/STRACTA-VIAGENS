@@ -269,6 +269,23 @@ h1.page-title {
 .atalho .ic { font-size: 26px; margin-bottom: 8px; display: block; }
 .atalho .lb { font-size: 12.5px; font-weight: 600; }
 
+/* ---------- MENU DE AÇÕES (HOME) ---------- */
+.menu-lista { padding: 0; overflow: hidden; }
+.menu-item {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 15px 16px; background: transparent; border: none;
+  border-bottom: 1px solid var(--border); color: var(--white);
+  font-family: var(--body); font-size: 14.5px; font-weight: 500;
+  cursor: pointer; text-align: left;
+}
+.menu-item:last-child { border-bottom: none; }
+.menu-item:active { background: var(--surface2); }
+.menu-item .mi-ic { font-size: 18px; width: 22px; text-align: center; flex-shrink: 0; }
+.menu-item .mi-lb { flex: 1; }
+.menu-item .mi-ar { color: var(--label); font-size: 18px; font-weight: 400; }
+.menu-item.menu-sair { color: var(--iron); }
+.menu-item.menu-sair .mi-ar { color: var(--iron); }
+
 /* ---------- NAV INFERIOR ---------- */
 .bottom-nav {
   position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
