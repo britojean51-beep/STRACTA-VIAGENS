@@ -5,7 +5,7 @@
    atualização em segundo plano quando há conexão.
    ══════════════════════════════════════════════════════════ */
 
-const CACHE_VERSION = 'stracta-viagens-v30-home-menu';
+const CACHE_VERSION = 'stracta-viagens-v31-rede-primeiro';
 
 const APP_SHELL = [
   './',
@@ -62,18 +62,27 @@ self.addEventListener('fetch', (event) => {
   // essas devem ir direto para a rede, e falhar normalmente se offline.
   if (req.method !== 'GET') return;
 
-  event.respondWith(
-    caches.match(req).then((cached) => {
-      const redeFetch = fetch(req).then((resp) => {
-        if (resp && resp.ok && req.url.startsWith(self.location.origin)) {
-          const clone = resp.clone();
-          caches.open(CACHE_VERSION).then((cache) => cache.put(req, clone));
-        }
-        return resp;
-      }).catch(() => cached);
+  // Recursos externos (mapa/Leaflet, Firebase, xlsx): cache primeiro, senão rede.
+  if (!req.url.startsWith(self.location.origin)) {
+    event.respondWith(caches.match(req).then((cached) => cached || fetch(req)));
+    return;
+  }
 
-      // cache-first: responde rápido do cache, mas atualiza em segundo plano
-      return cached || redeFetch;
-    })
+  // Arquivos do próprio app (HTML/CSS/JS/ícones): REDE PRIMEIRO.
+  // Assim, quem está online sempre recebe a versão mais nova na hora
+  // (sem ficar preso a um CSS/JS antigo em cache). O cache serve só de
+  // reserva para quando o aparelho está offline.
+  event.respondWith(
+    fetch(req).then((resp) => {
+      if (resp && resp.ok) {
+        const clone = resp.clone();
+        caches.open(CACHE_VERSION).then((cache) => cache.put(req, clone));
+      }
+      return resp;
+    }).catch(() =>
+      caches.match(req).then((cached) =>
+        cached || (req.mode === 'navigate' ? caches.match('./index.html') : undefined)
+      )
+    )
   );
 });
