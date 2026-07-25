@@ -26,8 +26,17 @@ const Auth = {
 
   async login(usuario, senha) {
     const usuarios = await DB.getAll('usuarios');
+    const alvo = String(usuario).trim().toLowerCase();
+    const senhaTrim = String(senha).trim();
+    // Aceita entrar tanto pelo login (usuario) quanto pelo nome, sem diferenciar
+    // maiúsculas e ignorando espaços acidentais na senha. Guarda contra registros
+    // malformados (sem usuario/nome/senha) para não travar a busca.
     const encontrado = usuarios.find(u =>
-      u.usuario.toLowerCase() === String(usuario).toLowerCase() && u.senha === senha
+      (
+        (u.usuario || '').trim().toLowerCase() === alvo ||
+        (u.nome || '').trim().toLowerCase() === alvo
+      ) &&
+      String(u.senha || '').trim() === senhaTrim
     );
     if (!encontrado) return { sucesso: false, erro: 'Usuário ou senha inválidos' };
 
@@ -74,16 +83,16 @@ const Auth = {
   },
 
   async criarUsuario({ usuario, senha, nome, nivel }) {
-    const existentes = await DB.getAll('usuarios');
-    const jaExiste = existentes.find(u => u.usuario.toLowerCase() === String(usuario).toLowerCase());
-    if (jaExiste) return { sucesso: false, erro: 'Já existe um usuário com esse login' };
     if (!usuario || !senha || !nome) return { sucesso: false, erro: 'Preencha usuário, senha e nome' };
+    const existentes = await DB.getAll('usuarios');
+    const jaExiste = existentes.find(u => (u.usuario || '').trim().toLowerCase() === String(usuario).trim().toLowerCase());
+    if (jaExiste) return { sucesso: false, erro: 'Já existe um usuário com esse login' };
 
     const novo = {
       id: gerarId('user'),
       tipo: 'usuario',
       usuario: usuario.trim(),
-      senha,
+      senha: String(senha).trim(),
       nome: nome.trim(),
       nivel: nivel || 'Motorista',
       criadoEm: agoraISO()
@@ -102,6 +111,7 @@ const Auth = {
   },
 
   async resetarSenha(id, novaSenha) {
+    novaSenha = String(novaSenha || '').trim();
     if (!novaSenha || novaSenha.length < 4) return { sucesso: false, erro: 'A senha precisa ter pelo menos 4 caracteres' };
     const usuario = await DB.get('usuarios', id);
     if (!usuario) return { sucesso: false, erro: 'Usuário não encontrado' };
