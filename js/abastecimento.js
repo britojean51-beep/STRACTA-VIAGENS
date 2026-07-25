@@ -27,6 +27,7 @@ const Abastecimento = {
     }
 
     await Sync.enfileirar('abastecimento', registro);
+    if (typeof Geo !== 'undefined') Geo.anexarLocal('abastecimentos', registro.id, 'local', 'abastecimento');
     return registro;
   },
 

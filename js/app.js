@@ -263,6 +263,50 @@ async function renderHome() {
   }
 }
 
+// ---------- ENVIAR MINHA LOCALIZAÇÃO ("estou aqui") ----------
+// Captura a posição atual do motorista e registra um ponto avulso,
+// que sincroniza para a nuvem e fica disponível para a gestão.
+async function enviarMinhaLocalizacaoUI() {
+  if (typeof Geo === 'undefined' || !Geo.disponivel()) {
+    showToast('GPS não disponível neste aparelho', 'var(--iron)');
+    return;
+  }
+  showToast('📍 Obtendo sua localização...', 'var(--amber)', 4000);
+  const pos = await Geo.capturar({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  if (!Geo.ehValida(pos)) {
+    showToast(`❌ ${pos.mensagem || 'Não foi possível obter a localização'}`, 'var(--iron)', 4500);
+    return;
+  }
+  abrirModalFormulario({
+    titulo: '📍 Enviar localização',
+    subtitulo: `Posição obtida: ${Geo.formatar(pos)}`,
+    campos: [{ id: 'motivo', label: 'Motivo / observação (opcional)', placeholder: 'Ex: parado, quebra, estou aqui...' }],
+    textoSalvar: 'Enviar',
+    aoSalvar: async ({ motivo }) => {
+      const u = Auth.usuarioAtual();
+      const t = _turnoAtivoCache || await Motorista.turnoAtivo();
+      const registro = {
+        id: gerarId('local'),
+        tipo: 'localizacao',
+        motoristaId: u ? u.id : null,
+        motoristaNome: u ? u.nome : null,
+        equipamentoId: t ? t.equipamentoId : null,
+        equipamentoCodigo: t ? t.equipamentoCodigo : null,
+        turnoId: t ? t.id : null,
+        lat: pos.lat,
+        lng: pos.lng,
+        precisao: pos.precisao,
+        motivo: motivo || '',
+        dia: todayKey(),
+        criadoEm: agoraISO()
+      };
+      await DB.put('localizacoes', registro);
+      if (typeof Sync !== 'undefined') Sync.enfileirar('localizacao', registro);
+      showToast('✅ Localização enviada!', 'var(--green)');
+    }
+  });
+}
+
 // ---------- INICIAR TURNO ----------
 async function renderTurno() {
   const u = Auth.usuarioAtual();
@@ -823,7 +867,7 @@ async function renderListaViagensDoDia(dia) {
       <div class="list-item">
         <div>
           <div class="li-main">${v.rotaNome}</div>
-          <div class="li-sub">${v.motoristaNome} • ${v.equipamentoCodigo} • ${fmtHoraBR(v.inicioEm)}${v.descarregadoEm ? ' → ' + fmtHoraBR(v.descarregadoEm) : ' (em andamento)'}${v.editadoEm ? ' • ✏️ editada' : ''}${v.lancamentoManual ? ' • 🕐 lançamento atrasado' : ''}</div>
+          <div class="li-sub">${v.motoristaNome} • ${v.equipamentoCodigo} • ${fmtHoraBR(v.inicioEm)}${v.descarregadoEm ? ' → ' + fmtHoraBR(v.descarregadoEm) : ' (em andamento)'}${v.editadoEm ? ' • ✏️ editada' : ''}${v.lancamentoManual ? ' • 🕐 lançamento atrasado' : ''}${typeof Geo !== 'undefined' && v.localInicio ? ' • ' + Geo.chipMapa(v.localInicio, '📍 início') : ''}${typeof Geo !== 'undefined' && v.localFim ? ' ' + Geo.chipMapa(v.localFim, '📍 fim') : ''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="v" style="font-family:var(--mono)">${v.tempoTotalMs ? fmtDuracao(v.tempoTotalMs) : '—'}</div>
@@ -837,7 +881,7 @@ async function renderListaViagensDoDia(dia) {
       <div class="list-item" style="opacity:.8;border-style:dashed">
         <div>
           <div class="li-main">🚚 Deslocamento — ${d.origem} → ${d.destino}</div>
-          <div class="li-sub">${d.motivo ? d.motivo + ' • ' : ''}${fmtHoraBR(d.inicioEm)}${d.fimEm ? ' → ' + fmtHoraBR(d.fimEm) : ' (em andamento)'} • não conta como produção${d.lancamentoManual ? ' • 🕐 lançamento atrasado' : ''}</div>
+          <div class="li-sub">${d.motivo ? d.motivo + ' • ' : ''}${fmtHoraBR(d.inicioEm)}${d.fimEm ? ' → ' + fmtHoraBR(d.fimEm) : ' (em andamento)'} • não conta como produção${d.lancamentoManual ? ' • 🕐 lançamento atrasado' : ''}${typeof Geo !== 'undefined' && d.localInicio ? ' • ' + Geo.chipMapa(d.localInicio, '📍 início') : ''}${typeof Geo !== 'undefined' && d.localFim ? ' ' + Geo.chipMapa(d.localFim, '📍 fim') : ''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="v" style="font-family:var(--mono)">${d.tempoTotalMs ? fmtDuracao(d.tempoTotalMs) : '—'}</div>

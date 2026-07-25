@@ -2,12 +2,12 @@
    STRACTA VIAGENS — db.js
    Banco de dados 100% offline usando IndexedDB.
    Stores: motoristas, equipamentos, rotas, viagens, deslocamentos,
-           abastecimentos, lubrificacoes, turnos, configuracoes,
-           usuarios, syncQueue
+           abastecimentos, lubrificacoes, turnos, localizacoes,
+           configuracoes, usuarios, syncQueue
    ══════════════════════════════════════════════════════════ */
 
 const DB_NAME = 'stracta_viagens_db';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 const STORES = [
   { name: 'usuarios',        keyPath: 'id', indexes: [['usuario', 'usuario', { unique: true }]] },
@@ -23,6 +23,7 @@ const STORES = [
   { name: 'manutencoes',     keyPath: 'id', indexes: [['equipamentoId', 'equipamentoId', {}]] },
   { name: 'logs',            keyPath: 'id', indexes: [['criadoEm', 'criadoEm', {}], ['evento', 'evento', {}]] },
   { name: 'turnos',          keyPath: 'id', indexes: [['status', 'status', {}], ['motoristaId', 'motoristaId', {}]] },
+  { name: 'localizacoes',    keyPath: 'id', indexes: [['dia', 'dia', {}], ['motoristaId', 'motoristaId', {}], ['turnoId', 'turnoId', {}]] },
   { name: 'configuracoes',   keyPath: 'chave' },
   { name: 'syncQueue',       keyPath: 'id', indexes: [['status', 'status', {}]] }
 ];

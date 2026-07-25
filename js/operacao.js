@@ -149,6 +149,8 @@ const Operacao = {
       tempoTotalMs: null
     };
     await DB.put('viagens', viagem);
+    // marca (em segundo plano) onde a viagem começou — não trava o início
+    if (typeof Geo !== 'undefined') Geo.anexarLocal('viagens', viagem.id, 'localInicio', 'viagem');
     return viagem;
   },
 
@@ -161,6 +163,8 @@ const Operacao = {
     viagem.tempoTotalMs = new Date(viagem.descarregadoEm) - new Date(viagem.inicioEm);
     await DB.put('viagens', viagem);
     await Sync.enfileirar('viagem', viagem);
+    // marca (em segundo plano) onde a viagem foi descarregada
+    if (typeof Geo !== 'undefined') Geo.anexarLocal('viagens', viagem.id, 'localFim', 'viagem');
     return viagem;
   },
 
@@ -199,6 +203,7 @@ const Operacao = {
       dia: todayKey()
     };
     await DB.put('deslocamentos', deslocamento);
+    if (typeof Geo !== 'undefined') Geo.anexarLocal('deslocamentos', deslocamento.id, 'localInicio', 'deslocamento');
     return deslocamento;
   },
 
@@ -209,6 +214,7 @@ const Operacao = {
     d.tempoTotalMs = new Date(d.fimEm) - new Date(d.inicioEm);
     await DB.put('deslocamentos', d);
     await Sync.enfileirar('deslocamento', d);
+    if (typeof Geo !== 'undefined') Geo.anexarLocal('deslocamentos', d.id, 'localFim', 'deslocamento');
     return d;
   },
 

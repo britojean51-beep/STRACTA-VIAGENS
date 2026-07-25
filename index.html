@@ -49,7 +49,8 @@
       <div class="atalho" onclick="navigate('frota')"><span class="ic">🚛</span><span class="lb">Frota</span></div>
       <div class="atalho" onclick="navigate('painel')"><span class="ic">📊</span><span class="lb">Painel</span></div>
     </div>
-    <button class="btn btn-ghost mt24" onclick="navigate('config')">⚙️ Configurações e Sincronização</button>
+    <button class="btn btn-ghost mt24" onclick="enviarMinhaLocalizacaoUI()">📍 Enviar minha localização</button>
+    <button class="btn btn-ghost" onclick="navigate('config')">⚙️ Configurações e Sincronização</button>
     <button class="btn btn-ghost" onclick="fazerLogout()">🚪 Sair</button>
   </div>
 
@@ -278,6 +279,7 @@
 <script src="./js/version.js"></script>
 <script src="./js/firebase-sync.js"></script>
 <script src="./js/sync.js"></script>
+<script src="./js/geo.js"></script>
 <script src="./js/log.js"></script>
 <script src="./js/auth.js"></script>
 <script src="./js/permissoes.js"></script>

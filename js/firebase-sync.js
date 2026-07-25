@@ -28,6 +28,7 @@ const FirebaseSync = {
     rotaDeslocamento: 'rotasDeslocamento',
     manutencao: 'manutencoes',
     checklist: 'checklists',
+    localizacao: 'localizacoes',
     log: 'logs'
   },
 

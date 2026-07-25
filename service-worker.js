@@ -5,7 +5,7 @@
    atualização em segundo plano quando há conexão.
    ══════════════════════════════════════════════════════════ */
 
-const CACHE_VERSION = 'stracta-viagens-v27-checklist-ok';
+const CACHE_VERSION = 'stracta-viagens-v28-geolocalizacao';
 
 const APP_SHELL = [
   './',
@@ -18,6 +18,7 @@ const APP_SHELL = [
   './js/version.js',
   './js/firebase-sync.js',
   './js/sync.js',
+  './js/geo.js',
   './js/log.js',
   './js/auth.js',
   './js/permissoes.js',

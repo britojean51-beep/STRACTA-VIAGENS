@@ -52,6 +52,7 @@ const Motorista = {
     await Equipamentos.atualizarKmHorimetro(equipamentoId, kmInicial, horimetroInicial);
     localStorage.setItem(TURNO_ATIVO_CHAVE, turno.id);
     await Sync.enfileirar('turno', turno);
+    if (typeof Geo !== 'undefined') Geo.anexarLocal('turnos', turno.id, 'localInicio', 'turno');
     return turno;
   },
 
@@ -68,6 +69,7 @@ const Motorista = {
     }
     localStorage.removeItem(TURNO_ATIVO_CHAVE);
     await Sync.enfileirar('turno', turno);
+    if (typeof Geo !== 'undefined') Geo.anexarLocal('turnos', turno.id, 'localFim', 'turno');
     return turno;
   },
 

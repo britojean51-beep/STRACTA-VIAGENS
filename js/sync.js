@@ -176,6 +176,7 @@ const Sync = {
     rotaDeslocamento: 'rotasDeslocamento',
     manutencao: 'manutencoes',
     checklist: 'checklists',
+    localizacao: 'localizacoes',
     log: 'logs'
   },
 
