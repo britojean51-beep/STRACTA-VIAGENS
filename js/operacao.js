@@ -383,6 +383,26 @@ const Operacao = {
     return todas.filter(p => p.dia === dia);
   },
 
+  // ---------- MELHOR TEMPO (RECORDE) POR TRAJETO ----------
+  // Menor tempoTotalMs entre as viagens concluídas da rota, excluindo a atual.
+  async melhorTempoRota(rotaId, exclId) {
+    if (!rotaId) return 0;
+    const viagens = (await DB.getByIndex('viagens', 'rotaId', rotaId))
+      .filter(v => v.status === 'concluida' && v.id !== exclId && v.tempoTotalMs > 0);
+    if (!viagens.length) return 0;
+    return Math.min(...viagens.map(v => v.tempoTotalMs));
+  },
+
+  // Menor tempoTotalMs entre os deslocamentos finalizados com a mesma origem→destino.
+  async melhorTempoDeslocamento(origem, destino, exclId) {
+    const todos = (await DB.getAll('deslocamentos')).filter(d =>
+      d.fimEm && d.id !== exclId && d.tempoTotalMs > 0 &&
+      (d.origem || '') === (origem || '') && (d.destino || '') === (destino || '')
+    );
+    if (!todos.length) return 0;
+    return Math.min(...todos.map(d => d.tempoTotalMs));
+  },
+
   async deslocamentosDoDia(dia = todayKey()) {
     const todos = await DB.getAll('deslocamentos');
     return todos.filter(d => d.dia === dia).sort((a, b) => new Date(b.inicioEm) - new Date(a.inicioEm));

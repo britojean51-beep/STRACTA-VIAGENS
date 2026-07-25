@@ -5,7 +5,7 @@
    atualização em segundo plano quando há conexão.
    ══════════════════════════════════════════════════════════ */
 
-const CACHE_VERSION = 'stracta-viagens-v39-hub-paradas';
+const CACHE_VERSION = 'stracta-viagens-v40-recorde-trajeto';
 
 const APP_SHELL = [
   './',

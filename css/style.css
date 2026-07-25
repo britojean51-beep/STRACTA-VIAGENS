@@ -322,6 +322,7 @@ h1.page-title {
 /* cronômetro da parada em andamento */
 .parada-digits { font-family: var(--mono); font-weight: 700; font-size: 30px; margin: 8px 0 2px; }
 .parada-atraso { color: var(--iron); }
+.timer-digits.over { color: var(--iron); }
 
 /* ---------- NAV INFERIOR ---------- */
 .bottom-nav {

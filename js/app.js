@@ -695,14 +695,17 @@ function renderTimerViagem(viagem) {
     const stats = await referenciaPromise;
     const referenciaMs = stats.tempoMedioMs || (20 * 60 * 1000);
     const decorridoMs = Date.now() - new Date(viagem.inicioEm).getTime();
-    qs('#timer-digits').textContent = fmtDuracao(decorridoMs);
+    const digits = qs('#timer-digits');
+    digits.textContent = fmtDuracao(decorridoMs);
+    const excedeu = stats.tempoMedioMs > 0 && decorridoMs > referenciaMs;
+    digits.classList.toggle('over', excedeu);
     const fracao = Math.min(decorridoMs / referenciaMs, 1);
     const offset = circ * (1 - fracao);
     const circle = qs('#timer-circle');
     if (circle) {
       circle.style.strokeDasharray = circ;
       circle.style.strokeDashoffset = offset;
-      circle.classList.toggle('over', decorridoMs > referenciaMs);
+      circle.classList.toggle('over', excedeu);
     }
   };
   atualizar();
@@ -719,6 +722,21 @@ async function iniciarViagemUI(rotaId) {
     rotaId: rota.id, rotaNome: rota.nome
   });
   renderOperacao();
+}
+
+// Compara o tempo atual com o recorde (menor tempo) do trajeto e devolve
+// a mensagem/cor de feedback (recompensa ou aviso). Null nunca — sempre retorna algo.
+function _feedbackRecorde(atualMs, recordeMs) {
+  if (!recordeMs || recordeMs <= 0) {
+    return { msg: `⏱️ Primeiro tempo neste trajeto: ${fmtDuracao(atualMs)}`, cor: 'var(--blue)', dur: 4000 };
+  }
+  if (atualMs < recordeMs) {
+    return { msg: `🏆 Novo recorde! ${fmtDuracao(recordeMs - atualMs)} abaixo do melhor tempo`, cor: 'var(--green)', dur: 5000 };
+  }
+  if (atualMs > recordeMs) {
+    return { msg: `🔴 ${fmtDuracao(atualMs - recordeMs)} acima do melhor tempo (${fmtDuracao(recordeMs)})`, cor: 'var(--iron)', dur: 4500 };
+  }
+  return { msg: '🎯 Empatou o melhor tempo!', cor: 'var(--green)', dur: 4000 };
 }
 
 // Captura a posição atual e já identifica (offline) a área em que ela cai.
@@ -776,6 +794,10 @@ async function descarregarUI(viagemId) {
   _ultimaViagemConcluidaId = viagem.id;
   showToast(`✅ Viagem concluída — ${fmtDuracao(viagem.tempoTotalMs)}`);
   clearInterval(_viagemTimerHandle);
+  // recompensa/aviso comparando com o melhor tempo (recorde) do trajeto
+  const recorde = await Operacao.melhorTempoRota(viagem.rotaId, viagem.id);
+  const fb = _feedbackRecorde(viagem.tempoTotalMs, recorde);
+  setTimeout(() => showToast(fb.msg, fb.cor, fb.dur), 400);
   // Caminhão vazio → volta ao hub (paradas / deslocamentos / nova viagem)
   renderOperacao();
 }
@@ -1010,6 +1032,10 @@ async function finalizarDeslocamentoUI(id) {
   }
   clearInterval(_viagemTimerHandle);
   showToast(`✅ Deslocamento finalizado — ${fmtDuracao(d.tempoTotalMs)}`);
+  // recompensa/aviso comparando com o melhor tempo (recorde) do mesmo trajeto
+  const recorde = await Operacao.melhorTempoDeslocamento(d.origem, d.destino, d.id);
+  const fb = _feedbackRecorde(d.tempoTotalMs, recorde);
+  setTimeout(() => showToast(fb.msg, fb.cor, fb.dur), 400);
   // Caminhão vazio → volta ao hub (paradas / deslocamentos / nova viagem)
   renderOperacao();
 }
