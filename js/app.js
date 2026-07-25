@@ -6,6 +6,7 @@
 
 let _turnoAtivoCache = null;
 let _viagemTimerHandle = null;
+let _paradaTimerHandle = null;
 let _ultimaViagemConcluidaId = null;
 let _equipamentoSelecionadoId = null;
 
@@ -161,6 +162,7 @@ async function navigate(tela) {
   if (bottomNav) bottomNav.style.display = (tela === 'login') ? 'none' : 'flex';
 
   if (_viagemTimerHandle && tela !== 'operacao') { clearInterval(_viagemTimerHandle); _viagemTimerHandle = null; }
+  if (_paradaTimerHandle && tela !== 'operacao') { clearInterval(_paradaTimerHandle); _paradaTimerHandle = null; }
   if (typeof Mapa !== 'undefined' && tela !== 'mapa') Mapa.fechar();
   if (typeof Areas !== 'undefined' && tela !== 'areas') Areas.fechar();
 
@@ -520,17 +522,30 @@ async function renderOperacao() {
   const gestaoRotas = Permissoes.podeGerenciarRotas();
   const podeAtrasado = Permissoes.podeLancarAtrasado();
   const totalAreas = (await DB.getAll('areas')).length;
+  const paradaAtiva = await Operacao.paradaEmAndamento(_turnoAtivoCache.id);
+  const paradasBtns = (typeof TIPOS_PARADA !== 'undefined' ? TIPOS_PARADA : []).map(tp =>
+    `<button class="btn btn-outline" onclick="iniciarParadaUI('${tp.subtipo}')">${tp.icone} ${tp.nome}${tp.min != null ? ` (${tp.min} min)` : ''}</button>`
+  ).join('');
 
   area.innerHTML = `
     <div class="card op-hero">
       <div class="op-hero-equip">🚛 ${_turnoAtivoCache.equipamentoCodigo || 'Equipamento'}</div>
-      <div class="text-label" style="font-size:12.5px;margin:2px 0 14px">Origem e destino identificados automaticamente pelo GPS.</div>
-      <button class="btn btn-primary btn-hero" onclick="iniciarViagemAutoUI()">🚀 Iniciar Viagem</button>
-      <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI()">🚚 Iniciar Deslocamento</button>
       ${totalAreas === 0 ? `<div class="op-aviso">⚠️ Nenhuma área definida ainda — as rotas sairão como "Local não identificado".</div>` : ''}
     </div>
 
-    <button class="btn btn-ghost mt8" id="btn-rotas-manuais" onclick="toggleRotasManuais()">🗺️ Escolher rota manualmente ▾</button>
+    <div id="parada-ativa-box"></div>
+
+    <div class="card-title mt16">⏱️ Paradas</div>
+    <div class="hub-grupo">${paradasBtns}</div>
+
+    <div class="card-title mt16">🚛 Caminhão vazio</div>
+    <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI('Carregamento')">🚚 Deslocamento para carregamento</button>
+    <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI('Oficina')">🔧 Deslocamento para oficina</button>
+
+    <div class="card-title mt16">📦 Carregado</div>
+    <button class="btn btn-primary btn-hero" onclick="iniciarViagemAutoUI()">🚀 Iniciar viagem</button>
+
+    <button class="btn btn-ghost mt16" id="btn-rotas-manuais" onclick="toggleRotasManuais()">🗺️ Escolher rota manualmente ▾</button>
     <div id="rotas-manuais" class="hidden">
       ${gestaoRotas ? `<button class="btn btn-outline mt8" onclick="abrirNovaRota()">➕ Cadastrar Rota</button>` : ''}
       ${podeAtrasado ? `<button class="btn btn-ghost" onclick="abrirLancamentoAtrasadoUI()">🕐 Lançar Rota Atrasada</button>` : ''}
@@ -575,6 +590,70 @@ async function renderOperacao() {
     }).join('') : `<div class="empty-state"><span class="emoji">🚚</span>Nenhuma rota de deslocamento cadastrada ainda.</div>`}
     </div>
   `;
+
+  _renderParadaAtiva(paradaAtiva);
+}
+
+// Cronômetro da parada em andamento, no topo do hub. Mostra atraso se passar do previsto.
+function _renderParadaAtiva(parada) {
+  clearInterval(_paradaTimerHandle);
+  const box = qs('#parada-ativa-box');
+  if (!box) return;
+  if (!parada) { box.innerHTML = ''; return; }
+  const previstoMs = parada.tempoPrevistoMin != null ? parada.tempoPrevistoMin * 60000 : null;
+  box.innerHTML = `
+    <div class="card text-center">
+      <div class="card-title">${parada.nome} — em andamento</div>
+      <div class="parada-digits" id="parada-digits">00:00</div>
+      <div class="text-label" id="parada-info">${previstoMs != null ? 'previsto ' + fmtDuracao(previstoMs) : 'sem tempo definido'}</div>
+      <button class="btn btn-danger mt8" onclick="encerrarParadaUI('${parada.id}')">⏹️ Encerrar parada</button>
+    </div>`;
+  const atualizar = () => {
+    const el = qs('#parada-digits');
+    if (!el) { clearInterval(_paradaTimerHandle); return; }
+    const decorrido = Date.now() - new Date(parada.inicioEm).getTime();
+    el.textContent = fmtDuracao(decorrido);
+    if (previstoMs != null) {
+      const over = decorrido - previstoMs;
+      const info = qs('#parada-info');
+      if (over > 0) {
+        el.classList.add('parada-atraso');
+        if (info) info.innerHTML = `<span class="parada-atraso">⚠️ Atraso +${fmtDuracao(over)}</span>`;
+      } else {
+        el.classList.remove('parada-atraso');
+        if (info) info.textContent = `previsto ${fmtDuracao(previstoMs)}`;
+      }
+    }
+  };
+  atualizar();
+  _paradaTimerHandle = setInterval(atualizar, 1000);
+}
+
+async function iniciarParadaUI(subtipo) {
+  const t = _turnoAtivoCache;
+  if (!t) { showToast('Inicie um turno primeiro', 'var(--iron)'); return; }
+  const u = Auth.usuarioAtual();
+  const ativa = await Operacao.paradaEmAndamento(t.id);
+  if (ativa) await Operacao.finalizarParada(ativa.id); // só uma parada por vez
+  await Operacao.iniciarParada({
+    turnoId: t.id, motoristaId: u.id, motoristaNome: u.nome,
+    equipamentoId: t.equipamentoId, equipamentoCodigo: t.equipamentoCodigo, subtipo
+  });
+  renderOperacao();
+}
+
+async function encerrarParadaUI(id) {
+  const p = await Operacao.finalizarParada(id);
+  clearInterval(_paradaTimerHandle);
+  if (p) showToast(`⏹️ ${p.nome} — ${fmtDuracao(p.tempoTotalMs)}${p.atrasoMs > 0 ? ' (atraso +' + fmtDuracao(p.atrasoMs) + ')' : ''}`);
+  renderOperacao();
+}
+
+// Finaliza a parada ativa (se houver) ao iniciar uma viagem/deslocamento.
+async function _finalizarParadaSePreciso() {
+  if (!_turnoAtivoCache) return;
+  const ativa = await Operacao.paradaEmAndamento(_turnoAtivoCache.id);
+  if (ativa) { await Operacao.finalizarParada(ativa.id); clearInterval(_paradaTimerHandle); }
 }
 
 // Mostra/esconde a seção de rotas manuais (plano B — o padrão é a rota automática por GPS)
@@ -656,6 +735,7 @@ async function _capturarLocalAtual() {
 async function iniciarViagemAutoUI() {
   const t = _turnoAtivoCache;
   if (!t) { showToast('Inicie um turno primeiro', 'var(--iron)'); return; }
+  await _finalizarParadaSePreciso();
   const u = Auth.usuarioAtual();
   showToast('📍 Obtendo localização de origem...', 'var(--amber)', 4000);
   const pos = await _capturarLocalAtual();
@@ -669,17 +749,18 @@ async function iniciarViagemAutoUI() {
   renderOperacao();
 }
 
-async function iniciarDeslocamentoAutoUI() {
+async function iniciarDeslocamentoAutoUI(motivo) {
   const t = _turnoAtivoCache;
   if (!t) { showToast('Inicie um turno primeiro', 'var(--iron)'); return; }
+  await _finalizarParadaSePreciso();
   showToast('📍 Obtendo localização de origem...', 'var(--amber)', 4000);
   const pos = await _capturarLocalAtual();
   if (!pos) showToast('Sem GPS agora — o deslocamento inicia sem origem identificada', 'var(--iron)', 3500);
   const d = await Operacao.iniciarDeslocamentoAutomatico({
-    turnoId: t.id, motoristaId: t.motoristaId, equipamentoId: t.equipamentoId, posInicio: pos
+    turnoId: t.id, motoristaId: t.motoristaId, equipamentoId: t.equipamentoId, posInicio: pos, motivo: motivo || ''
   });
   showToast(pos && pos.area ? `🚚 Deslocamento iniciado em ${pos.area}` : '🚚 Deslocamento iniciado');
-  renderTimerDeslocamento(d, d.origem || 'Origem', '…', '');
+  renderTimerDeslocamento(d, d.origem || 'Origem', '…', d.motivo || '');
 }
 
 async function descarregarUI(viagemId) {
@@ -695,38 +776,8 @@ async function descarregarUI(viagemId) {
   _ultimaViagemConcluidaId = viagem.id;
   showToast(`✅ Viagem concluída — ${fmtDuracao(viagem.tempoTotalMs)}`);
   clearInterval(_viagemTimerHandle);
-  const area = qs('#operacao-area');
-
-  if (viagem.automatica) {
-    area.innerHTML = `
-      <div class="card text-center">
-        <div class="card-title">Viagem concluída</div>
-        <div style="font-family:var(--mono);font-size:26px;font-weight:700;margin:8px 0">${fmtDuracao(viagem.tempoTotalMs)}</div>
-        <div class="text-label" style="margin-bottom:14px">${viagem.rotaNome}</div>
-        <div class="btn-row">
-          <button class="btn btn-primary" onclick="iniciarViagemAutoUI()">🚀 Nova Viagem</button>
-          <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI()">🚚 Deslocamento</button>
-        </div>
-        <button class="btn btn-outline mt8" onclick="renderOperacao()">🗺️ Voltar</button>
-      </div>`;
-    return;
-  }
-
-  const rotasDesloc = await Operacao.listarRotasDeslocamento();
-  const favorita = rotasDesloc.find(r => r.favorita && r.status !== 'inativa');
-  area.innerHTML = `
-    <div class="card text-center">
-      <div class="card-title">Viagem concluída</div>
-      <div style="font-family:var(--mono);font-size:26px;font-weight:700;margin:8px 0">${fmtDuracao(viagem.tempoTotalMs)}</div>
-      <div class="text-label" style="margin-bottom:14px">${viagem.rotaNome}</div>
-      <div class="btn-row">
-        <button class="btn btn-primary" onclick="repetirViagemUI('${viagem.id}')">🔁 Repetir Viagem</button>
-        <button class="btn btn-secondary" onclick="renderOperacao()">🗺️ Outra Rota</button>
-      </div>
-      ${favorita
-        ? `<button class="btn btn-outline mt8" onclick="iniciarDeslocamentoUI('${favorita.id}')">🚚 Deslocamento: ${favorita.origem} → ${favorita.destino}</button>`
-        : `<button class="btn btn-outline mt8" onclick="renderOperacao()">🚚 Ver Rotas de Deslocamento</button>`}
-    </div>`;
+  // Caminhão vazio → volta ao hub (paradas / deslocamentos / nova viagem)
+  renderOperacao();
 }
 
 async function repetirViagemUI(viagemId) {
@@ -959,20 +1010,8 @@ async function finalizarDeslocamentoUI(id) {
   }
   clearInterval(_viagemTimerHandle);
   showToast(`✅ Deslocamento finalizado — ${fmtDuracao(d.tempoTotalMs)}`);
-
-  // fica na mesma tela — oferece repetir a última viagem ou escolher outra rota,
-  // sem obrigar o motorista a sair da aba
-  const area = qs('#operacao-area');
-  area.innerHTML = `
-    <div class="card text-center">
-      <div class="card-title">Deslocamento concluído</div>
-      <div style="font-family:var(--mono);font-size:26px;font-weight:700;margin:8px 0">${fmtDuracao(d.tempoTotalMs)}</div>
-      <div class="text-label" style="margin-bottom:14px">${d.origem} → ${d.destino}</div>
-      <div class="btn-row">
-        ${_ultimaViagemConcluidaId ? `<button class="btn btn-primary" onclick="repetirViagemUI('${_ultimaViagemConcluidaId}')">🔁 Repetir Viagem</button>` : ''}
-        <button class="btn btn-secondary" onclick="renderOperacao()">🗺️ Outra Rota</button>
-      </div>
-    </div>`;
+  // Caminhão vazio → volta ao hub (paradas / deslocamentos / nova viagem)
+  renderOperacao();
 }
 
 async function cancelarDeslocamentoUI(id) {
@@ -1440,6 +1479,7 @@ async function renderPainel() {
       <div class="row-kv"><span class="k">Deslocamentos</span><span class="v">${r.totalDeslocamentos}</span></div>
       <div class="row-kv"><span class="k">Tempo em deslocamento</span><span class="v">${fmtDuracao(r.tempoDeslocamentoMs)}</span></div>
       <div class="row-kv"><span class="k">Tempo parado</span><span class="v text-amber">${fmtDuracao(r.tempoParadoMs)}</span></div>
+      <div class="row-kv"><span class="k">Paradas registradas</span><span class="v">${r.totalParadas || 0} • ${fmtDuracao(r.tempoParadasMs || 0)}</span></div>
       <div class="row-kv"><span class="k">Abastecimentos (litros)</span><span class="v">${r.totalLitros} L</span></div>
       <div class="row-kv"><span class="k">Lubrificações</span><span class="v">${r.totalLubrificacoes}</span></div>
       <div class="row-kv"><span class="k">Equipamentos ativos</span><span class="v">${r.equipamentosAtivos}/${r.equipamentosTotal}</span></div>

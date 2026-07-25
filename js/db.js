@@ -7,7 +7,7 @@
    ══════════════════════════════════════════════════════════ */
 
 const DB_NAME = 'stracta_viagens_db';
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 
 const STORES = [
   { name: 'usuarios',        keyPath: 'id', indexes: [['usuario', 'usuario', { unique: true }]] },
@@ -25,6 +25,7 @@ const STORES = [
   { name: 'turnos',          keyPath: 'id', indexes: [['status', 'status', {}], ['motoristaId', 'motoristaId', {}]] },
   { name: 'localizacoes',    keyPath: 'id', indexes: [['dia', 'dia', {}], ['motoristaId', 'motoristaId', {}], ['turnoId', 'turnoId', {}]] },
   { name: 'areas',           keyPath: 'id', indexes: [['codigo', 'codigo', {}]] },
+  { name: 'paradas',         keyPath: 'id', indexes: [['dia', 'dia', {}], ['turnoId', 'turnoId', {}]] },
   { name: 'configuracoes',   keyPath: 'chave' },
   { name: 'syncQueue',       keyPath: 'id', indexes: [['status', 'status', {}]] }
 ];

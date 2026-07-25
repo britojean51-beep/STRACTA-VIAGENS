@@ -4,6 +4,14 @@
    descarregar, repetir, deslocamento e cronômetro.
    ══════════════════════════════════════════════════════════ */
 
+// Tipos de parada (tempo parado categorizado). min = tempo previsto em minutos
+// (null = sem tempo definido, contabilizado até a próxima viagem/deslocamento).
+const TIPOS_PARADA = [
+  { subtipo: 'particular', nome: 'Parada particular',        min: 10,   icone: '⏸️' },
+  { subtipo: 'inspecao',   nome: 'Inspeção do equipamento',  min: 5,    icone: '🔍' },
+  { subtipo: 'limpeza',    nome: 'Limpeza de báscula',       min: null, icone: '🧽' }
+];
+
 const Operacao = {
   // ---------- ROTAS ----------
   async listarRotas() {
@@ -295,12 +303,12 @@ const Operacao = {
     return viagem;
   },
 
-  async iniciarDeslocamentoAutomatico({ turnoId, motoristaId, equipamentoId, posInicio }) {
+  async iniciarDeslocamentoAutomatico({ turnoId, motoristaId, equipamentoId, posInicio, motivo }) {
     const areaInicio = posInicio && posInicio.area ? posInicio.area : null;
     const deslocamento = {
       id: gerarId('desloc'),
       turnoId, motoristaId, equipamentoId,
-      origem: areaInicio || 'Identificando...', destino: '', motivo: '',
+      origem: areaInicio || 'Identificando...', destino: '', motivo: motivo || '',
       origemArea: areaInicio,
       automatica: true,
       tipo: 'deslocamento',
@@ -327,6 +335,52 @@ const Operacao = {
     await DB.put('deslocamentos', d);
     await Sync.enfileirar('deslocamento', d);
     return d;
+  },
+
+  // ---------- PARADAS (tempo parado categorizado) ----------
+  async iniciarParada({ turnoId, motoristaId, motoristaNome, equipamentoId, equipamentoCodigo, subtipo }) {
+    const tipo = (typeof TIPOS_PARADA !== 'undefined' ? TIPOS_PARADA : []).find(t => t.subtipo === subtipo) || { subtipo, nome: subtipo, min: null };
+    const parada = {
+      id: gerarId('parada'),
+      tipo: 'parada',
+      subtipo: tipo.subtipo,
+      nome: tipo.nome,
+      turnoId, motoristaId, motoristaNome,
+      equipamentoId, equipamentoCodigo,
+      tempoPrevistoMin: tipo.min,
+      inicioEm: agoraISO(),
+      fimEm: null,
+      tempoTotalMs: null,
+      atrasoMs: null,
+      dia: todayKey(),
+      criadoEm: agoraISO()
+    };
+    await DB.put('paradas', parada);
+    if (typeof Geo !== 'undefined') Geo.anexarLocal('paradas', parada.id, 'localInicio', 'parada');
+    return parada;
+  },
+
+  async finalizarParada(id) {
+    const p = await DB.get('paradas', id);
+    if (!p || p.fimEm) return p || null;
+    p.fimEm = agoraISO();
+    p.tempoTotalMs = new Date(p.fimEm) - new Date(p.inicioEm);
+    p.atrasoMs = (p.tempoPrevistoMin != null)
+      ? Math.max(0, p.tempoTotalMs - p.tempoPrevistoMin * 60000)
+      : 0;
+    await DB.put('paradas', p);
+    await Sync.enfileirar('parada', p);
+    return p;
+  },
+
+  async paradaEmAndamento(turnoId) {
+    const ps = await DB.getByIndex('paradas', 'turnoId', turnoId);
+    return ps.find(p => !p.fimEm) || null;
+  },
+
+  async paradasDoDia(dia = todayKey()) {
+    const todas = await DB.getAll('paradas');
+    return todas.filter(p => p.dia === dia);
   },
 
   async deslocamentosDoDia(dia = todayKey()) {
@@ -502,3 +556,4 @@ const Operacao = {
 };
 
 window.Operacao = Operacao;
+window.TIPOS_PARADA = TIPOS_PARADA;

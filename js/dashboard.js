@@ -33,11 +33,16 @@ const Dashboard = {
       tempoParadoMs += Math.max(0, duracaoTurnoMs - tempoViagensMs - tempoDeslocTurnoMs);
     }
 
+    const paradasDoDia = (await DB.getAll('paradas')).filter(p => p.dia === dia);
+    const tempoParadasMs = paradasDoDia.reduce((a, p) => a + (p.tempoTotalMs || 0), 0);
+
     return {
       dia,
       totalViagens: viagensStats.totalViagens,
       tempoMedioMs: viagensStats.tempoMedioMs,
       tempoTotalMs: viagensStats.tempoTotalMs,
+      totalParadas: paradasDoDia.length,
+      tempoParadasMs,
       totalLitros: litros,
       totalLubrificacoes: lubs.length,
       totalDeslocamentos: deslocamentosDoDia.length,
