@@ -145,6 +145,49 @@ const FirebaseSync = {
         if (mudancas.length) aoReceber(tipo, mudancas);
       }, err => console.log('Firebase listener erro:', tipo, err));
     });
+  },
+
+  // ---------- POSIÇÕES AO VIVO (rastreamento em tempo real) ----------
+  // Coleção separada 'posicoes': um documento por turno ativo, sempre
+  // sobrescrito com a última posição. NÃO entra no sync offline/CRUD —
+  // é um canal leve e efêmero, só faz sentido em tempo real (online).
+  async enviarPosicao(doc) {
+    const ok = await this.iniciar();
+    if (!ok || !doc || !doc.id) return false;
+    try {
+      await this._db.collection('posicoes').doc(String(doc.id)).set(
+        { ...doc, _atualizadoEmFirestore: firebase.firestore.FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  async removerPosicao(id) {
+    const ok = await this.iniciar();
+    if (!ok || !id) return false;
+    try {
+      await this._db.collection('posicoes').doc(String(id)).delete();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // Escuta a coleção de posições em tempo real. Retorna uma função para
+  // cancelar a escuta (unsubscribe).
+  escutarPosicoes(aoReceber) {
+    let unsub = () => {};
+    this.iniciar().then(ok => {
+      if (!ok) return;
+      unsub = this._db.collection('posicoes').onSnapshot(snap => {
+        const posicoes = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+        aoReceber(posicoes);
+      }, err => console.log('Firebase posicoes erro:', err));
+    });
+    return () => { try { unsub(); } catch (e) {} };
   }
 };
 

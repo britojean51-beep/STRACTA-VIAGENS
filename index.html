@@ -15,6 +15,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -50,6 +52,7 @@
       <div class="atalho" onclick="navigate('painel')"><span class="ic">📊</span><span class="lb">Painel</span></div>
     </div>
     <button class="btn btn-ghost mt24" onclick="enviarMinhaLocalizacaoUI()">📍 Enviar minha localização</button>
+    <button class="btn btn-ghost" id="btn-mapa-vivo" onclick="navigate('mapa')" style="display:none">🗺️ Mapa ao vivo</button>
     <button class="btn btn-ghost" onclick="navigate('config')">⚙️ Configurações e Sincronização</button>
     <button class="btn btn-ghost" onclick="fazerLogout()">🚪 Sair</button>
   </div>
@@ -262,6 +265,14 @@
     <button class="btn btn-ghost mt16" onclick="navigate('config')">Voltar</button>
   </div>
 
+  <!-- ═══ MAPA AO VIVO ═══ -->
+  <div class="screen" id="screen-mapa">
+    <h1 class="page-title">🗺️ Mapa ao vivo</h1>
+    <div class="page-sub" id="mapa-info">Carregando...</div>
+    <div id="mapa-container"></div>
+    <button class="btn btn-ghost mt16" onclick="navigate('painel')">Voltar</button>
+  </div>
+
   <!-- ═══ NAV INFERIOR ═══ -->
   <div class="bottom-nav" style="display:none">
     <button class="nav-item" data-tela="home" onclick="navigate('home')"><span class="ic">🏠</span>Início</button>
@@ -295,6 +306,8 @@
 <script src="./js/relatorio.js"></script>
 <script src="./js/relatorio-excel.js"></script>
 <script src="./js/diagnostico.js"></script>
+<script src="./js/rastreamento.js"></script>
+<script src="./js/mapa.js"></script>
 <script src="./js/app.js"></script>
 </body>
 </html>

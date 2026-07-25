@@ -161,6 +161,7 @@ async function navigate(tela) {
   if (bottomNav) bottomNav.style.display = (tela === 'login') ? 'none' : 'flex';
 
   if (_viagemTimerHandle && tela !== 'operacao') { clearInterval(_viagemTimerHandle); _viagemTimerHandle = null; }
+  if (typeof Mapa !== 'undefined' && tela !== 'mapa') Mapa.fechar();
 
   const renderers = {
     home: renderHome,
@@ -171,6 +172,7 @@ async function navigate(tela) {
     frota: renderFrota,
     painel: renderPainel,
     'painel-equip': renderPainelEquip,
+    mapa: renderMapa,
     config: renderConfig,
     usuarios: renderUsuarios,
     diagnostico: renderDiagnostico
@@ -196,6 +198,14 @@ async function navigate(tela) {
       showToast('Acesso restrito a Desenvolvedor', 'var(--iron)');
       qsa('.screen').forEach(s => s.classList.remove('active'));
       qs('#screen-config').classList.add('active');
+      return;
+    }
+  }
+  if (tela === 'mapa') {
+    if (!Permissoes.podeVerTudoOperacional()) {
+      showToast('Acesso restrito à gestão (Encarregado ou acima)', 'var(--iron)');
+      qsa('.screen').forEach(s => s.classList.remove('active'));
+      qs('#screen-home').classList.add('active');
       return;
     }
   }
@@ -230,6 +240,7 @@ async function fazerLogin() {
 
 function fazerLogout() {
   Log.registrar('logout');
+  if (typeof Rastreamento !== 'undefined') Rastreamento.parar();
   Auth.logout();
   navigate('login');
 }
@@ -240,6 +251,13 @@ async function renderHome() {
   qs('#home-saudacao').textContent = u ? `Olá, ${u.nome.split(' ')[0]}` : '';
   _turnoAtivoCache = await Motorista.turnoAtivo();
   const box = qs('#home-turno-box');
+
+  // botão do mapa ao vivo só aparece para a gestão (Encarregado+)
+  const btnMapa = qs('#btn-mapa-vivo');
+  if (btnMapa) btnMapa.style.display = Permissoes.podeVerTudoOperacional() ? 'flex' : 'none';
+
+  // liga ou desliga o rastreamento em tempo real conforme houver turno ativo
+  sincronizarRastreamento();
 
   if (!_turnoAtivoCache) {
     box.innerHTML = `
@@ -305,6 +323,21 @@ async function enviarMinhaLocalizacaoUI() {
       showToast('✅ Localização enviada!', 'var(--green)');
     }
   });
+}
+
+// ---------- MAPA AO VIVO (gestão) ----------
+async function renderMapa() {
+  if (typeof Mapa === 'undefined') return;
+  await Mapa.abrir();
+}
+
+// Liga o rastreamento em tempo real quando há turno ativo; desliga quando não há.
+// Chamado sempre que a home é renderizada (login, início e fim de turno passam por lá).
+async function sincronizarRastreamento() {
+  if (typeof Rastreamento === 'undefined') return;
+  const t = _turnoAtivoCache || await Motorista.turnoAtivo();
+  if (t) Rastreamento.iniciar(t);
+  else Rastreamento.parar();
 }
 
 // ---------- INICIAR TURNO ----------

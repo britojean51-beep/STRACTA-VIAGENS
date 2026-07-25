@@ -5,7 +5,7 @@
    atualização em segundo plano quando há conexão.
    ══════════════════════════════════════════════════════════ */
 
-const CACHE_VERSION = 'stracta-viagens-v28-geolocalizacao';
+const CACHE_VERSION = 'stracta-viagens-v29-mapa-tempo-real';
 
 const APP_SHELL = [
   './',
@@ -34,6 +34,8 @@ const APP_SHELL = [
   './js/relatorio.js',
   './js/relatorio-excel.js',
   './js/diagnostico.js',
+  './js/rastreamento.js',
+  './js/mapa.js',
   './js/app.js',
   './icons/icon-192.png',
   './icons/icon-512.png'
