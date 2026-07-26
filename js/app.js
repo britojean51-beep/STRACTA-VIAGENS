@@ -13,6 +13,8 @@ let _trajetoData = null;
 let _trajetoMap = null;
 let _trajetoAreas = null;
 let _trajetoConteudo = null;
+let _origemPainelEquip = 'painel';
+let _abrirHistoricoEquip = false;
 
 // Mantido por compatibilidade com todas as telas que já chamam podeGerenciarFrota() —
 // a regra de verdade agora mora só em permissoes.js
@@ -1226,6 +1228,18 @@ async function renderViagens() {
   const diaAtual = todayKey();
   const todosDias = [...new Set([diaAtual, ...dias])];
   selDia.innerHTML = todosDias.map(d => `<option value="${d}" ${d === diaAtual ? 'selected' : ''}>${d}</option>`).join('');
+
+  // Gestão (Encarregado+): grade "Por equipamento" (igual ao Painel) → histórico do equipamento
+  const eqBox = qs('#viagens-equip');
+  if (eqBox) {
+    if (Permissoes.podeVerTudoOperacional()) {
+      const porEquip = await Dashboard.resumoPorEquipamento();
+      eqBox.innerHTML = `<div class="card-title">🚛 Por equipamento</div>${_htmlGridEquip(porEquip, 'viagens')}`;
+    } else {
+      eqBox.innerHTML = '';
+    }
+  }
+
   await renderListaViagensDoDia(diaAtual);
 }
 
@@ -1686,28 +1700,36 @@ async function renderPainel() {
     </div>
 
     <div class="card-title mt16">🚛 Por Equipamento</div>
-    <div id="painel-equip-grid">
-    ${porEquip.length ? porEquip.map(item => {
-      const e = item.equipamento;
-      let pill;
-      if (e.status === 'manutencao') pill = `<span class="v" style="color:var(--iron)">🔧 Manutenção</span>`;
-      else if (e.status === 'reserva') pill = `<span class="v" style="color:var(--blue)">🅿️ Reserva</span>`;
-      else if (e.ativo === false) pill = `<span class="v text-label">⏸ Desativado</span>`;
-      else if (item.emRota) pill = `<span class="v" style="color:var(--amber)">🚛 Em Rota</span>`;
-      else if (item.temTurnoAtivo) pill = `<span class="v" style="color:var(--green)">🟢 Operando</span>`;
-      else if (Equipamentos.dentroDoExpediente(e)) pill = `<span class="v" style="color:var(--iron)">🔴 Falta de Operador</span>`;
-      else pill = `<span class="v text-label">🌙 Fora de Expediente</span>`;
-      return `
-      <div class="list-item" onclick="abrirPainelEquipamento('${e.id}')" style="cursor:pointer">
+    <div id="painel-equip-grid">${_htmlGridEquip(porEquip, 'painel')}</div>
+  `;
+}
+
+// Grade de equipamentos (reusada no Painel e nas Viagens da gestão).
+// origem: 'painel' abre o painel do equipamento; 'viagens' abre já com o histórico.
+function _htmlGridEquip(porEquip, origem) {
+  if (!porEquip.length) return `<div class="empty-state"><span class="emoji">🚛</span>Nenhum equipamento cadastrado.</div>`;
+  return porEquip.map(item => {
+    const e = item.equipamento;
+    let pill;
+    if (e.status === 'manutencao') pill = `<span class="v" style="color:var(--iron)">🔧 Manutenção</span>`;
+    else if (e.status === 'reserva') pill = `<span class="v" style="color:var(--blue)">🅿️ Reserva</span>`;
+    else if (e.ativo === false) pill = `<span class="v text-label">⏸ Desativado</span>`;
+    else if (item.emRota) pill = `<span class="v" style="color:var(--amber)">🚛 Em Rota</span>`;
+    else if (item.temTurnoAtivo) pill = `<span class="v" style="color:var(--green)">🟢 Operando</span>`;
+    else if (Equipamentos.dentroDoExpediente(e)) pill = `<span class="v" style="color:var(--iron)">🔴 Falta de Operador</span>`;
+    else pill = `<span class="v text-label">🌙 Fora de Expediente</span>`;
+    const onclick = origem === 'viagens'
+      ? `abrirPainelEquipamento('${e.id}', {origem:'viagens', historico:true})`
+      : `abrirPainelEquipamento('${e.id}')`;
+    return `
+      <div class="list-item" onclick="${onclick}" style="cursor:pointer">
         <div>
           <div class="li-main">${e.codigo} — ${e.modelo}</div>
           <div class="li-sub">🚛 ${item.totalViagens} viagens • ⛽ ${item.totalAbastecimentos} • 🛠 ${item.totalLubrificacoes}${item.emRota && item.rotaAtualNome ? ' • Rota: ' + item.rotaAtualNome : ''}</div>
         </div>
         ${pill}
       </div>`;
-    }).join('') : `<div class="empty-state"><span class="emoji">🚛</span>Nenhum equipamento cadastrado.</div>`}
-    </div>
-  `;
+  }).join('');
 }
 
 // ---------- PAINEL DO MOTORISTA (simplificado + WhatsApp) ----------
@@ -1792,8 +1814,11 @@ async function enviarPainelWhatsApp() {
 }
 
 // ---------- PAINEL DO EQUIPAMENTO ----------
-async function abrirPainelEquipamento(equipamentoId) {
+async function abrirPainelEquipamento(equipamentoId, opts) {
+  opts = opts || {};
   _equipamentoSelecionadoId = equipamentoId;
+  _origemPainelEquip = opts.origem || 'painel';
+  _abrirHistoricoEquip = !!opts.historico;
   navigate('painel-equip');
 }
 
@@ -1837,8 +1862,14 @@ async function renderPainelEquip() {
       <button class="btn btn-outline" onclick="editarEquipamentoUI('${e.id}')">✏️ Editar</button>
       <button class="btn ${e.ativo === false ? 'btn-primary' : 'btn-danger'}" onclick="alternarAtivoEquipamentoUI('${e.id}')">${e.ativo === false ? '▶️ Ativar' : '⏸ Desativar'}</button>
     </div>` : ''}
-    <button class="btn btn-ghost" onclick="navigate('painel')">Voltar</button>
+    <button class="btn btn-ghost" onclick="navigate('${_origemPainelEquip || 'painel'}')">Voltar</button>
   `;
+
+  // Se veio das Viagens ("ver histórico do equipamento"), já abre o histórico
+  if (_abrirHistoricoEquip) {
+    _abrirHistoricoEquip = false;
+    alternarHistoricoEquipamentoUI();
+  }
 }
 
 // Gestão encerra o turno do motorista (libera o equipamento)
@@ -1904,6 +1935,10 @@ async function alternarHistoricoEquipamentoUI() {
       quando: m.entradaEm,
       html: `🔧 Manutenção${m.motivo ? ' — ' + m.motivo : ''} • entrou ${fmtDataHoraBR(m.entradaEm)}${m.saidaEm ? ' • retornou ' + fmtDataHoraBR(m.saidaEm) : ' • ainda em manutenção'}`,
       manutencaoId: m.id
+    })),
+    ...(d.paradas || []).map(p => ({
+      quando: p.inicioEm,
+      html: `${p.icone || '⏱️'} ${p.nome || 'Parada'} — ${fmtDuracao(p.tempoTotalMs || 0)}${p.atrasoMs > 0 ? ' (atraso +' + fmtDuracao(p.atrasoMs) + ')' : ''} • ${p.motoristaNome ? p.motoristaNome + ' • ' : ''}${fmtDataHoraBR(p.inicioEm)}`
     }))
   ].sort((a, b) => new Date(b.quando) - new Date(a.quando));
 

@@ -145,6 +145,7 @@ const Dashboard = {
     const ultimaManutencao = manutencoes.find(m => m.saidaEm) || manutencoes[0] || null;
     const turnoAtivo = turnosAtivos.find(t => t.equipamentoId === equipamentoId) || null;
     const viagemEmRota = viagens.find(v => v.status === 'em_andamento') || null;
+    const paradas = (await DB.getAll('paradas')).filter(p => p.equipamentoId === equipamentoId);
     return {
       equipamento: equip,
       totalViagens: viagens.filter(v => v.status === 'concluida').length,
@@ -157,7 +158,7 @@ const Dashboard = {
       emRota: !!viagemEmRota,
       rotaAtualNome: viagemEmRota ? viagemEmRota.rotaNome : null,
       viagemEmRotaDesde: viagemEmRota ? viagemEmRota.inicioEm : null,
-      viagens, deslocamentos, abasts, lubs, manutencoes
+      viagens, deslocamentos, abasts, lubs, manutencoes, paradas
     };
   }
 };
