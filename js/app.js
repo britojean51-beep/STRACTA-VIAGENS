@@ -546,7 +546,7 @@ async function renderOperacao() {
   const carregBtns = btnsPorGrupo('carregamento');
 
   const secaoParadas = `
-    <button class="btn btn-ghost mt16" id="btn-paradas" onclick="toggleParadas()">⏱️ Paradas ▾</button>
+    <button class="btn btn-paradas mt16" id="btn-paradas" onclick="toggleParadas()">⏱️ Paradas ▾</button>
     <div id="paradas-box" class="hub-grupo hidden">${paradasBtns}</div>`;
 
   const miolo = emCarreg
@@ -554,7 +554,7 @@ async function renderOperacao() {
     <div class="card-title mt16">🏗️ No carregamento</div>
     <div class="hub-grupo">${carregBtns}</div>
 
-    <div class="card-title mt16">📦 Carregado</div>
+    <div class="card-title mt16">📦 Caminhão carregado</div>
     <button class="btn btn-primary btn-hero" onclick="iniciarViagemAutoUI()">🚀 Iniciar viagem</button>
 
     ${secaoParadas}
@@ -566,7 +566,7 @@ async function renderOperacao() {
     <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI('Carregamento')">🚚 Deslocamento para carregamento</button>
     <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI('Oficina')">🔧 Deslocamento para oficina</button>
 
-    <div class="card-title mt16">📦 Carregado</div>
+    <div class="card-title mt16">📦 Caminhão carregado</div>
     <button class="btn btn-primary btn-hero" onclick="iniciarViagemAutoUI()">🚀 Iniciar viagem</button>`;
 
   area.innerHTML = `

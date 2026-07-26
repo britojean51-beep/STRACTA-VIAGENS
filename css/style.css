@@ -319,6 +319,12 @@ h1.page-title {
 /* grupo de botões do hub (paradas) */
 .hub-grupo { display: grid; gap: 8px; }
 .hub-grupo .btn { margin-bottom: 0; }
+/* botão Paradas em destaque */
+.btn-paradas {
+  background: rgba(240,160,32,.12); color: var(--amber);
+  border: 1.5px solid var(--amber); font-weight: 700;
+}
+.btn-paradas:hover { filter: brightness(1.08); }
 /* cronômetro da parada em andamento */
 .parada-digits { font-family: var(--mono); font-weight: 700; font-size: 30px; margin: 8px 0 2px; }
 .parada-atraso { color: var(--iron); }
