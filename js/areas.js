@@ -60,11 +60,27 @@ const Areas = {
 
     if (!this._map) {
       this._map = L.map('areas-mapa').setView([-15.78, -47.93], 4);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+
+      const ruas = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19, attribution: '© OpenStreetMap'
-      }).addTo(this._map);
+      });
+      // satélite: mostra a vegetação/terreno de verdade (sem chave de API)
+      const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19, attribution: 'Imagens © Esri'
+      });
+      // relevo/topográfico (curvas de nível e vegetação)
+      const relevo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        maxZoom: 17, attribution: '© OpenTopoMap'
+      });
+      satelite.addTo(this._map); // padrão: satélite
+      L.control.layers(
+        { '🛰️ Satélite': satelite, '⛰️ Relevo': relevo, '🗺️ Ruas': ruas },
+        null, { position: 'topright' }
+      ).addTo(this._map);
+
       this._grupoAreas = L.layerGroup().addTo(this._map);
       this._grupoDesenho = L.layerGroup().addTo(this._map);
+      this._grupoLocal = L.layerGroup().addTo(this._map);
       this._map.on('click', (ev) => this._aoClicar(ev));
     }
     setTimeout(() => { if (this._map) this._map.invalidateSize(); }, 250);
@@ -74,6 +90,26 @@ const Areas = {
     this._redesenhar();
     await this._carregarAreas();
     this.renderLista();
+  },
+
+  // Centraliza o mapa na posição atual do GPS (para andar/desenhar mais rápido).
+  async localizarMe() {
+    if (!this._map) return;
+    if (typeof Geo === 'undefined' || !Geo.disponivel()) { showToast('GPS não disponível neste aparelho', 'var(--iron)'); return; }
+    showToast('📍 Localizando...', 'var(--blue)', 3000);
+    const pos = await Geo.capturar({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    if (!Geo.ehValida(pos)) { showToast(pos.mensagem || 'Não foi possível localizar', 'var(--iron)'); return; }
+    this._map.setView([pos.lat, pos.lng], 17, { animate: true });
+    if (this._grupoLocal) {
+      this._grupoLocal.clearLayers();
+      L.circleMarker([pos.lat, pos.lng], { radius: 7, color: '#fff', weight: 2, fillColor: '#2b7fff', fillOpacity: 1 })
+        .bindTooltip('Você está aqui', { direction: 'top' })
+        .addTo(this._grupoLocal);
+      if (pos.precisao) {
+        L.circle([pos.lat, pos.lng], { radius: pos.precisao, color: '#2b7fff', weight: 1, fillColor: '#2b7fff', fillOpacity: 0.12 })
+          .addTo(this._grupoLocal);
+      }
+    }
   },
 
   _aoClicar(ev) {
