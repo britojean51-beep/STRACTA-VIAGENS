@@ -26,7 +26,8 @@ const Areas = {
       id: id || gerarId('area'),
       tipo: 'area',
       codigo: codigo.trim(),
-      pontos,
+      // guarda como objetos {lat,lng} (o Firestore não aceita array de arrays)
+      pontos: pontos.map(p => Array.isArray(p) ? { lat: p[0], lng: p[1] } : { lat: p.lat, lng: p.lng }),
       criadoPorId: existente ? existente.criadoPorId : (usuario ? usuario.id : null),
       criadoPorNome: existente ? existente.criadoPorNome : (usuario ? usuario.nome : null),
       criadoEm: existente ? existente.criadoEm : agoraISO(),
@@ -150,11 +151,12 @@ const Areas = {
     const areas = await this.listar();
     const bounds = [];
     areas.forEach(a => {
-      if (!Array.isArray(a.pontos) || a.pontos.length < 3) return;
-      const poly = L.polygon(a.pontos, { color: '#12B886', weight: 2, fillColor: '#12B886', fillOpacity: 0.15 })
+      const pts = Geo.pontosLatLng(a.pontos);
+      if (pts.length < 3) return;
+      L.polygon(pts, { color: '#12B886', weight: 2, fillColor: '#12B886', fillOpacity: 0.15 })
         .bindTooltip(a.codigo, { permanent: true, direction: 'center', className: 'mk-tooltip' })
         .addTo(this._grupoAreas);
-      a.pontos.forEach(p => bounds.push(p));
+      pts.forEach(p => bounds.push(p));
     });
     if (bounds.length && !this._desenho.length) {
       this._map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
@@ -197,7 +199,7 @@ const Areas = {
   async editar(id) {
     const a = await DB.get('areas', id);
     if (!a) return;
-    this._desenho = (a.pontos || []).slice();
+    this._desenho = Geo.pontosLatLng(a.pontos);
     this._editandoId = id;
     this._redesenhar();
     this._atualizarInfo();

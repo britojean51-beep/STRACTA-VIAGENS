@@ -72,14 +72,23 @@ const Geo = {
   },
 
   // ---------- ÁREAS (polígonos) — tudo offline ----------
+  // Normaliza os pontos de um polígono para [[lat,lng], ...], aceitando tanto
+  // o formato antigo (arrays [lat,lng]) quanto o novo (objetos {lat,lng}).
+  pontosLatLng(pontos) {
+    if (!Array.isArray(pontos)) return [];
+    return pontos
+      .map(p => Array.isArray(p) ? [p[0], p[1]] : (p ? [p.lat, p.lng] : [null, null]))
+      .filter(p => typeof p[0] === 'number' && typeof p[1] === 'number');
+  },
+
   // Ponto dentro de polígono, pelo algoritmo de "ray casting".
-  // pontos = [[lat,lng], [lat,lng], ...]
   pontoEmPoligono(lat, lng, pontos) {
-    if (!Array.isArray(pontos) || pontos.length < 3) return false;
+    const pts = this.pontosLatLng(pontos);
+    if (pts.length < 3) return false;
     let dentro = false;
-    for (let i = 0, j = pontos.length - 1; i < pontos.length; j = i++) {
-      const yi = pontos[i][0], xi = pontos[i][1];
-      const yj = pontos[j][0], xj = pontos[j][1];
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const yi = pts[i][0], xi = pts[i][1];
+      const yj = pts[j][0], xj = pts[j][1];
       const intersecta = ((yi > lat) !== (yj > lat)) &&
         (lng < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-12) + xi);
       if (intersecta) dentro = !dentro;

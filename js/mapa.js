@@ -73,8 +73,9 @@ const Mapa = {
     this._grupoAreas.clearLayers();
     const areas = await DB.getAll('areas');
     areas.forEach(a => {
-      if (!Array.isArray(a.pontos) || a.pontos.length < 3) return;
-      L.polygon(a.pontos, { color: '#12B886', weight: 2, fillColor: '#12B886', fillOpacity: 0.12 })
+      const pts = Geo.pontosLatLng(a.pontos);
+      if (pts.length < 3) return;
+      L.polygon(pts, { color: '#12B886', weight: 2, fillColor: '#12B886', fillOpacity: 0.12 })
         .bindTooltip(a.codigo, { permanent: true, direction: 'center', className: 'mk-tooltip' })
         .addTo(this._grupoAreas);
     });

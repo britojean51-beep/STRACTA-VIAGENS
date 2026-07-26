@@ -99,6 +99,7 @@ async function iniciarApp() {
   Sync.iniciarMonitoramento();
   Sync.onStatusChange(atualizarStatusConexao);
   Sync.onStatusChange(atualizarTelasAoVivo);
+  migrarAreasParaObjetos();
 
   window.addEventListener('online', atualizarStatusConexao);
   window.addEventListener('offline', atualizarStatusConexao);
@@ -128,6 +129,29 @@ async function iniciarApp() {
     navigate('home');
   } else {
     navigate('login');
+  }
+}
+
+// ---------- MIGRAÇÃO: áreas com pontos em array-de-arrays → objetos {lat,lng} ----------
+// O Firestore não aceita "array de arrays", então áreas antigas (pontos como [[lat,lng],...])
+// nunca chegavam nos outros aparelhos. Aqui convertemos para [{lat,lng},...] e reenviamos.
+// Idempotente: só age em áreas que ainda têm pontos no formato antigo.
+async function migrarAreasParaObjetos() {
+  try {
+    const areas = await DB.getAll('areas');
+    for (const a of areas) {
+      if (!Array.isArray(a.pontos)) continue;
+      const temArray = a.pontos.some(p => Array.isArray(p));
+      if (!temArray) continue;
+      a.pontos = a.pontos
+        .map(p => Array.isArray(p) ? { lat: p[0], lng: p[1] } : (p ? { lat: p.lat, lng: p.lng } : null))
+        .filter(p => p && typeof p.lat === 'number' && typeof p.lng === 'number');
+      a.editadoEm = agoraISO();
+      await DB.put('areas', a);
+      if (typeof Sync !== 'undefined') Sync.enfileirar('area', a);
+    }
+  } catch (e) {
+    console.warn('Falha ao migrar áreas', e);
   }
 }
 
@@ -418,8 +442,9 @@ async function renderTrajeto() {
   // áreas de contexto
   _trajetoAreas.clearLayers();
   (await DB.getAll('areas')).forEach(a => {
-    if (Array.isArray(a.pontos) && a.pontos.length >= 3) {
-      L.polygon(a.pontos, { color: '#12B886', weight: 2, fillColor: '#12B886', fillOpacity: 0.10 })
+    const pts = Geo.pontosLatLng(a.pontos);
+    if (pts.length >= 3) {
+      L.polygon(pts, { color: '#12B886', weight: 2, fillColor: '#12B886', fillOpacity: 0.10 })
         .bindTooltip(a.codigo, { permanent: true, direction: 'center', className: 'mk-tooltip' }).addTo(_trajetoAreas);
     }
   });
