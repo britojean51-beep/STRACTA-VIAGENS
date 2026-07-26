@@ -5,7 +5,7 @@
    atualização em segundo plano quando há conexão.
    ══════════════════════════════════════════════════════════ */
 
-const CACHE_VERSION = 'stracta-viagens-v42-ajustes-hub';
+const CACHE_VERSION = 'stracta-viagens-v43-tirar-motorista';
 
 const APP_SHELL = [
   './',

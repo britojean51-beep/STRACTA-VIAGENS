@@ -152,6 +152,7 @@ const Dashboard = {
       totalLubrificacoes: lubs.length,
       ultimaManutencao,
       motoristaAtual: turnoAtivo ? turnoAtivo.motoristaNome : null,
+      turnoAtivoId: turnoAtivo ? turnoAtivo.id : null,
       turnoAtivoDesde: turnoAtivo ? turnoAtivo.iniciadoEm : null,
       emRota: !!viagemEmRota,
       rotaAtualNome: viagemEmRota ? viagemEmRota.rotaNome : null,

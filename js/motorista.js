@@ -73,6 +73,23 @@ const Motorista = {
     return turno;
   },
 
+  // Encerra o turno de OUTRO motorista, pela gestão (libera o equipamento).
+  // Não mexe no localStorage deste aparelho (o ponteiro do turno é do motorista,
+  // que ao sincronizar verá o turno encerrado e liberará sozinho).
+  async encerrarTurnoPorGestao(turnoId) {
+    const turno = await DB.get('turnos', turnoId);
+    if (!turno) return { erro: 'Turno não encontrado' };
+    if (turno.status !== 'ativo') return { erro: 'Este turno já está encerrado' };
+    turno.status = 'encerrado';
+    turno.encerradoEm = agoraISO();
+    turno.encerradoPorGestao = true;
+    const g = (typeof Permissoes !== 'undefined') ? Permissoes.usuarioAtual() : null;
+    if (g) turno.encerradoPorNome = g.nome;
+    await DB.put('turnos', turno);
+    await Sync.enfileirar('turno', turno);
+    return { sucesso: true, turno };
+  },
+
   async viagensDoTurno(turnoId) {
     return DB.getByIndex('viagens', 'turnoId', turnoId);
   },

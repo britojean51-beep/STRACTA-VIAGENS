@@ -1732,6 +1732,7 @@ async function renderPainelEquip() {
     <div class="card">
       <div class="row-kv"><span class="k">👤 Motorista atual</span><span class="v">${d.motoristaAtual ? d.motoristaAtual : '— (sem turno ativo)'}</span></div>
       ${d.motoristaAtual ? `<div class="row-kv"><span class="k">Desde</span><span class="v">${fmtHoraBR(d.turnoAtivoDesde)}</span></div>` : ''}
+      ${d.motoristaAtual && d.turnoAtivoId && podeGerenciarFrota() ? `<button class="btn btn-danger mt12" onclick="tirarMotoristaUI('${d.turnoAtivoId}', '${(d.motoristaAtual || '').replace(/'/g, '')}')">🚫 Tirar motorista do equipamento</button>` : ''}
       <div class="row-kv" style="border-top:1px solid var(--border);margin-top:8px;padding-top:12px"><span class="k">KM</span><span class="v">${e.kmAtual}</span></div>
       <div class="row-kv"><span class="k">Horímetro</span><span class="v">${e.horimetroAtual}</span></div>
       <div class="row-kv" style="border-top:1px solid var(--border);margin-top:8px;padding-top:12px"><span class="k">🚛 Viagens</span><span class="v">${d.totalViagens}</span></div>
@@ -1750,6 +1751,17 @@ async function renderPainelEquip() {
     </div>` : ''}
     <button class="btn btn-ghost" onclick="navigate('painel')">Voltar</button>
   `;
+}
+
+// Gestão encerra o turno do motorista (libera o equipamento)
+async function tirarMotoristaUI(turnoId, motoristaNome) {
+  if (!podeGerenciarFrota()) { showToast('Acesso restrito à gestão', 'var(--iron)'); return; }
+  if (!confirm(`Tirar ${motoristaNome || 'o motorista'} deste equipamento?\n\nO turno será encerrado e o equipamento ficará livre.`)) return;
+  const r = await Motorista.encerrarTurnoPorGestao(turnoId);
+  if (r && r.erro) { showToast(r.erro, 'var(--iron)'); return; }
+  if (typeof Log !== 'undefined') Log.registrar('editar', { tipo: 'turno_encerrado_gestao', turnoId });
+  showToast('✅ Motorista removido — equipamento liberado');
+  renderPainelEquip();
 }
 
 function alternarManutencaoEquipPainelUI(id) {
