@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="./css/style.css?v=4.11.1">
+<link rel="stylesheet" href="./css/style.css?v=4.13.0">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -300,6 +300,17 @@
     <div class="card-title mt16">Áreas cadastradas</div>
     <div id="areas-lista"></div>
     <button class="btn btn-ghost mt16" onclick="navigate('config')">Voltar</button>
+  </div>
+
+  <!-- ═══ TRAJETO (percurso de uma viagem/deslocamento) ═══ -->
+  <div class="screen" id="screen-trajeto">
+    <div class="mapa-topo">
+      <h1 class="page-title" style="margin:0">🗺️ Trajeto</h1>
+      <button class="mapa-btn-acao" onclick="navigate('viagens')" title="Voltar">✖</button>
+    </div>
+    <div class="page-sub" id="trajeto-info">—</div>
+    <div id="trajeto-mapa"></div>
+    <button class="btn btn-ghost mt16" onclick="navigate('viagens')">Voltar</button>
   </div>
 
   <!-- ═══ NAV INFERIOR ═══ -->

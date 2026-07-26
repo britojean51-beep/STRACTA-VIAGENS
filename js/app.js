@@ -9,6 +9,10 @@ let _viagemTimerHandle = null;
 let _paradaTimerHandle = null;
 let _ultimaViagemConcluidaId = null;
 let _equipamentoSelecionadoId = null;
+let _trajetoData = null;
+let _trajetoMap = null;
+let _trajetoAreas = null;
+let _trajetoConteudo = null;
 
 // Mantido por compatibilidade com todas as telas que já chamam podeGerenciarFrota() —
 // a regra de verdade agora mora só em permissoes.js
@@ -190,6 +194,7 @@ async function navigate(tela) {
     'painel-equip': renderPainelEquip,
     mapa: renderMapa,
     areas: renderAreas,
+    trajeto: renderTrajeto,
     config: renderConfig,
     usuarios: renderUsuarios,
     diagnostico: renderDiagnostico
@@ -362,6 +367,85 @@ async function renderMapa() {
 async function renderAreas() {
   if (typeof Areas === 'undefined') return;
   await Areas.abrir();
+}
+
+// ---------- TRAJETO (percurso de uma viagem/deslocamento) ----------
+async function abrirTrajetoViagem(id) {
+  const v = await DB.get('viagens', id);
+  if (!v) return;
+  _trajetoData = { reg: v, titulo: v.rotaNome || 'Viagem', tempoMs: v.tempoTotalMs };
+  navigate('trajeto');
+}
+async function abrirTrajetoDeslocamento(id) {
+  const d = await DB.get('deslocamentos', id);
+  if (!d) return;
+  _trajetoData = { reg: d, titulo: `${d.origem || 'Origem'} → ${d.destino || 'destino'}`, tempoMs: d.tempoTotalMs };
+  navigate('trajeto');
+}
+
+function _distanciaKmPontos(pontos) {
+  const R = 6371, toRad = (x) => x * Math.PI / 180;
+  let km = 0;
+  for (let i = 1; i < pontos.length; i++) {
+    const a = pontos[i - 1], b = pontos[i];
+    const dLat = toRad(b[0] - a[0]), dLng = toRad(b[1] - a[1]);
+    const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng / 2) ** 2;
+    km += 2 * R * Math.asin(Math.sqrt(s));
+  }
+  return km;
+}
+
+async function renderTrajeto() {
+  const info = qs('#trajeto-info');
+  if (typeof L === 'undefined') { if (info) info.textContent = 'Mapa indisponível — verifique a internet.'; return; }
+  if (!_trajetoData) { navigate('viagens'); return; }
+  const reg = _trajetoData.reg;
+
+  if (!_trajetoMap) {
+    _trajetoMap = L.map('trajeto-mapa').setView([-15.78, -47.93], 4);
+    const ruas = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' });
+    const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagens © Esri' });
+    const relevo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '© OpenTopoMap' });
+    satelite.addTo(_trajetoMap);
+    _trajetoAreas = L.layerGroup().addTo(_trajetoMap);
+    _trajetoConteudo = L.layerGroup().addTo(_trajetoMap);
+    L.control.layers({ '🛰️ Satélite': satelite, '⛰️ Relevo': relevo, '🗺️ Ruas': ruas }, { '📐 Áreas': _trajetoAreas }, { position: 'topright' }).addTo(_trajetoMap);
+  }
+  setTimeout(() => { if (_trajetoMap) _trajetoMap.invalidateSize(); }, 250);
+
+  // áreas de contexto
+  _trajetoAreas.clearLayers();
+  (await DB.getAll('areas')).forEach(a => {
+    if (Array.isArray(a.pontos) && a.pontos.length >= 3) {
+      L.polygon(a.pontos, { color: '#12B886', weight: 2, fillColor: '#12B886', fillOpacity: 0.10 })
+        .bindTooltip(a.codigo, { permanent: true, direction: 'center', className: 'mk-tooltip' }).addTo(_trajetoAreas);
+    }
+  });
+
+  // traço do percurso
+  _trajetoConteudo.clearLayers();
+  const trilha = Array.isArray(reg.trilha) ? reg.trilha.filter(p => p && typeof p.lat === 'number') : [];
+  let pontos = trilha.map(p => [p.lat, p.lng]);
+  let reta = false;
+  if (pontos.length < 2) {
+    pontos = [];
+    if (reg.localInicio && typeof reg.localInicio.lat === 'number') pontos.push([reg.localInicio.lat, reg.localInicio.lng]);
+    if (reg.localFim && typeof reg.localFim.lat === 'number') pontos.push([reg.localFim.lat, reg.localFim.lng]);
+    reta = true;
+  }
+
+  if (pontos.length >= 2) {
+    L.polyline(pontos, { color: '#2b7fff', weight: 4, opacity: 0.9, dashArray: reta ? '6,8' : null }).addTo(_trajetoConteudo);
+  }
+  if (pontos.length) {
+    L.circleMarker(pontos[0], { radius: 8, color: '#fff', weight: 2, fillColor: '#12B886', fillOpacity: 1 }).bindTooltip('Início', { direction: 'top' }).addTo(_trajetoConteudo);
+    L.circleMarker(pontos[pontos.length - 1], { radius: 8, color: '#fff', weight: 2, fillColor: '#C1440E', fillOpacity: 1 }).bindTooltip('Fim', { direction: 'top' }).addTo(_trajetoConteudo);
+    _trajetoMap.fitBounds(pontos, { padding: [40, 40], maxZoom: 17 });
+    const distKm = _distanciaKmPontos(pontos);
+    if (info) info.textContent = `${_trajetoData.titulo} • ${fmtDuracao(_trajetoData.tempoMs || 0)}` + (distKm ? ` • ~${distKm.toFixed(2)} km${reta ? ' (linha reta)' : ''}` : '');
+  } else {
+    if (info) info.textContent = 'Sem localização registrada neste trajeto.';
+  }
 }
 
 // Liga o rastreamento em tempo real quando há turno ativo; desliga quando não há.
@@ -1181,6 +1265,7 @@ async function renderListaViagensDoDia(dia) {
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="v" style="font-family:var(--mono)">${v.tempoTotalMs ? fmtDuracao(v.tempoTotalMs) : '—'}</div>
+          ${(v.trilha && v.trilha.length >= 2) || (v.localInicio && v.localFim) ? `<button class="li-fav" onclick="abrirTrajetoViagem('${v.id}')" title="Ver trajeto">🗺️</button>` : ''}
           <button class="li-fav" onclick="editarViagemUI('${v.id}')">✏️</button>
           <button class="li-fav" onclick="apagarViagemUI('${v.id}')">🗑️</button>
         </div>
@@ -1195,6 +1280,7 @@ async function renderListaViagensDoDia(dia) {
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="v" style="font-family:var(--mono)">${d.tempoTotalMs ? fmtDuracao(d.tempoTotalMs) : '—'}</div>
+          ${(d.trilha && d.trilha.length >= 2) || (d.localInicio && d.localFim) ? `<button class="li-fav" onclick="abrirTrajetoDeslocamento('${d.id}')" title="Ver trajeto">🗺️</button>` : ''}
           <button class="li-fav" onclick="apagarDeslocamentoUI('${d.id}')">🗑️</button>
         </div>
       </div>`;

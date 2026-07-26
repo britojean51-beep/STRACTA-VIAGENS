@@ -166,6 +166,16 @@ const Operacao = {
     return viagem;
   },
 
+  // Fecha a trilha do trajeto: garante o ponto de início (localInicio) no começo
+  // e o de fim (posFim/localFim) no final, além dos pontos gravados durante o percurso.
+  _fecharTrilha(reg, posFim) {
+    reg.trilha = Array.isArray(reg.trilha) ? reg.trilha : [];
+    const ini = reg.localInicio;
+    if (ini && typeof ini.lat === 'number') reg.trilha.unshift({ lat: ini.lat, lng: ini.lng, em: ini.em || reg.inicioEm });
+    const fim = posFim || reg.localFim;
+    if (fim && typeof fim.lat === 'number') reg.trilha.push({ lat: fim.lat, lng: fim.lng, em: agoraISO() });
+  },
+
   // Marca a descarga e calcula o tempo total automaticamente
   async descarregar(viagemId) {
     const viagem = await DB.get('viagens', viagemId);
@@ -173,6 +183,7 @@ const Operacao = {
     viagem.descarregadoEm = agoraISO();
     viagem.status = 'concluida';
     viagem.tempoTotalMs = new Date(viagem.descarregadoEm) - new Date(viagem.inicioEm);
+    this._fecharTrilha(viagem, null);
     await DB.put('viagens', viagem);
     await Sync.enfileirar('viagem', viagem);
     // marca (em segundo plano) onde a viagem foi descarregada
@@ -229,6 +240,7 @@ const Operacao = {
     if (!d) return null;
     d.fimEm = agoraISO();
     d.tempoTotalMs = new Date(d.fimEm) - new Date(d.inicioEm);
+    this._fecharTrilha(d, null);
     await DB.put('deslocamentos', d);
     await Sync.enfileirar('deslocamento', d);
     if (typeof Geo !== 'undefined') Geo.anexarLocal('deslocamentos', d.id, 'localFim', 'deslocamento');
@@ -300,6 +312,7 @@ const Operacao = {
     if (rota) { viagem.rotaId = rota.id; viagem.rotaNome = rota.nome; }
     else viagem.rotaNome = `${origem} → ${destino}`;
 
+    this._fecharTrilha(viagem, posFim);
     await DB.put('viagens', viagem);
     await Sync.enfileirar('viagem', viagem);
     return viagem;
@@ -337,6 +350,7 @@ const Operacao = {
     d.destino = destinoArea || 'Local não identificado';
     // "saiu da rota": chegou numa área diferente da esperada (ponto de carregamento)
     d.saiuDaRota = !!(d.destinoEsperado && destinoArea && d.destinoEsperado !== destinoArea);
+    this._fecharTrilha(d, posFim);
     await DB.put('deslocamentos', d);
     await Sync.enfileirar('deslocamento', d);
     return d;

@@ -188,7 +188,7 @@ h1.page-title {
   font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;
 }
 .mapa-btn-acao:active { background: var(--surface2); }
-#mapa-container, #areas-mapa {
+#mapa-container, #areas-mapa, #trajeto-mapa {
   width: 100%; height: 55vh; min-height: 300px;
   border-radius: 12px; overflow: hidden; margin-top: 12px;
   border: 1px solid var(--border); background: var(--surface); z-index: 0;

@@ -36,11 +36,34 @@ const Rastreamento = {
   async _enviarAgora() {
     const turno = this._turno;
     if (!turno) return;
-    if (!estaOnline()) return;                 // sem internet: só volta a enviar quando conectar
 
+    // Captura o GPS mesmo offline (o GPS não depende de internet) — assim a
+    // trilha do trajeto é gravada localmente e sincroniza depois.
     const pos = await Geo.capturar({ enableHighAccuracy: true, timeout: 25000, maximumAge: 10000 });
     if (!Geo.ehValida(pos)) return;
 
+    // 1) grava o ponto na trilha da viagem/deslocamento em andamento (offline ok)
+    if (typeof Operacao !== 'undefined') {
+      try {
+        const ponto = { lat: pos.lat, lng: pos.lng, em: agoraISO() };
+        const v = await Operacao.viagemEmAndamento(turno.id);
+        if (v) {
+          v.trilha = Array.isArray(v.trilha) ? v.trilha : [];
+          v.trilha.push(ponto);
+          await DB.put('viagens', v);
+        } else {
+          const d = await Operacao.deslocamentoEmAndamento(turno.id);
+          if (d) {
+            d.trilha = Array.isArray(d.trilha) ? d.trilha : [];
+            d.trilha.push(ponto);
+            await DB.put('deslocamentos', d);
+          }
+        }
+      } catch (e) { /* não trava o rastreamento se falhar */ }
+    }
+
+    // 2) envia a posição ao vivo (só quando online)
+    if (!estaOnline()) return;
     const doc = {
       id: turno.id,                            // um documento por turno
       turnoId: turno.id,
