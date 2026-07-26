@@ -557,8 +557,10 @@ async function renderOperacao() {
     <div class="card-title mt16">📦 Caminhão carregado</div>
     <button class="btn btn-primary btn-hero" onclick="iniciarViagemAutoUI()">🚀 Iniciar viagem</button>
 
-    ${secaoParadas}
-    <button class="btn btn-ghost mt8" onclick="iniciarDeslocamentoAutoUI('Oficina')">🔧 Deslocamento para oficina</button>`
+    <div class="card-title mt16">🚛 Caminhão vazio</div>
+    <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI('Oficina')">🔧 Deslocamento para oficina</button>
+
+    ${secaoParadas}`
     : `
     ${secaoParadas}
 
