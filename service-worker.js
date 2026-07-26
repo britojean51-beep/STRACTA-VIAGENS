@@ -5,7 +5,7 @@
    atualização em segundo plano quando há conexão.
    ══════════════════════════════════════════════════════════ */
 
-const CACHE_VERSION = 'stracta-viagens-v45-mapa-satelite';
+const CACHE_VERSION = 'stracta-viagens-v46-mapavivo-satelite';
 
 const APP_SHELL = [
   './',

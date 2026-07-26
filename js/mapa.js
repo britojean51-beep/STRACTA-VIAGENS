@@ -29,10 +29,23 @@ const Mapa = {
 
     if (!this._map) {
       this._map = L.map('mapa-container', { zoomControl: true }).setView([-15.78, -47.93], 4);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap'
-      }).addTo(this._map);
+
+      const ruas = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '© OpenStreetMap'
+      });
+      // satélite: mostra a vegetação/terreno (sem chave de API)
+      const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19, attribution: 'Imagens © Esri'
+      });
+      // relevo/topográfico (curvas de nível e vegetação)
+      const relevo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        maxZoom: 17, attribution: '© OpenTopoMap'
+      });
+      satelite.addTo(this._map); // padrão: satélite
+      L.control.layers(
+        { '🛰️ Satélite': satelite, '⛰️ Relevo': relevo, '🗺️ Ruas': ruas },
+        null, { position: 'topright' }
+      ).addTo(this._map);
     }
     setTimeout(() => { if (this._map) this._map.invalidateSize(); }, 250);
 
