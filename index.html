@@ -274,7 +274,10 @@
   <div class="screen" id="screen-mapa">
     <div class="mapa-topo">
       <h1 class="page-title" style="margin:0">🗺️ Mapa ao vivo</h1>
-      <button class="mapa-btn-acao" onclick="Mapa.recentralizar()" title="Recentralizar">🎯</button>
+      <div style="display:flex;gap:8px">
+        <button class="mapa-btn-acao" onclick="navigate('areas')" title="Editar áreas">📐</button>
+        <button class="mapa-btn-acao" onclick="Mapa.recentralizar()" title="Recentralizar">🎯</button>
+      </div>
     </div>
     <div class="page-sub" id="mapa-info">Carregando...</div>
     <div id="mapa-container"></div>

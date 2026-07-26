@@ -42,11 +42,17 @@ const Mapa = {
         maxZoom: 17, attribution: '© OpenTopoMap'
       });
       satelite.addTo(this._map); // padrão: satélite
+
+      // camada com os polígonos das áreas cadastradas (somente leitura)
+      this._grupoAreas = L.layerGroup().addTo(this._map);
+
       L.control.layers(
         { '🛰️ Satélite': satelite, '⛰️ Relevo': relevo, '🗺️ Ruas': ruas },
-        null, { position: 'topright' }
+        { '📐 Áreas': this._grupoAreas },
+        { position: 'topright' }
       ).addTo(this._map);
     }
+    this._carregarAreas();
     setTimeout(() => { if (this._map) this._map.invalidateSize(); }, 250);
 
     if (info) info.textContent = 'Carregando posições...';
@@ -59,6 +65,19 @@ const Mapa = {
   _assinar() {
     if (this._unsub) return;
     this._unsub = FirebaseSync.escutarPosicoes(posicoes => this._render(posicoes));
+  },
+
+  // Desenha os polígonos das áreas cadastradas (camada de contexto, só leitura)
+  async _carregarAreas() {
+    if (!this._grupoAreas) return;
+    this._grupoAreas.clearLayers();
+    const areas = await DB.getAll('areas');
+    areas.forEach(a => {
+      if (!Array.isArray(a.pontos) || a.pontos.length < 3) return;
+      L.polygon(a.pontos, { color: '#12B886', weight: 2, fillColor: '#12B886', fillOpacity: 0.12 })
+        .bindTooltip(a.codigo, { permanent: true, direction: 'center', className: 'mk-tooltip' })
+        .addTo(this._grupoAreas);
+    });
   },
 
   _corPorIdade(idade) {
