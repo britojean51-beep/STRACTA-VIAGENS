@@ -3,7 +3,7 @@
    Controle de versão do build.
    ══════════════════════════════════════════════════════════ */
 
-const APP_VERSION = '4.10.1';
+const APP_VERSION = '4.11.0';
 const APP_BUILD_NOME = 'STRACTA VIAGENS Enterprise (rumo à Build 5.0)';
 
 async function registrarVersaoInstalada() {

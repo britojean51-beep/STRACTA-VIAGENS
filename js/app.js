@@ -16,6 +16,19 @@ function podeGerenciarFrota() {
   return Permissoes.podeGerenciarFrota();
 }
 
+// Contexto "no carregamento": ligado ao finalizar um deslocamento para carregamento,
+// desligado ao iniciar viagem/outro deslocamento ou encerrar turno.
+const CTX_CARREG_CHAVE = 'stracta_viagens_ctx_carreg';
+function _setCtxCarregamento(on) {
+  const t = _turnoAtivoCache;
+  if (on && t) localStorage.setItem(CTX_CARREG_CHAVE, t.id);
+  else localStorage.removeItem(CTX_CARREG_CHAVE);
+}
+function _emCarregamento() {
+  const t = _turnoAtivoCache;
+  return !!(t && localStorage.getItem(CTX_CARREG_CHAVE) === t.id);
+}
+
 // ---------- JANELA MODAL (formulários com layout profissional) ----------
 // campos: [{ id, label, tipo, placeholder, valor, opcoes }]
 // opcoes (se for select): [{ valor, texto }]
@@ -493,6 +506,7 @@ async function abrirEncerrarTurno() {
   }
 
   await Motorista.encerrarTurno(t.id, { kmFinal: kmNum, horimetroFinal: horimetroNum });
+  _setCtxCarregamento(false);
   showToast('🔒 Turno encerrado!');
   navigate('home');
 }
@@ -523,9 +537,37 @@ async function renderOperacao() {
   const podeAtrasado = Permissoes.podeLancarAtrasado();
   const totalAreas = (await DB.getAll('areas')).length;
   const paradaAtiva = await Operacao.paradaEmAndamento(_turnoAtivoCache.id);
-  const paradasBtns = (typeof TIPOS_PARADA !== 'undefined' ? TIPOS_PARADA : []).map(tp =>
-    `<button class="btn btn-outline" onclick="iniciarParadaUI('${tp.subtipo}')">${tp.icone} ${tp.nome}${tp.min != null ? ` (${tp.min} min)` : ''}</button>`
-  ).join('');
+  const emCarreg = _emCarregamento();
+  const btnsPorGrupo = (grupo) => (typeof TIPOS_PARADA !== 'undefined' ? TIPOS_PARADA : [])
+    .filter(tp => tp.grupo === grupo)
+    .map(tp => `<button class="btn btn-outline" onclick="iniciarParadaUI('${tp.subtipo}')">${tp.icone} ${tp.nome}${tp.min != null ? ` (${tp.min} min)` : ''}</button>`)
+    .join('');
+  const paradasBtns = btnsPorGrupo('parada');
+  const carregBtns = btnsPorGrupo('carregamento');
+
+  const secaoParadas = `
+    <button class="btn btn-ghost mt16" id="btn-paradas" onclick="toggleParadas()">⏱️ Paradas ▾</button>
+    <div id="paradas-box" class="hub-grupo hidden">${paradasBtns}</div>`;
+
+  const miolo = emCarreg
+    ? `
+    <div class="card-title mt16">🏗️ No carregamento</div>
+    <div class="hub-grupo">${carregBtns}</div>
+
+    <div class="card-title mt16">📦 Carregado</div>
+    <button class="btn btn-primary btn-hero" onclick="iniciarViagemAutoUI()">🚀 Iniciar viagem</button>
+
+    ${secaoParadas}
+    <button class="btn btn-ghost mt8" onclick="iniciarDeslocamentoAutoUI('Oficina')">🔧 Deslocamento para oficina</button>`
+    : `
+    ${secaoParadas}
+
+    <div class="card-title mt16">🚛 Caminhão vazio</div>
+    <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI('Carregamento')">🚚 Deslocamento para carregamento</button>
+    <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI('Oficina')">🔧 Deslocamento para oficina</button>
+
+    <div class="card-title mt16">📦 Carregado</div>
+    <button class="btn btn-primary btn-hero" onclick="iniciarViagemAutoUI()">🚀 Iniciar viagem</button>`;
 
   area.innerHTML = `
     <div class="card op-hero">
@@ -534,16 +576,7 @@ async function renderOperacao() {
     </div>
 
     <div id="parada-ativa-box"></div>
-
-    <div class="card-title mt16">⏱️ Paradas</div>
-    <div class="hub-grupo">${paradasBtns}</div>
-
-    <div class="card-title mt16">🚛 Caminhão vazio</div>
-    <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI('Carregamento')">🚚 Deslocamento para carregamento</button>
-    <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI('Oficina')">🔧 Deslocamento para oficina</button>
-
-    <div class="card-title mt16">📦 Carregado</div>
-    <button class="btn btn-primary btn-hero" onclick="iniciarViagemAutoUI()">🚀 Iniciar viagem</button>
+    ${miolo}
 
     <button class="btn btn-ghost mt16" id="btn-rotas-manuais" onclick="toggleRotasManuais()">🗺️ Escolher rota manualmente ▾</button>
     <div id="rotas-manuais" class="hidden">
@@ -656,6 +689,15 @@ async function _finalizarParadaSePreciso() {
   if (ativa) { await Operacao.finalizarParada(ativa.id); clearInterval(_paradaTimerHandle); }
 }
 
+// Mostra/esconde as opções de parada (particular, inspeção, limpeza).
+function toggleParadas() {
+  const box = qs('#paradas-box');
+  const btn = qs('#btn-paradas');
+  if (!box) return;
+  const escondido = box.classList.toggle('hidden');
+  if (btn) btn.innerHTML = `⏱️ Paradas ${escondido ? '▾' : '▴'}`;
+}
+
 // Mostra/esconde a seção de rotas manuais (plano B — o padrão é a rota automática por GPS)
 function toggleRotasManuais() {
   const box = qs('#rotas-manuais');
@@ -753,6 +795,7 @@ async function _capturarLocalAtual() {
 async function iniciarViagemAutoUI() {
   const t = _turnoAtivoCache;
   if (!t) { showToast('Inicie um turno primeiro', 'var(--iron)'); return; }
+  _setCtxCarregamento(false); // ciclo de carregamento encerrado ao sair em viagem
   await _finalizarParadaSePreciso();
   const u = Auth.usuarioAtual();
   showToast('📍 Obtendo localização de origem...', 'var(--amber)', 4000);
@@ -767,18 +810,43 @@ async function iniciarViagemAutoUI() {
   renderOperacao();
 }
 
-async function iniciarDeslocamentoAutoUI(motivo) {
+async function iniciarDeslocamentoAutoUI(motivo, destinoEsperado) {
   const t = _turnoAtivoCache;
   if (!t) { showToast('Inicie um turno primeiro', 'var(--iron)'); return; }
+  // Deslocamento para carregamento tem um destino esperado (ponto de carregamento).
+  if (motivo === 'Carregamento' && !destinoEsperado) {
+    destinoEsperado = await Operacao.ultimoPontoCarregamento(t.id);
+    if (!destinoEsperado) {
+      const areas = await DB.getAll('areas');
+      if (areas.length) {
+        abrirModalFormulario({
+          titulo: '🏗️ Ponto de carregamento',
+          subtitulo: 'Para qual área você vai carregar?',
+          campos: [{ id: 'area', label: 'Área de carregamento', tipo: 'select', valor: areas[0].codigo, opcoes: areas.map(a => ({ valor: a.codigo, texto: a.codigo })) }],
+          textoSalvar: 'Iniciar deslocamento',
+          aoSalvar: ({ area }) => _iniciarDeslocAuto('Carregamento', area)
+        });
+        return;
+      }
+    }
+  }
+  _iniciarDeslocAuto(motivo, destinoEsperado);
+}
+
+async function _iniciarDeslocAuto(motivo, destinoEsperado) {
+  const t = _turnoAtivoCache;
+  if (!t) return;
   await _finalizarParadaSePreciso();
+  _setCtxCarregamento(false);
   showToast('📍 Obtendo localização de origem...', 'var(--amber)', 4000);
   const pos = await _capturarLocalAtual();
   if (!pos) showToast('Sem GPS agora — o deslocamento inicia sem origem identificada', 'var(--iron)', 3500);
   const d = await Operacao.iniciarDeslocamentoAutomatico({
-    turnoId: t.id, motoristaId: t.motoristaId, equipamentoId: t.equipamentoId, posInicio: pos, motivo: motivo || ''
+    turnoId: t.id, motoristaId: t.motoristaId, equipamentoId: t.equipamentoId,
+    posInicio: pos, motivo: motivo || '', destinoEsperado: destinoEsperado || null
   });
   showToast(pos && pos.area ? `🚚 Deslocamento iniciado em ${pos.area}` : '🚚 Deslocamento iniciado');
-  renderTimerDeslocamento(d, d.origem || 'Origem', '…', d.motivo || '');
+  renderTimerDeslocamento(d, d.origem || 'Origem', destinoEsperado || '…', d.motivo || '');
 }
 
 async function descarregarUI(viagemId) {
@@ -798,8 +866,9 @@ async function descarregarUI(viagemId) {
   const recorde = await Operacao.melhorTempoRota(viagem.rotaId, viagem.id);
   const fb = _feedbackRecorde(viagem.tempoTotalMs, recorde);
   setTimeout(() => showToast(fb.msg, fb.cor, fb.dur), 400);
-  // Caminhão vazio → volta ao hub (paradas / deslocamentos / nova viagem)
-  renderOperacao();
+  // Inicia automaticamente o deslocamento para carregamento; o destino esperado
+  // é onde esta viagem carregou (origemArea). Há botão "Preciso parar / oficina".
+  iniciarDeslocamentoAutoUI('Carregamento', viagem.origemArea);
 }
 
 async function repetirViagemUI(viagemId) {
@@ -1007,6 +1076,7 @@ function renderTimerDeslocamento(d, origem, destino, motivo) {
       ${motivo ? `<div class="text-label" style="font-size:12px">${motivo}</div>` : ''}
       <div style="font-family:var(--mono);font-size:30px;font-weight:700;margin:14px 0" id="desloc-digits">00:00</div>
       <button class="btn btn-primary" onclick="finalizarDeslocamentoUI('${d.id}')">🏁 Finalizar Deslocamento</button>
+      ${motivo === 'Carregamento' ? `<button class="btn btn-outline mt8" onclick="pararParaHub('${d.id}')">⏸️ Preciso parar / ir pra oficina</button>` : ''}
       <button class="btn btn-danger mt8" onclick="cancelarDeslocamentoUI('${d.id}')">✖ Cancelar</button>
     </div>`;
 
@@ -1036,7 +1106,12 @@ async function finalizarDeslocamentoUI(id) {
   const recorde = await Operacao.melhorTempoDeslocamento(d.origem, d.destino, d.id);
   const fb = _feedbackRecorde(d.tempoTotalMs, recorde);
   setTimeout(() => showToast(fb.msg, fb.cor, fb.dur), 400);
-  // Caminhão vazio → volta ao hub (paradas / deslocamentos / nova viagem)
+  // aviso de "saiu da rota" (chegou numa área diferente da esperada)
+  if (d.saiuDaRota) {
+    setTimeout(() => showToast(`⚠️ Saiu da rota — esperado ${d.destinoEsperado}, chegou em ${d.destino}`, 'var(--iron)', 5500), 900);
+  }
+  // se foi um deslocamento para carregamento, entra no contexto "no carregamento"
+  _setCtxCarregamento(d.motivo === 'Carregamento');
   renderOperacao();
 }
 
@@ -1045,6 +1120,15 @@ async function cancelarDeslocamentoUI(id) {
   clearInterval(_viagemTimerHandle);
   await Operacao.removerDeslocamento(id);
   showToast('✖ Deslocamento cancelado');
+  renderOperacao();
+}
+
+// Desvia do deslocamento para carregamento (para parar ou ir pra oficina):
+// remove o deslocamento em curso, sem confirmação, e volta ao hub vazio.
+async function pararParaHub(id) {
+  clearInterval(_viagemTimerHandle);
+  _setCtxCarregamento(false);
+  await Operacao.removerDeslocamento(id);
   renderOperacao();
 }
 

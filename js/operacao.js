@@ -7,9 +7,11 @@
 // Tipos de parada (tempo parado categorizado). min = tempo previsto em minutos
 // (null = sem tempo definido, contabilizado até a próxima viagem/deslocamento).
 const TIPOS_PARADA = [
-  { subtipo: 'particular', nome: 'Parada particular',        min: 10,   icone: '⏸️' },
-  { subtipo: 'inspecao',   nome: 'Inspeção do equipamento',  min: 5,    icone: '🔍' },
-  { subtipo: 'limpeza',    nome: 'Limpeza de báscula',       min: null, icone: '🧽' }
+  { subtipo: 'particular',   nome: 'Parada particular',        min: 10,   icone: '⏸️', grupo: 'parada' },
+  { subtipo: 'inspecao',     nome: 'Inspeção do equipamento',  min: 5,    icone: '🔍', grupo: 'parada' },
+  { subtipo: 'limpeza',      nome: 'Limpeza de báscula',       min: null, icone: '🧽', grupo: 'parada' },
+  { subtipo: 'aguardando',   nome: 'Aguardando carregamento',  min: null, icone: '⏳', grupo: 'carregamento' },
+  { subtipo: 'carregamento', nome: 'Carregamento',             min: null, icone: '🏗️', grupo: 'carregamento' }
 ];
 
 const Operacao = {
@@ -303,12 +305,13 @@ const Operacao = {
     return viagem;
   },
 
-  async iniciarDeslocamentoAutomatico({ turnoId, motoristaId, equipamentoId, posInicio, motivo }) {
+  async iniciarDeslocamentoAutomatico({ turnoId, motoristaId, equipamentoId, posInicio, motivo, destinoEsperado }) {
     const areaInicio = posInicio && posInicio.area ? posInicio.area : null;
     const deslocamento = {
       id: gerarId('desloc'),
       turnoId, motoristaId, equipamentoId,
       origem: areaInicio || 'Identificando...', destino: '', motivo: motivo || '',
+      destinoEsperado: destinoEsperado || null,
       origemArea: areaInicio,
       automatica: true,
       tipo: 'deslocamento',
@@ -332,9 +335,20 @@ const Operacao = {
     d.destinoArea = destinoArea;
     if (!d.origem || d.origem === 'Identificando...') d.origem = d.origemArea || 'Local não identificado';
     d.destino = destinoArea || 'Local não identificado';
+    // "saiu da rota": chegou numa área diferente da esperada (ponto de carregamento)
+    d.saiuDaRota = !!(d.destinoEsperado && destinoArea && d.destinoEsperado !== destinoArea);
     await DB.put('deslocamentos', d);
     await Sync.enfileirar('deslocamento', d);
     return d;
+  },
+
+  // Onde a viagem concluída mais recente do turno carregou (área de origem) — usado como
+  // destino esperado do próximo deslocamento para carregamento.
+  async ultimoPontoCarregamento(turnoId) {
+    const viagens = (await DB.getByIndex('viagens', 'turnoId', turnoId))
+      .filter(v => v.status === 'concluida' && v.origemArea)
+      .sort((a, b) => new Date(b.descarregadoEm || b.inicioEm) - new Date(a.descarregadoEm || a.inicioEm));
+    return viagens.length ? viagens[0].origemArea : null;
   },
 
   // ---------- PARADAS (tempo parado categorizado) ----------
