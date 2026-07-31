@@ -71,12 +71,19 @@ const Mapa = {
   async _carregarAreas() {
     if (!this._grupoAreas) return;
     this._grupoAreas.clearLayers();
-    const areas = await DB.getAll('areas');
+    const [areas, acessos] = await Promise.all([DB.getAll('areas'), DB.getAll('acessos')]);
     areas.forEach(a => {
       const pts = Geo.pontosLatLng(a.pontos);
       if (pts.length < 3) return;
       L.polygon(pts, { color: '#12B886', weight: 2, fillColor: '#12B886', fillOpacity: 0.12 })
         .bindTooltip(a.codigo, { permanent: true, direction: 'center', className: 'mk-tooltip' })
+        .addTo(this._grupoAreas);
+    });
+    acessos.forEach(ac => {
+      const pts = Geo.pontosLatLng(ac.pontos);
+      if (pts.length < 2) return;
+      L.polyline(pts, { color: '#F0A020', weight: 4 })
+        .bindTooltip('🛣️ ' + ac.nome, { permanent: false, direction: 'top', className: 'mk-tooltip' })
         .addTo(this._grupoAreas);
     });
   },

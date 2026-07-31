@@ -45,12 +45,64 @@ const Areas = {
     return { sucesso: true };
   },
 
+  // ---------- DADOS: ACESSOS (estradas / linhas) ----------
+  async listarAcessos() {
+    const acessos = await DB.getAll('acessos');
+    return acessos.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+  },
+
+  async salvarAcesso({ id, nome, pontos }) {
+    if (!Permissoes.podeGerenciarRotas()) return { erro: 'Apenas a gestão pode definir acessos' };
+    if (!nome) return { erro: 'Informe o nome do acesso' };
+    if (!Array.isArray(pontos) || pontos.length < 2) return { erro: 'O acesso precisa de pelo menos 2 pontos' };
+    const existente = id ? await DB.get('acessos', id) : null;
+    const usuario = Permissoes.usuarioAtual();
+    const acesso = {
+      id: id || gerarId('acesso'),
+      tipo: 'acesso',
+      nome: nome.trim(),
+      // objetos {lat,lng} (o Firestore não aceita array de arrays)
+      pontos: pontos.map(p => Array.isArray(p) ? { lat: p[0], lng: p[1] } : { lat: p.lat, lng: p.lng }),
+      criadoPorId: existente ? existente.criadoPorId : (usuario ? usuario.id : null),
+      criadoPorNome: existente ? existente.criadoPorNome : (usuario ? usuario.nome : null),
+      criadoEm: existente ? existente.criadoEm : agoraISO(),
+      editadoEm: agoraISO()
+    };
+    await DB.put('acessos', acesso);
+    if (typeof Sync !== 'undefined') Sync.enfileirar('acesso', acesso);
+    return acesso;
+  },
+
+  async removerAcesso(id) {
+    if (!Permissoes.podeGerenciarRotas()) return { erro: 'Apenas a gestão pode apagar acessos' };
+    await DB.delete('acessos', id);
+    if (typeof Sync !== 'undefined') Sync.enfileirarExclusao('acesso', id);
+    return { sucesso: true };
+  },
+
   // ---------- MAPA / DESENHO ----------
   _map: null,
   _grupoDesenho: null,
   _grupoAreas: null,
   _desenho: [],
   _editandoId: null,
+  _modo: 'area', // 'area' (polígono) ou 'acesso' (linha/estrada)
+
+  // Atualiza os botões de modo e o rótulo do botão salvar conforme this._modo.
+  _refletirModo() {
+    const bArea = qs('#areas-modo-area'), bAcesso = qs('#areas-modo-acesso');
+    if (bArea) { bArea.classList.toggle('btn-primary', this._modo === 'area'); bArea.classList.toggle('btn-outline', this._modo !== 'area'); }
+    if (bAcesso) { bAcesso.classList.toggle('btn-primary', this._modo === 'acesso'); bAcesso.classList.toggle('btn-outline', this._modo !== 'acesso'); }
+    const btnSalvar = qs('#areas-btn-salvar');
+    if (btnSalvar) btnSalvar.textContent = this._modo === 'acesso' ? '💾 Salvar acesso' : '💾 Salvar área';
+  },
+
+  // Alterna entre desenhar uma ÁREA (polígono) ou um ACESSO (linha/estrada).
+  definirModo(modo) {
+    this._modo = modo === 'acesso' ? 'acesso' : 'area';
+    this._refletirModo();
+    this.limparDesenho();
+  },
 
   async abrir() {
     const info = qs('#areas-info');
@@ -88,7 +140,7 @@ const Areas = {
 
     this._desenho = [];
     this._editandoId = null;
-    this._redesenhar();
+    this.definirModo('area');
     await this._carregarAreas();
     this.renderLista();
   },
@@ -122,17 +174,26 @@ const Areas = {
   _redesenhar() {
     if (!this._grupoDesenho) return;
     this._grupoDesenho.clearLayers();
+    const cor = this._modo === 'acesso' ? '#2b7fff' : '#F0A020';
     // vértices
     this._desenho.forEach((p, i) => {
-      L.circleMarker(p, { radius: 5, color: '#fff', weight: 2, fillColor: '#F0A020', fillOpacity: 1 })
+      L.circleMarker(p, { radius: 5, color: '#fff', weight: 2, fillColor: cor, fillOpacity: 1 })
         .bindTooltip(String(i + 1), { permanent: false })
         .addTo(this._grupoDesenho);
     });
-    if (this._desenho.length >= 3) {
-      L.polygon(this._desenho, { color: '#F0A020', weight: 2, fillColor: '#F0A020', fillOpacity: 0.2 })
-        .addTo(this._grupoDesenho);
-    } else if (this._desenho.length === 2) {
-      L.polyline(this._desenho, { color: '#F0A020', weight: 2, dashArray: '5,5' }).addTo(this._grupoDesenho);
+    if (this._modo === 'acesso') {
+      // acesso = linha aberta (estrada)
+      if (this._desenho.length >= 2) {
+        L.polyline(this._desenho, { color: cor, weight: 4 }).addTo(this._grupoDesenho);
+      }
+    } else {
+      // área = polígono fechado
+      if (this._desenho.length >= 3) {
+        L.polygon(this._desenho, { color: cor, weight: 2, fillColor: cor, fillOpacity: 0.2 })
+          .addTo(this._grupoDesenho);
+      } else if (this._desenho.length === 2) {
+        L.polyline(this._desenho, { color: cor, weight: 2, dashArray: '5,5' }).addTo(this._grupoDesenho);
+      }
     }
   },
 
@@ -140,21 +201,35 @@ const Areas = {
     const info = qs('#areas-info');
     if (!info) return;
     const n = this._desenho.length;
-    if (n === 0) info.textContent = 'Toque no mapa para marcar os cantos da área.';
-    else if (n < 3) info.textContent = `${n} ponto(s) — marque pelo menos 3 para formar uma área.`;
-    else info.textContent = `${n} pontos marcados. Toque em "Salvar área" quando terminar.`;
+    if (this._modo === 'acesso') {
+      if (n === 0) info.textContent = 'Modo ACESSO — toque no mapa para traçar a estrada (linha).';
+      else if (n < 2) info.textContent = `${n} ponto — marque pelo menos 2 para formar o acesso.`;
+      else info.textContent = `${n} pontos marcados. Toque em "Salvar acesso" quando terminar.`;
+    } else {
+      if (n === 0) info.textContent = 'Modo ÁREA — toque no mapa para marcar os cantos.';
+      else if (n < 3) info.textContent = `${n} ponto(s) — marque pelo menos 3 para formar uma área.`;
+      else info.textContent = `${n} pontos marcados. Toque em "Salvar área" quando terminar.`;
+    }
   },
 
   async _carregarAreas() {
     if (!this._grupoAreas) return;
     this._grupoAreas.clearLayers();
-    const areas = await this.listar();
+    const [areas, acessos] = await Promise.all([this.listar(), this.listarAcessos()]);
     const bounds = [];
     areas.forEach(a => {
       const pts = Geo.pontosLatLng(a.pontos);
       if (pts.length < 3) return;
       L.polygon(pts, { color: '#12B886', weight: 2, fillColor: '#12B886', fillOpacity: 0.15 })
         .bindTooltip(a.codigo, { permanent: true, direction: 'center', className: 'mk-tooltip' })
+        .addTo(this._grupoAreas);
+      pts.forEach(p => bounds.push(p));
+    });
+    acessos.forEach(ac => {
+      const pts = Geo.pontosLatLng(ac.pontos);
+      if (pts.length < 2) return;
+      L.polyline(pts, { color: '#F0A020', weight: 4 })
+        .bindTooltip('🛣️ ' + ac.nome, { permanent: false, direction: 'top', className: 'mk-tooltip' })
         .addTo(this._grupoAreas);
       pts.forEach(p => bounds.push(p));
     });
@@ -177,9 +252,27 @@ const Areas = {
   },
 
   async salvarNova() {
-    if (this._desenho.length < 3) { showToast('Marque pelo menos 3 pontos no mapa', 'var(--iron)'); return; }
     const pontos = this._desenho.slice();
     const editandoId = this._editandoId;
+    if (this._modo === 'acesso') {
+      if (pontos.length < 2) { showToast('Marque pelo menos 2 pontos no mapa', 'var(--iron)'); return; }
+      abrirModalFormulario({
+        titulo: editandoId ? '✏️ Editar acesso' : '🛣️ Novo acesso',
+        subtitulo: `${pontos.length} pontos marcados`,
+        campos: [{ id: 'nome', label: 'Nome do acesso / estrada', placeholder: 'Ex: Acesso Frente 01, Estrada do Britador' }],
+        textoSalvar: 'Salvar',
+        aoSalvar: async ({ nome }) => {
+          const res = await Areas.salvarAcesso({ id: editandoId, nome, pontos });
+          if (res && res.erro) { showToast(res.erro, 'var(--iron)'); return; }
+          showToast('✅ Acesso salvo!');
+          Areas.limparDesenho();
+          await Areas._carregarAreas();
+          Areas.renderLista();
+        }
+      });
+      return;
+    }
+    if (pontos.length < 3) { showToast('Marque pelo menos 3 pontos no mapa', 'var(--iron)'); return; }
     abrirModalFormulario({
       titulo: editandoId ? '✏️ Editar área' : '📐 Nova área',
       subtitulo: `${pontos.length} pontos marcados`,
@@ -199,12 +292,27 @@ const Areas = {
   async editar(id) {
     const a = await DB.get('areas', id);
     if (!a) return;
+    this._modo = 'area';
+    this._refletirModo();
     this._desenho = Geo.pontosLatLng(a.pontos);
     this._editandoId = id;
     this._redesenhar();
     this._atualizarInfo();
     if (this._map && this._desenho.length) this._map.fitBounds(this._desenho, { padding: [40, 40], maxZoom: 16 });
     showToast('Ajuste os pontos e salve para atualizar a área', 'var(--blue)', 3500);
+  },
+
+  async editarAcesso(id) {
+    const ac = await DB.get('acessos', id);
+    if (!ac) return;
+    this._modo = 'acesso';
+    this._refletirModo();
+    this._desenho = Geo.pontosLatLng(ac.pontos);
+    this._editandoId = id;
+    this._redesenhar();
+    this._atualizarInfo();
+    if (this._map && this._desenho.length) this._map.fitBounds(this._desenho, { padding: [40, 40], maxZoom: 16 });
+    showToast('Ajuste os pontos e salve para atualizar o acesso', 'var(--blue)', 3500);
   },
 
   async apagar(id) {
@@ -217,21 +325,47 @@ const Areas = {
     this.renderLista();
   },
 
+  async apagarAcesso(id) {
+    if (!confirm('Apagar este acesso?')) return;
+    const res = await this.removerAcesso(id);
+    if (res && res.erro) { showToast(res.erro, 'var(--iron)'); return; }
+    showToast('🗑️ Acesso apagado');
+    if (this._editandoId === id) this.limparDesenho();
+    await this._carregarAreas();
+    this.renderLista();
+  },
+
   async renderLista() {
     const lista = qs('#areas-lista');
     if (!lista) return;
-    const areas = await this.listar();
-    lista.innerHTML = areas.length ? areas.map(a => `
+    const [areas, acessos] = await Promise.all([this.listar(), this.listarAcessos()]);
+    const htmlAreas = areas.map(a => `
       <div class="list-item">
         <div>
-          <div class="li-main">${a.codigo}</div>
+          <div class="li-main">📐 ${a.codigo}</div>
           <div class="li-sub">${(a.pontos || []).length} pontos${a.criadoPorNome ? ' • por ' + a.criadoPorNome : ''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <button class="btn btn-outline btn-sm" onclick="Areas.editar('${a.id}')">Editar</button>
           <button class="li-fav" onclick="Areas.apagar('${a.id}')">🗑️</button>
         </div>
-      </div>`).join('') : `<div class="empty-state"><span class="emoji">📐</span>Nenhuma área cadastrada ainda.</div>`;
+      </div>`).join('');
+    const htmlAcessos = acessos.map(ac => `
+      <div class="list-item">
+        <div>
+          <div class="li-main">🛣️ ${ac.nome}</div>
+          <div class="li-sub">${(ac.pontos || []).length} pontos${ac.criadoPorNome ? ' • por ' + ac.criadoPorNome : ''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn btn-outline btn-sm" onclick="Areas.editarAcesso('${ac.id}')">Editar</button>
+          <button class="li-fav" onclick="Areas.apagarAcesso('${ac.id}')">🗑️</button>
+        </div>
+      </div>`).join('');
+    if (!areas.length && !acessos.length) {
+      lista.innerHTML = `<div class="empty-state"><span class="emoji">📐</span>Nenhuma área ou acesso cadastrado ainda.</div>`;
+      return;
+    }
+    lista.innerHTML = htmlAreas + htmlAcessos;
   },
 
   fechar() {

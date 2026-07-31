@@ -439,13 +439,20 @@ async function renderTrajeto() {
   }
   setTimeout(() => { if (_trajetoMap) _trajetoMap.invalidateSize(); }, 250);
 
-  // áreas de contexto
+  // áreas e acessos de contexto
   _trajetoAreas.clearLayers();
   (await DB.getAll('areas')).forEach(a => {
     const pts = Geo.pontosLatLng(a.pontos);
     if (pts.length >= 3) {
       L.polygon(pts, { color: '#12B886', weight: 2, fillColor: '#12B886', fillOpacity: 0.10 })
         .bindTooltip(a.codigo, { permanent: true, direction: 'center', className: 'mk-tooltip' }).addTo(_trajetoAreas);
+    }
+  });
+  (await DB.getAll('acessos')).forEach(ac => {
+    const pts = Geo.pontosLatLng(ac.pontos);
+    if (pts.length >= 2) {
+      L.polyline(pts, { color: '#F0A020', weight: 4, opacity: 0.85 })
+        .bindTooltip('🛣️ ' + ac.nome, { permanent: false, direction: 'top', className: 'mk-tooltip' }).addTo(_trajetoAreas);
     }
   });
 
@@ -1248,24 +1255,41 @@ async function pararParaHub(id) {
 // ---------- VIAGENS (histórico) ----------
 async function renderViagens() {
   qs('#btn-lancar-rotas').classList.toggle('hidden', !podeGerenciarFrota());
+
+  const eqBox = qs('#viagens-equip');
+  const campoDia = qs('#viagens-dia') ? qs('#viagens-dia').closest('.field') : null;
+  const resumoBox = qs('#viagens-resumo');
+  const tituloHist = qs('#viagens-hist-titulo');
+  const listaBox = qs('#viagens-lista');
+  const gestao = Permissoes.podeVerTudoOperacional();
+
+  if (gestao) {
+    // Gestão: SÓ os cartões dos equipamentos → entra no cartão para ver o histórico.
+    if (campoDia) campoDia.classList.add('hidden');
+    if (resumoBox) resumoBox.classList.add('hidden');
+    if (tituloHist) tituloHist.classList.add('hidden');
+    if (listaBox) { listaBox.classList.add('hidden'); listaBox.innerHTML = ''; }
+    if (eqBox) {
+      const porEquip = await Dashboard.resumoPorEquipamento();
+      eqBox.innerHTML = `<div class="card-title">🚛 Por equipamento</div>${_htmlGridEquip(porEquip, 'viagens')}`;
+    }
+    return;
+  }
+
+  // Motorista: linha do tempo pessoal (viagens, deslocamentos, paradas, abastecimentos) + médias.
+  if (eqBox) eqBox.innerHTML = '';
+  if (campoDia) campoDia.classList.remove('hidden');
+  if (resumoBox) resumoBox.classList.remove('hidden');
+  if (tituloHist) { tituloHist.classList.remove('hidden'); tituloHist.textContent = 'Meu histórico'; }
+  if (listaBox) listaBox.classList.remove('hidden');
+
   const dias = await Viagens.diasComRegistro();
   const selDia = qs('#viagens-dia');
   const diaAtual = todayKey();
   const todosDias = [...new Set([diaAtual, ...dias])];
   selDia.innerHTML = todosDias.map(d => `<option value="${d}" ${d === diaAtual ? 'selected' : ''}>${d}</option>`).join('');
 
-  // Gestão (Encarregado+): grade "Por equipamento" (igual ao Painel) → histórico do equipamento
-  const eqBox = qs('#viagens-equip');
-  if (eqBox) {
-    if (Permissoes.podeVerTudoOperacional()) {
-      const porEquip = await Dashboard.resumoPorEquipamento();
-      eqBox.innerHTML = `<div class="card-title">🚛 Por equipamento</div>${_htmlGridEquip(porEquip, 'viagens')}`;
-    } else {
-      eqBox.innerHTML = '';
-    }
-  }
-
-  await renderListaViagensDoDia(diaAtual);
+  await renderTimelineMotorista(diaAtual);
 }
 
 async function renderListaViagensDoDia(dia) {
@@ -1327,9 +1351,103 @@ async function renderListaViagensDoDia(dia) {
   }).join('') : `<div class="empty-state"><span class="emoji">📭</span>Nenhum registro neste dia.</div>`;
 }
 
+// Uma viagem é "não identificada" quando a origem/destino não caíram em nenhuma área
+// (rotaNome sai como "... → Local não identificado"). Só nesse caso o motorista pode editá-la.
+function _viagemNaoIdentificada(v) {
+  return !!v && /n[ãa]o identificad/i.test(v.rotaNome || '');
+}
+
+// Linha do tempo pessoal do motorista: tudo dele (viagens, deslocamentos, paradas,
+// abastecimentos) em ordem cronológica, com as médias do turno no topo.
+async function renderTimelineMotorista(dia) {
+  const u = Auth.usuarioAtual();
+  const uid = u ? u.id : null;
+
+  let [viagens, deslocamentos, paradas, abasts, medias] = await Promise.all([
+    Viagens.historicoDoDia(dia),
+    Operacao.deslocamentosDoDia(dia),
+    Operacao.paradasDoDia(dia),
+    Abastecimento.doDia(dia),
+    uid ? Dashboard.resumoMotorista(uid) : Promise.resolve(null)
+  ]);
+
+  // Só os registros do próprio motorista
+  viagens = Permissoes.filtrarPorVisibilidade(viagens, 'motoristaId');
+  deslocamentos = Permissoes.filtrarPorVisibilidade(deslocamentos, 'motoristaId');
+  paradas = Permissoes.filtrarPorVisibilidade(paradas, 'motoristaId');
+  abasts = (abasts || []).filter(a => !uid || a.motoristaId === uid);
+
+  // Resumo com médias
+  const concl = viagens.filter(v => v.status === 'concluida');
+  const tempoMedio = concl.length ? concl.reduce((a, v) => a + (v.tempoTotalMs || 0), 0) / concl.length : 0;
+  const mediaKmL = medias && medias.mediaKmL != null ? _fmtNum(medias.mediaKmL, 2) + ' km/L' : '—';
+  const mediaLh = medias && medias.mediaLh != null ? _fmtNum(medias.mediaLh, 2) + ' L/h' : '—';
+  qs('#viagens-resumo').innerHTML = `
+    <div class="row-kv"><span class="k">Viagens concluídas</span><span class="v">${concl.length}</span></div>
+    <div class="row-kv"><span class="k">Tempo médio</span><span class="v">${fmtDuracao(tempoMedio)}</span></div>
+    <div class="row-kv"><span class="k">Deslocamentos</span><span class="v">${deslocamentos.length}</span></div>
+    <div class="row-kv"><span class="k">Média consumo</span><span class="v">${mediaKmL}</span></div>
+    <div class="row-kv"><span class="k">Média por hora</span><span class="v">${mediaLh}</span></div>`;
+
+  // Itens cronológicos
+  const itens = [];
+  viagens.forEach(v => {
+    const podeEditar = _viagemNaoIdentificada(v);
+    const temTrajeto = (v.trilha && v.trilha.length >= 2) || (v.localInicio && v.localFim);
+    itens.push({ quando: v.inicioEm, html: `
+      <div class="list-item">
+        <div>
+          <div class="li-main">${v.rotaNome}</div>
+          <div class="li-sub">${v.equipamentoCodigo} • ${fmtHoraBR(v.inicioEm)}${v.descarregadoEm ? ' → ' + fmtHoraBR(v.descarregadoEm) : ' (em andamento)'}${v.editadoEm ? ' • ✏️ editada' : ''}${typeof Geo !== 'undefined' && v.localInicio ? ' • ' + Geo.chipMapa(v.localInicio, '📍 ' + (v.localInicio.area || 'início')) : ''}${typeof Geo !== 'undefined' && v.localFim ? ' → ' + Geo.chipMapa(v.localFim, '📍 ' + (v.localFim.area || 'fim')) : ''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="v" style="font-family:var(--mono)">${v.tempoTotalMs ? fmtDuracao(v.tempoTotalMs) : '—'}</div>
+          ${temTrajeto ? `<button class="li-fav" onclick="abrirTrajetoViagem('${v.id}')" title="Ver trajeto">🗺️</button>` : ''}
+          ${podeEditar ? `<button class="li-fav" onclick="editarViagemUI('${v.id}')" title="Corrigir local não identificado">✏️</button>` : ''}
+        </div>
+      </div>` });
+  });
+  deslocamentos.forEach(d => {
+    const temTrajeto = (d.trilha && d.trilha.length >= 2) || (d.localInicio && d.localFim);
+    itens.push({ quando: d.inicioEm, html: `
+      <div class="list-item" style="opacity:.85;border-style:dashed">
+        <div>
+          <div class="li-main">🚚 Deslocamento — ${d.origem} → ${d.destino}</div>
+          <div class="li-sub">${d.motivo ? d.motivo + ' • ' : ''}${fmtHoraBR(d.inicioEm)}${d.fimEm ? ' → ' + fmtHoraBR(d.fimEm) : ' (em andamento)'}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="v" style="font-family:var(--mono)">${d.tempoTotalMs ? fmtDuracao(d.tempoTotalMs) : '—'}</div>
+          ${temTrajeto ? `<button class="li-fav" onclick="abrirTrajetoDeslocamento('${d.id}')" title="Ver trajeto">🗺️</button>` : ''}
+        </div>
+      </div>` });
+  });
+  paradas.forEach(p => {
+    itens.push({ quando: p.inicioEm, html: `
+      <div class="list-item">
+        <div class="li-sub">${p.icone || '⏱️'} ${p.nome || 'Parada'} — ${fmtDuracao(p.tempoTotalMs || 0)}${p.atrasoMs > 0 ? ' (atraso +' + fmtDuracao(p.atrasoMs) + ')' : ''} • ${p.equipamentoCodigo ? p.equipamentoCodigo + ' • ' : ''}${fmtHoraBR(p.inicioEm)}</div>
+      </div>` });
+  });
+  abasts.forEach(a => {
+    itens.push({ quando: a.criadoEm, html: `
+      <div class="list-item">
+        <div class="li-sub">⛽ Abastecimento — ${a.litros} L${a.equipamentoCodigo ? ' • ' + a.equipamentoCodigo : ''} • ${fmtDataHoraBR(a.criadoEm)}</div>
+      </div>` });
+  });
+
+  itens.sort((x, y) => new Date(y.quando) - new Date(x.quando));
+  qs('#viagens-lista').innerHTML = itens.length
+    ? itens.map(i => i.html).join('')
+    : `<div class="empty-state"><span class="emoji">📭</span>Nenhum registro neste dia.</div>`;
+}
+
 async function editarViagemUI(id) {
   const v = await DB.get('viagens', id);
   if (!v) return;
+  // Motorista só pode editar quando a viagem está como "Local não identificado"
+  if (!Permissoes.podeVerTudoOperacional() && !_viagemNaoIdentificada(v)) {
+    showToast('Você só pode editar viagens sem local identificado', 'var(--iron)', 3500);
+    return;
+  }
   const novaRota = prompt('Nome da rota:', v.rotaNome) ?? v.rotaNome;
   const novoInicio = prompt('Horário de início (ex: 08:30):', fmtHoraBR(v.inicioEm)) ?? null;
   const novaDescarga = v.descarregadoEm ? (prompt('Horário de descarga (ex: 09:10):', fmtHoraBR(v.descarregadoEm)) ?? null) : null;
@@ -1344,22 +1462,39 @@ async function editarViagemUI(id) {
   }
   await Operacao.editarViagem(id, campos);
   showToast('✏️ Viagem atualizada');
-  renderListaViagensDoDia(qs('#viagens-dia').value);
+  _refreshAposMexerViagem();
+}
+
+// Atualiza a tela ativa depois de editar/apagar uma viagem ou deslocamento.
+function _refreshAposMexerViagem() {
+  const pe = qs('#screen-painel-equip');
+  if (pe && pe.classList.contains('active')) {
+    const box = qs('#painel-equip-historico');
+    if (box && !box.classList.contains('hidden')) { alternarHistoricoEquipamentoUI(); alternarHistoricoEquipamentoUI(); }
+    return;
+  }
+  const sv = qs('#screen-viagens');
+  if (sv && sv.classList.contains('active')) {
+    if (Permissoes.podeVerTudoOperacional()) renderViagens();
+    else renderTimelineMotorista(qs('#viagens-dia').value);
+  }
 }
 
 async function apagarViagemUI(id) {
+  if (!Permissoes.podeVerTudoOperacional()) { showToast('Apenas a gestão pode apagar viagens', 'var(--iron)'); return; }
   if (!confirm('Apagar esta viagem? Essa ação não pode ser desfeita.')) return;
   await Operacao.removerViagem(id);
   Log.registrar('excluir', { tipo: 'viagem', id });
   showToast('🗑️ Viagem apagada');
-  renderListaViagensDoDia(qs('#viagens-dia').value);
+  _refreshAposMexerViagem();
 }
 
 async function apagarDeslocamentoUI(id) {
+  if (!Permissoes.podeVerTudoOperacional()) { showToast('Apenas a gestão pode apagar deslocamentos', 'var(--iron)'); return; }
   if (!confirm('Apagar este deslocamento?')) return;
   await Operacao.removerDeslocamento(id);
   showToast('🗑️ Deslocamento apagado');
-  renderListaViagensDoDia(qs('#viagens-dia').value);
+  _refreshAposMexerViagem();
 }
 
 // ---------- LANÇAR ROTAS (lote administrativo) ----------
@@ -1498,7 +1633,7 @@ async function salvarLancamentoLoteUI() {
 }
 
 function mudarDiaViagens() {
-  renderListaViagensDoDia(qs('#viagens-dia').value);
+  renderTimelineMotorista(qs('#viagens-dia').value);
 }
 
 // ---------- FROTA (equipamentos + abastecimento + lubrificação) ----------
@@ -1947,34 +2082,85 @@ async function alternarHistoricoEquipamentoUI() {
   if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
   const d = await Dashboard.detalheEquipamento(_equipamentoSelecionadoId);
 
+  const gestao = Permissoes.podeVerTudoOperacional();
   const viagensVisiveis = Permissoes.filtrarPorVisibilidade(d.viagens, 'motoristaId');
   const deslocVisiveis = Permissoes.filtrarPorVisibilidade(d.deslocamentos, 'motoristaId');
 
+  // ---- OPERAÇÃO: deslocamentos, viagens, carregamento/aguardando e paradas em sequência ----
+  const opItens = [];
+  viagensVisiveis.forEach(v => {
+    const temTrajeto = (v.trilha && v.trilha.length >= 2) || (v.localInicio && v.localFim);
+    opItens.push({ quando: v.inicioEm, html: `
+      <div class="list-item">
+        <div class="li-sub">🚛 Viagem — ${v.rotaNome} • ${fmtHoraBR(v.inicioEm)}${v.descarregadoEm ? ' → ' + fmtHoraBR(v.descarregadoEm) : ' (em andamento)'} • ${fmtDataBR(v.inicioEm)}${v.motoristaNome ? ' • ' + v.motoristaNome : ''}${v.tempoTotalMs ? ' • ' + fmtDuracao(v.tempoTotalMs) : ''}</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${temTrajeto ? `<button class="li-fav" onclick="abrirTrajetoViagem('${v.id}')" title="Ver trajeto">🗺️</button>` : ''}
+          ${gestao ? `<button class="li-fav" onclick="editarViagemUI('${v.id}')">✏️</button><button class="li-fav" onclick="apagarViagemUI('${v.id}')">🗑️</button>` : ''}
+        </div>
+      </div>` });
+  });
+  deslocVisiveis.forEach(x => {
+    const temTrajeto = (x.trilha && x.trilha.length >= 2) || (x.localInicio && x.localFim);
+    opItens.push({ quando: x.inicioEm, html: `
+      <div class="list-item" style="opacity:.85;border-style:dashed">
+        <div class="li-sub">🚚 Deslocamento — ${x.origem} → ${x.destino} • ${fmtHoraBR(x.inicioEm)}${x.fimEm ? ' → ' + fmtHoraBR(x.fimEm) : ''} • ${fmtDataBR(x.inicioEm)}${x.tempoTotalMs ? ' • ' + fmtDuracao(x.tempoTotalMs) : ''}</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${temTrajeto ? `<button class="li-fav" onclick="abrirTrajetoDeslocamento('${x.id}')" title="Ver trajeto">🗺️</button>` : ''}
+          ${gestao ? `<button class="li-fav" onclick="apagarDeslocamentoUI('${x.id}')">🗑️</button>` : ''}
+        </div>
+      </div>` });
+  });
+  (d.paradas || []).forEach(p => {
+    opItens.push({ quando: p.inicioEm, html: `
+      <div class="list-item">
+        <div class="li-sub">${p.icone || '⏱️'} ${p.nome || 'Parada'} — ${fmtDuracao(p.tempoTotalMs || 0)}${p.atrasoMs > 0 ? ' (atraso +' + fmtDuracao(p.atrasoMs) + ')' : ''} • ${p.motoristaNome ? p.motoristaNome + ' • ' : ''}${fmtDataHoraBR(p.inicioEm)}</div>
+      </div>` });
+  });
+  // ordem cronológica (a sequência real do apontamento)
+  opItens.sort((a, b) => new Date(a.quando) - new Date(b.quando));
+
+  // ---- MANUTENÇÃO: manutenções, abastecimentos e lubrificações ----
   const podeApagarManutencao = podeGerenciarFrota();
-  const itens = [
-    ...viagensVisiveis.map(v => ({ quando: v.inicioEm, html: `🚛 Viagem — ${v.rotaNome} • ${fmtHoraBR(v.inicioEm)}${v.descarregadoEm ? ' → ' + fmtHoraBR(v.descarregadoEm) : ' (em andamento)'} • ${fmtDataBR(v.inicioEm)}` })),
-    ...deslocVisiveis.map(x => ({ quando: x.inicioEm, html: `🚚 Deslocamento — ${x.origem} → ${x.destino} • ${fmtHoraBR(x.inicioEm)}${x.fimEm ? ' → ' + fmtHoraBR(x.fimEm) : ''} • ${fmtDataBR(x.inicioEm)}` })),
-    ...d.abasts.map(a => ({ quando: a.criadoEm, html: `⛽ Abastecimento — ${a.litros} L • ${fmtDataHoraBR(a.criadoEm)}` })),
-    ...d.lubs.map(l => ({ quando: l.criadoEm, html: `🛠 Lubrificação — ${l.tipoServico} • ${fmtDataHoraBR(l.criadoEm)}` })),
+  const mntItens = [
     ...d.manutencoes.map(m => ({
       quando: m.entradaEm,
       html: `🔧 Manutenção${m.motivo ? ' — ' + m.motivo : ''} • entrou ${fmtDataHoraBR(m.entradaEm)}${m.saidaEm ? ' • retornou ' + fmtDataHoraBR(m.saidaEm) : ' • ainda em manutenção'}`,
       manutencaoId: m.id
     })),
-    ...(d.paradas || []).map(p => ({
-      quando: p.inicioEm,
-      html: `${p.icone || '⏱️'} ${p.nome || 'Parada'} — ${fmtDuracao(p.tempoTotalMs || 0)}${p.atrasoMs > 0 ? ' (atraso +' + fmtDuracao(p.atrasoMs) + ')' : ''} • ${p.motoristaNome ? p.motoristaNome + ' • ' : ''}${fmtDataHoraBR(p.inicioEm)}`
-    }))
+    ...d.abasts.map(a => ({ quando: a.criadoEm, html: `⛽ Abastecimento — ${a.litros} L • ${fmtDataHoraBR(a.criadoEm)}` })),
+    ...d.lubs.map(l => ({ quando: l.criadoEm, html: `🛠 Lubrificação — ${l.tipoServico} • ${fmtDataHoraBR(l.criadoEm)}` }))
   ].sort((a, b) => new Date(b.quando) - new Date(a.quando));
 
-  box.classList.remove('hidden');
-  box.innerHTML = itens.length
-    ? `<div class="card-title mt16">Histórico completo</div>` + itens.map(i => `
+  const htmlOp = opItens.length
+    ? opItens.map(i => i.html).join('')
+    : `<div class="empty-state"><span class="emoji">📭</span>Nenhum registro de operação.</div>`;
+  const htmlMnt = mntItens.length
+    ? mntItens.map(i => `
       <div class="list-item">
         <div class="li-sub">${i.html}</div>
         ${i.manutencaoId && podeApagarManutencao ? `<button class="li-fav" onclick="apagarManutencaoUI('${i.manutencaoId}')">🗑️</button>` : ''}
       </div>`).join('')
-    : `<div class="empty-state"><span class="emoji">📭</span>Nenhum registro ainda.</div>`;
+    : `<div class="empty-state"><span class="emoji">📭</span>Nenhum registro de manutenção.</div>`;
+
+  box.classList.remove('hidden');
+  box.innerHTML = `
+    <div class="btn-row mt16" style="gap:8px">
+      <button class="btn btn-sm btn-primary" id="hist-tab-op" onclick="_abaHistEquip('operacao')">🚛 Operação</button>
+      <button class="btn btn-sm btn-outline" id="hist-tab-mnt" onclick="_abaHistEquip('manutencao')">🔧 Manutenção</button>
+    </div>
+    <div id="hist-op" class="mt8">${htmlOp}</div>
+    <div id="hist-mnt" class="mt8 hidden">${htmlMnt}</div>`;
+}
+
+// Alterna entre as abas Operação / Manutenção do histórico do equipamento.
+function _abaHistEquip(qual) {
+  const op = qs('#hist-op'), mnt = qs('#hist-mnt');
+  const tabOp = qs('#hist-tab-op'), tabMnt = qs('#hist-tab-mnt');
+  const ativo = qual === 'manutencao';
+  if (op) op.classList.toggle('hidden', ativo);
+  if (mnt) mnt.classList.toggle('hidden', !ativo);
+  if (tabOp) { tabOp.classList.toggle('btn-primary', !ativo); tabOp.classList.toggle('btn-outline', ativo); }
+  if (tabMnt) { tabMnt.classList.toggle('btn-primary', ativo); tabMnt.classList.toggle('btn-outline', !ativo); }
 }
 
 async function apagarManutencaoUI(id) {

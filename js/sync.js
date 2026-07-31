@@ -178,6 +178,7 @@ const Sync = {
     checklist: 'checklists',
     localizacao: 'localizacoes',
     area: 'areas',
+    acesso: 'acessos',
     parada: 'paradas',
     log: 'logs'
   },
