@@ -677,6 +677,7 @@ async function renderOperacao() {
 
     <div class="card-title mt16">🚛 Caminhão vazio</div>
     <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI('Oficina')">🔧 Deslocamento para oficina</button>
+    <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI('Deslocamento')">🚚 Novo deslocamento</button>
 
     ${secaoParadas}`
     : `
@@ -685,6 +686,7 @@ async function renderOperacao() {
     <div class="card-title mt16">🚛 Caminhão vazio</div>
     <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI('Carregamento')">🚚 Deslocamento para carregamento</button>
     <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI('Oficina')">🔧 Deslocamento para oficina</button>
+    <button class="btn btn-secondary" onclick="iniciarDeslocamentoAutoUI('Deslocamento')">🚚 Novo deslocamento</button>
 
     <div class="card-title mt16">📦 Caminhão carregado</div>
     <button class="btn btn-primary btn-hero" onclick="iniciarViagemAutoUI()">🚀 Iniciar viagem</button>`;
