@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="./css/style.css?v=4.14.3">
+<link rel="stylesheet" href="./css/style.css?v=4.14.4">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -54,7 +54,7 @@
     <div class="card menu-lista mt24">
       <button class="menu-item" onclick="enviarMinhaLocalizacaoUI()"><span class="mi-ic">📍</span><span class="mi-lb">Enviar minha localização</span><span class="mi-ar">›</span></button>
       <button class="menu-item" id="btn-mapa-vivo" onclick="navigate('mapa')" style="display:none"><span class="mi-ic">🗺️</span><span class="mi-lb">Mapa ao vivo</span><span class="mi-ar">›</span></button>
-      <button class="menu-item" id="btn-areas" onclick="navigate('areas')" style="display:none"><span class="mi-ic">📐</span><span class="mi-lb">Áreas (rotas automáticas)</span><span class="mi-ar">›</span></button>
+      <button class="menu-item" id="btn-areas" onclick="navigate('areas')" style="display:none"><span class="mi-ic">📐</span><span class="mi-lb">Áreas e Acessos (estradas)</span><span class="mi-ar">›</span></button>
       <button class="menu-item" onclick="navigate('config')"><span class="mi-ic">⚙️</span><span class="mi-lb">Configurações e Sincronização</span><span class="mi-ar">›</span></button>
       <button class="menu-item menu-sair" onclick="fazerLogout()"><span class="mi-ic">🚪</span><span class="mi-lb">Sair</span><span class="mi-ar">›</span></button>
     </div>
@@ -276,7 +276,7 @@
     <div class="mapa-topo">
       <h1 class="page-title" style="margin:0">🗺️ Mapa ao vivo</h1>
       <div style="display:flex;gap:8px">
-        <button class="mapa-btn-acao" onclick="navigate('areas')" title="Editar áreas">📐</button>
+        <button class="mapa-btn-acao" onclick="navigate('areas')" title="Áreas e acessos">📐</button>
         <button class="mapa-btn-acao" onclick="Mapa.recentralizar()" title="Recentralizar">🎯</button>
       </div>
     </div>
@@ -290,6 +290,7 @@
   <!-- ═══ ÁREAS (POLÍGONOS) ═══ -->
   <div class="screen" id="screen-areas">
     <h1 class="page-title">📐 Áreas e 🛣️ Acessos</h1>
+    <div class="text-label" style="font-size:13px;margin-bottom:6px">Escolha o que marcar:</div>
     <div class="btn-row" style="gap:8px">
       <button class="btn btn-sm btn-primary" id="areas-modo-area" onclick="Areas.definirModo('area')">📐 Área</button>
       <button class="btn btn-sm btn-outline" id="areas-modo-acesso" onclick="Areas.definirModo('acesso')">🛣️ Acesso (estrada)</button>
