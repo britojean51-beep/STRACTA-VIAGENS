@@ -118,9 +118,10 @@ window.addEventListener('appinstalled', () => {
 });
 
 function configurarInstalacao() {
-  if (_appInstalado()) { _mostrarBotoesInstalar(false); return; }
-  // Mostra o botão se o Android já liberou o prompt, ou sempre no iPhone (instruções).
-  if (_promptInstalar || _ehIOS()) _mostrarBotoesInstalar(true);
+  // Mostra o botão SEMPRE (a não ser que o app já esteja instalado). Assim o usuário
+  // sempre acha como instalar: se o navegador liberar, abre o instalador nativo;
+  // senão, mostramos as instruções (inclusive o caso de estar num navegador interno).
+  _mostrarBotoesInstalar(!_appInstalado());
 }
 
 async function instalarApp() {
@@ -135,10 +136,10 @@ async function instalarApp() {
     return;
   }
   if (_ehIOS()) {
-    alert('Para instalar no iPhone (Safari):\n\n1) Toque no botão Compartilhar (o quadrado com a seta para cima).\n2) Escolha "Adicionar à Tela de Início".\n3) Toque em "Adicionar".');
+    alert('Para instalar no iPhone:\n\n1) Abra este site no navegador SAFARI (não pelo link de dentro do WhatsApp/Instagram).\n2) Toque no botão Compartilhar (o quadrado com a seta para cima).\n3) Escolha "Adicionar à Tela de Início".\n4) Toque em "Adicionar".');
     return;
   }
-  alert('Para instalar:\n\nAbra o menu do navegador (⋮, no canto) e toque em "Instalar aplicativo" ou "Adicionar à tela inicial".');
+  alert('Para instalar no Android:\n\n1) Abra este site no CHROME (não pelo navegador de dentro do WhatsApp/Instagram — se abriu por um link, toque nos 3 pontinhos e "Abrir no Chrome").\n2) Toque no menu ⋮ (canto superior direito).\n3) Escolha "Instalar aplicativo" ou "Adicionar à tela inicial".');
 }
 
 async function iniciarApp() {
