@@ -11,10 +11,16 @@
       ".firebase/**",
       ".claude/**",
       "node_modules/**",
-      "**/node_modules/**",
-      "**/.*"
+      "**/node_modules/**"
     ],
     "headers": [
+      {
+        "source": "/.well-known/assetlinks.json",
+        "headers": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
+        ]
+      },
       {
         "source": "service-worker.js",
         "headers": [
