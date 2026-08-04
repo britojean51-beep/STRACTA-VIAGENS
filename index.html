@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="./css/style.css?v=4.14.4">
+<link rel="stylesheet" href="./css/style.css?v=4.14.5">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -35,6 +35,7 @@
       <div class="field"><label>Usuário</label><input id="login-usuario" placeholder="usuário ou nome" autocomplete="username"></div>
       <div class="field"><label>Senha</label><input id="login-senha" type="password" placeholder="senha" autocomplete="current-password"></div>
       <button class="btn btn-primary mt8" onclick="fazerLogin()">Entrar</button>
+      <button class="btn btn-outline mt8" id="btn-instalar-login" onclick="instalarApp()" style="display:none">📲 Instalar aplicativo</button>
     </div>
   </div>
 
@@ -52,6 +53,7 @@
       <div class="atalho" onclick="navigate('painel')"><span class="ic">📊</span><span class="lb">Painel</span></div>
     </div>
     <div class="card menu-lista mt24">
+      <button class="menu-item" id="btn-instalar" onclick="instalarApp()" style="display:none"><span class="mi-ic">📲</span><span class="mi-lb">Instalar aplicativo</span><span class="mi-ar">›</span></button>
       <button class="menu-item" onclick="enviarMinhaLocalizacaoUI()"><span class="mi-ic">📍</span><span class="mi-lb">Enviar minha localização</span><span class="mi-ar">›</span></button>
       <button class="menu-item" id="btn-mapa-vivo" onclick="navigate('mapa')" style="display:none"><span class="mi-ic">🗺️</span><span class="mi-lb">Mapa ao vivo</span><span class="mi-ar">›</span></button>
       <button class="menu-item" id="btn-areas" onclick="navigate('areas')" style="display:none"><span class="mi-ic">📐</span><span class="mi-lb">Áreas e Acessos (estradas)</span><span class="mi-ar">›</span></button>

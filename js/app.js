@@ -88,6 +88,59 @@ function abrirModalFormulario({ titulo, subtitulo, campos, aoSalvar, textoSalvar
 }
 
 // ---------- BOOTSTRAP ----------
+// ---------- INSTALAÇÃO DO APP (PWA) ----------
+let _promptInstalar = null;
+
+function _appInstalado() {
+  return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+         window.navigator.standalone === true;
+}
+function _ehIOS() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+}
+function _mostrarBotoesInstalar(mostrar) {
+  ['#btn-instalar', '#btn-instalar-login'].forEach(sel => {
+    const el = qs(sel);
+    if (el) el.style.display = mostrar ? '' : 'none';
+  });
+}
+
+// O Android/Chrome dispara este evento quando o app pode ser instalado.
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _promptInstalar = e;
+  try { if (!_appInstalado()) _mostrarBotoesInstalar(true); } catch (_) {}
+});
+window.addEventListener('appinstalled', () => {
+  _promptInstalar = null;
+  try { _mostrarBotoesInstalar(false); } catch (_) {}
+  showToast('✅ Aplicativo instalado!');
+});
+
+function configurarInstalacao() {
+  if (_appInstalado()) { _mostrarBotoesInstalar(false); return; }
+  // Mostra o botão se o Android já liberou o prompt, ou sempre no iPhone (instruções).
+  if (_promptInstalar || _ehIOS()) _mostrarBotoesInstalar(true);
+}
+
+async function instalarApp() {
+  if (_appInstalado()) { showToast('✅ O aplicativo já está instalado', 'var(--green)'); return; }
+  if (_promptInstalar) {
+    _promptInstalar.prompt();
+    try {
+      const escolha = await _promptInstalar.userChoice;
+      if (escolha && escolha.outcome === 'accepted') _mostrarBotoesInstalar(false);
+    } catch (_) {}
+    _promptInstalar = null;
+    return;
+  }
+  if (_ehIOS()) {
+    alert('Para instalar no iPhone (Safari):\n\n1) Toque no botão Compartilhar (o quadrado com a seta para cima).\n2) Escolha "Adicionar à Tela de Início".\n3) Toque em "Adicionar".');
+    return;
+  }
+  alert('Para instalar:\n\nAbra o menu do navegador (⋮, no canto) e toque em "Instalar aplicativo" ou "Adicionar à tela inicial".');
+}
+
 async function iniciarApp() {
   await abrirBanco();
   await aplicarConfigPadraoSeNecessario();
@@ -123,6 +176,8 @@ async function iniciarApp() {
       setTimeout(() => window.location.reload(), 1200);
     });
   }
+
+  configurarInstalacao();
 
   if (Auth.estaLogado()) {
     _turnoAtivoCache = await Motorista.turnoAtivo();
