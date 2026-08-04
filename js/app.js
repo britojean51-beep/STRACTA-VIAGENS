@@ -98,6 +98,11 @@ function _appInstalado() {
 function _ehIOS() {
   return /iphone|ipad|ipod/i.test(navigator.userAgent || '');
 }
+// Navegador "interno" (dentro do WhatsApp/Instagram/Facebook) não instala PWA.
+function _ehNavegadorInterno() {
+  const ua = navigator.userAgent || '';
+  return /FBAN|FBAV|Instagram|Line\/|; wv\)|WhatsApp/i.test(ua);
+}
 function _mostrarBotoesInstalar(mostrar) {
   ['#btn-instalar', '#btn-instalar-login'].forEach(sel => {
     const el = qs(sel);
@@ -126,6 +131,21 @@ function configurarInstalacao() {
 
 async function instalarApp() {
   if (_appInstalado()) { showToast('✅ O aplicativo já está instalado', 'var(--green)'); return; }
+
+  // Se o instalador nativo ainda não chegou (mas o navegador suporta), espera um
+  // instante — ele costuma chegar logo após abrir a página. Assim o toque abre o
+  // instalador sozinho, sem precisar de instruções.
+  if (!_promptInstalar && !_ehIOS() && !_ehNavegadorInterno()) {
+    showToast('📲 Preparando instalação...', 'var(--blue)', 3000);
+    await new Promise((resolve) => {
+      let feito = false;
+      const t = setTimeout(() => { if (!feito) { feito = true; resolve(); } }, 3000);
+      window.addEventListener('beforeinstallprompt', () => {
+        if (!feito) { feito = true; clearTimeout(t); resolve(); }
+      }, { once: true });
+    });
+  }
+
   if (_promptInstalar) {
     _promptInstalar.prompt();
     try {
@@ -133,6 +153,12 @@ async function instalarApp() {
       if (escolha && escolha.outcome === 'accepted') _mostrarBotoesInstalar(false);
     } catch (_) {}
     _promptInstalar = null;
+    return;
+  }
+
+  // Navegador interno (WhatsApp/Instagram): precisa abrir no navegador de verdade.
+  if (_ehNavegadorInterno()) {
+    alert('Este link foi aberto dentro de outro app (WhatsApp/Instagram), que não instala aplicativos.\n\nToque nos 3 pontinhos (⋮) no canto e escolha "Abrir no Chrome" (ou no navegador). Depois toque em "Instalar aplicativo" de novo.');
     return;
   }
   if (_ehIOS()) {
