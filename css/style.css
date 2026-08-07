@@ -280,6 +280,80 @@ h1.page-title {
 .empty-state { text-align: center; padding: 40px 20px; color: var(--label); }
 .empty-state .emoji { font-size: 34px; margin-bottom: 10px; display: block; }
 
+/* ---------- CARTÃO DO EQUIPAMENTO (Viagens / Painel) ---------- */
+.equip-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 15px; margin-bottom: 12px; cursor: pointer;
+}
+.equip-card:active { background: var(--surface2); }
+.eq-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.eq-code { font-family: var(--display); font-weight: 700; font-size: 21px; line-height: 1; }
+.eq-sub { color: var(--label); font-size: 12.5px; margin-top: 5px; }
+.eq-sub b { color: var(--white); font-weight: 600; }
+.eq-rota {
+  display: flex; align-items: center; gap: 7px; margin: 11px 0;
+  background: rgba(245,166,35,.12); border: 1px solid rgba(245,166,35,.30);
+  color: var(--amber); border-radius: 9px; padding: 7px 10px; font-size: 12.5px; font-weight: 600;
+}
+.status-badge {
+  font-family: var(--display); font-weight: 700; font-size: 11px; letter-spacing: .03em;
+  padding: 4px 10px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+}
+.status-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.st-operando { color: var(--green);  background: rgba(76,175,130,.16); }
+.st-rota     { color: var(--amber);  background: rgba(245,166,35,.16); }
+.st-falta    { color: var(--iron);   background: rgba(193,68,14,.18); }
+.st-manut    { color: var(--iron);   background: rgba(193,68,14,.18); }
+.st-reserva  { color: var(--blue);   background: rgba(46,134,222,.16); }
+.st-off      { color: var(--label);  background: rgba(143,160,168,.15); }
+.stat-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.stat-tile { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 8px; text-align: center; }
+.stat-tile .v { font-family: var(--mono); font-weight: 700; font-size: 18px; }
+.stat-tile .v small { font-size: 11px; color: var(--label); font-weight: 700; }
+.stat-tile .k { color: var(--label); font-size: 10.5px; margin-top: 3px; text-transform: uppercase; letter-spacing: .03em; }
+.stat-tile.hl .v { color: var(--amber); }
+.eq-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--label); font-size: 11.5px; margin-top: 12px; }
+.eq-meta b { color: var(--white); font-family: var(--mono); font-weight: 600; }
+
+/* ---------- RESUMO POR TRAJETO ---------- */
+.traj-resumo { margin-bottom: 12px; }
+.traj-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 9px 12px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; margin-bottom: 8px;
+}
+.traj-row .tr-main { font-weight: 600; font-size: 13.5px; }
+.traj-row .tr-sub { color: var(--label); font-size: 11.5px; margin-top: 2px; }
+.traj-row .tr-qtd { font-family: var(--mono); font-weight: 700; font-size: 16px; color: var(--amber); white-space: nowrap; }
+.traj-row .tr-qtd small { font-size: 10.5px; color: var(--label); font-weight: 700; }
+
+/* ---------- LINHA DO TEMPO (trilho vertical) ---------- */
+.tl-day {
+  font-family: var(--display); font-weight: 600; font-size: 11px; color: var(--label);
+  text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 10px;
+}
+.tl2 { position: relative; padding-left: 24px; }
+.tl2::before { content: ""; position: absolute; left: 8px; top: 6px; bottom: 6px; width: 2px; background: var(--border); }
+.tl-it { position: relative; margin-bottom: 14px; }
+.tl-it::before {
+  content: ""; position: absolute; left: -20px; top: 3px; width: 11px; height: 11px;
+  border-radius: 50%; background: var(--blue); box-shadow: 0 0 0 3px var(--bg);
+}
+.tl-it.d::before { background: var(--label); }
+.tl-it.p::before { background: var(--amber); }
+.tl-it.f::before { background: var(--green); }
+.tl-it.m::before { background: var(--iron); }
+.tl-it.desl { opacity: .7; }
+.tl-t { font-weight: 600; font-size: 13.5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tl-s { color: var(--label); font-size: 11.5px; margin-top: 2px; }
+.tl-actions { display: inline-flex; gap: 4px; margin-left: auto; }
+.dur-badge {
+  font-family: var(--mono); font-weight: 700; font-size: 12px; padding: 3px 8px; border-radius: 8px;
+  background: var(--surface2); color: var(--white); white-space: nowrap;
+}
+.dur-badge.good { background: rgba(76,175,130,.20); color: var(--green); }
+.dur-badge.bad  { background: rgba(193,68,14,.20);  color: var(--iron); }
+
 /* ---------- GRID DE ATALHOS (HOME) ---------- */
 .grid-atalhos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
 .atalho {

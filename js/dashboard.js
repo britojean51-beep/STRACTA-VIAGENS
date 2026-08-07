@@ -109,6 +109,7 @@ const Dashboard = {
       Equipamentos.listar(),
       DB.getByIndex('turnos', 'status', 'ativo')
     ]);
+    const hoje = todayKey();
     const resultado = [];
     for (const e of equipamentos) {
       const [viagens, abasts, lubs] = await Promise.all([
@@ -117,18 +118,45 @@ const Dashboard = {
         Lubrificacao.porEquipamento(e.id)
       ]);
       const viagemEmRota = viagens.find(v => v.status === 'em_andamento') || null;
-      const temTurnoAtivo = turnosAtivos.some(t => t.equipamentoId === e.id);
+      const turnoAtivo = turnosAtivos.find(t => t.equipamentoId === e.id) || null;
+      const concluidas = viagens.filter(v => v.status === 'concluida');
+      const concluidasComTempo = concluidas.filter(v => v.tempoTotalMs > 0);
+      const tempoMedioMs = concluidasComTempo.length
+        ? concluidasComTempo.reduce((a, v) => a + v.tempoTotalMs, 0) / concluidasComTempo.length
+        : null;
+      const ultima = concluidas.reduce((acc, v) => {
+        const q = v.descarregadoEm || v.inicioEm;
+        return (!acc || new Date(q) > new Date(acc)) ? q : acc;
+      }, null);
       resultado.push({
         equipamento: e,
-        totalViagens: viagens.filter(v => v.status === 'concluida').length,
+        totalViagens: concluidas.length,
+        viagensHoje: concluidas.filter(v => v.dia === hoje).length,
+        tempoMedioMs,
+        ultimaViagemEm: ultima,
+        motoristaAtual: turnoAtivo ? turnoAtivo.motoristaNome : null,
+        consumoKmL: this._consumoKmL(abasts),
         totalAbastecimentos: abasts.length,
         totalLubrificacoes: lubs.length,
         emRota: !!viagemEmRota,
         rotaAtualNome: viagemEmRota ? viagemEmRota.rotaNome : null,
-        temTurnoAtivo
+        temTurnoAtivo: !!turnoAtivo
       });
     }
     return resultado;
+  },
+
+  // Consumo médio (km/L) por "melhor esforço": usa os abastecimentos com KM registrado.
+  // Padrão de cálculo: (KM do último − KM do primeiro) / litros abastecidos após o primeiro.
+  _consumoKmL(abasts) {
+    const comKm = (abasts || [])
+      .filter(a => typeof a.kmAtual === 'number' && a.kmAtual > 0)
+      .sort((a, b) => a.kmAtual - b.kmAtual);
+    if (comKm.length < 2) return null;
+    const kmRange = comKm[comKm.length - 1].kmAtual - comKm[0].kmAtual;
+    const litros = comKm.slice(1).reduce((s, a) => s + (a.litros || 0), 0);
+    if (kmRange <= 0 || litros <= 0) return null;
+    return kmRange / litros;
   },
 
   // Painel completo de um único equipamento (tela "Painel do Equipamento")

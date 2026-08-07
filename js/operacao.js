@@ -8,6 +8,7 @@
 // (null = sem tempo definido, contabilizado até a próxima viagem/deslocamento).
 const TIPOS_PARADA = [
   { subtipo: 'particular',   nome: 'Parada particular',        min: 10,   icone: '⏸️', grupo: 'parada' },
+  { subtipo: 'almoco',       nome: 'Almoço',                   min: 60,   icone: '🍽️', grupo: 'parada' },
   { subtipo: 'inspecao',     nome: 'Inspeção do equipamento',  min: 5,    icone: '🔍', grupo: 'parada' },
   { subtipo: 'limpeza',      nome: 'Limpeza de báscula',       min: null, icone: '🧽', grupo: 'parada' },
   { subtipo: 'aguardando',   nome: 'Aguardando carregamento',  min: null, icone: '⏳', grupo: 'carregamento' },

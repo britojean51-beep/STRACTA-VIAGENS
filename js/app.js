@@ -1473,55 +1473,52 @@ async function renderTimelineMotorista(dia) {
     <div class="row-kv"><span class="k">Média consumo</span><span class="v">${mediaKmL}</span></div>
     <div class="row-kv"><span class="k">Média por hora</span><span class="v">${mediaLh}</span></div>`;
 
-  // Itens cronológicos
+  // Resumo por trajeto do dia + melhor tempo por trajeto (p/ marcar recorde 🏆)
+  const resumo = _resumoPorTrajeto(concl);
+  const melhorPorTrajeto = {};
+  resumo.forEach(t => { melhorPorTrajeto[t.trajeto] = t.melhorMs; });
+
+  // Itens cronológicos (linha do tempo com trilho)
   const itens = [];
   viagens.forEach(v => {
     const podeEditar = _viagemNaoIdentificada(v);
     const temTrajeto = (v.trilha && v.trilha.length >= 2) || (v.localInicio && v.localFim);
-    itens.push({ quando: v.inicioEm, html: `
-      <div class="list-item">
-        <div>
-          <div class="li-main">${v.rotaNome}</div>
-          <div class="li-sub">${v.equipamentoCodigo} • ${fmtHoraBR(v.inicioEm)}${v.descarregadoEm ? ' → ' + fmtHoraBR(v.descarregadoEm) : ' (em andamento)'}${v.editadoEm ? ' • ✏️ editada' : ''}${typeof Geo !== 'undefined' && v.localInicio ? ' • ' + Geo.chipMapa(v.localInicio, '📍 ' + (v.localInicio.area || 'início')) : ''}${typeof Geo !== 'undefined' && v.localFim ? ' → ' + Geo.chipMapa(v.localFim, '📍 ' + (v.localFim.area || 'fim')) : ''}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div class="v" style="font-family:var(--mono)">${v.tempoTotalMs ? fmtDuracao(v.tempoTotalMs) : '—'}</div>
-          ${temTrajeto ? `<button class="li-fav" onclick="abrirTrajetoViagem('${v.id}')" title="Ver trajeto">🗺️</button>` : ''}
-          ${podeEditar ? `<button class="li-fav" onclick="editarViagemUI('${v.id}')" title="Corrigir local não identificado">✏️</button>` : ''}
-        </div>
-      </div>` });
+    const recorde = v.tempoTotalMs && melhorPorTrajeto[v.rotaNome] === v.tempoTotalMs;
+    itens.push({
+      quando: v.inicioEm, cls: 'v',
+      t: `🚛 ${v.rotaNome}`,
+      s: `${v.equipamentoCodigo || ''} · ${fmtHoraBR(v.inicioEm)}${v.descarregadoEm ? ' → ' + fmtHoraBR(v.descarregadoEm) : ' (em andamento)'}${v.editadoEm ? ' · ✏️ editada' : ''}`,
+      durHtml: _durBadge(v.tempoTotalMs, recorde ? 'good' : ''),
+      actionsHtml: `${temTrajeto ? `<button class="li-fav" onclick="abrirTrajetoViagem('${v.id}')" title="Ver trajeto">🗺️</button>` : ''}${podeEditar ? `<button class="li-fav" onclick="editarViagemUI('${v.id}')" title="Corrigir local não identificado">✏️</button>` : ''}`
+    });
   });
   deslocamentos.forEach(d => {
     const temTrajeto = (d.trilha && d.trilha.length >= 2) || (d.localInicio && d.localFim);
-    itens.push({ quando: d.inicioEm, html: `
-      <div class="list-item" style="opacity:.85;border-style:dashed">
-        <div>
-          <div class="li-main">🚚 Deslocamento — ${d.origem} → ${d.destino}</div>
-          <div class="li-sub">${d.motivo ? d.motivo + ' • ' : ''}${fmtHoraBR(d.inicioEm)}${d.fimEm ? ' → ' + fmtHoraBR(d.fimEm) : ' (em andamento)'}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div class="v" style="font-family:var(--mono)">${d.tempoTotalMs ? fmtDuracao(d.tempoTotalMs) : '—'}</div>
-          ${temTrajeto ? `<button class="li-fav" onclick="abrirTrajetoDeslocamento('${d.id}')" title="Ver trajeto">🗺️</button>` : ''}
-        </div>
-      </div>` });
+    itens.push({
+      quando: d.inicioEm, cls: 'd', desl: true,
+      t: `🚚 ${d.origem} → ${d.destino}`,
+      s: `Deslocamento${d.motivo ? ' · ' + d.motivo : ''} · ${fmtHoraBR(d.inicioEm)}${d.fimEm ? ' → ' + fmtHoraBR(d.fimEm) : ' (em andamento)'}`,
+      durHtml: _durBadge(d.tempoTotalMs, ''),
+      actionsHtml: `${temTrajeto ? `<button class="li-fav" onclick="abrirTrajetoDeslocamento('${d.id}')" title="Ver trajeto">🗺️</button>` : ''}`
+    });
   });
   paradas.forEach(p => {
-    itens.push({ quando: p.inicioEm, html: `
-      <div class="list-item">
-        <div class="li-sub">${p.icone || '⏱️'} ${p.nome || 'Parada'} — ${fmtDuracao(p.tempoTotalMs || 0)}${p.atrasoMs > 0 ? ' (atraso +' + fmtDuracao(p.atrasoMs) + ')' : ''} • ${p.equipamentoCodigo ? p.equipamentoCodigo + ' • ' : ''}${fmtHoraBR(p.inicioEm)}</div>
-      </div>` });
+    itens.push({
+      quando: p.inicioEm, cls: p.subtipo === 'carregamento' ? 'f' : 'p',
+      t: `${p.icone || '⏱️'} ${p.nome || 'Parada'}`,
+      s: `${p.equipamentoCodigo ? p.equipamentoCodigo + ' · ' : ''}${fmtHoraBR(p.inicioEm)}`,
+      durHtml: _durBadge(p.tempoTotalMs || 0, p.atrasoMs > 0 ? 'bad' : '') + (p.atrasoMs > 0 ? ` <span class="dur-badge bad">+${fmtDuracao(p.atrasoMs)}</span>` : '')
+    });
   });
   abasts.forEach(a => {
-    itens.push({ quando: a.criadoEm, html: `
-      <div class="list-item">
-        <div class="li-sub">⛽ Abastecimento — ${a.litros} L${a.equipamentoCodigo ? ' • ' + a.equipamentoCodigo : ''} • ${fmtDataHoraBR(a.criadoEm)}</div>
-      </div>` });
+    itens.push({
+      quando: a.criadoEm, cls: 'p',
+      t: `⛽ Abastecimento`,
+      s: `${a.litros} L${a.equipamentoCodigo ? ' · ' + a.equipamentoCodigo : ''} · ${fmtHoraBR(a.criadoEm)}`
+    });
   });
 
-  itens.sort((x, y) => new Date(y.quando) - new Date(x.quando));
-  qs('#viagens-lista').innerHTML = itens.length
-    ? itens.map(i => i.html).join('')
-    : `<div class="empty-state"><span class="emoji">📭</span>Nenhum registro neste dia.</div>`;
+  qs('#viagens-lista').innerHTML = _htmlResumoTrajeto(resumo, '🚛 Trajetos do dia') + _htmlTimeline(itens);
 }
 
 async function editarViagemUI(id) {
@@ -1950,30 +1947,111 @@ async function renderPainel() {
 
 // Grade de equipamentos (reusada no Painel e nas Viagens da gestão).
 // origem: 'painel' abre o painel do equipamento; 'viagens' abre já com o histórico.
+// Status do equipamento → { txt, cls } para o badge colorido do cartão.
+function _statusEquip(e, item) {
+  if (e.status === 'manutencao') return { txt: 'Manutenção', cls: 'st-manut' };
+  if (e.status === 'reserva') return { txt: 'Reserva', cls: 'st-reserva' };
+  if (e.ativo === false) return { txt: 'Desativado', cls: 'st-off' };
+  if (item.emRota) return { txt: 'Em rota', cls: 'st-rota' };
+  if (item.temTurnoAtivo || item.motoristaAtual) return { txt: 'Operando', cls: 'st-operando' };
+  if (Equipamentos.dentroDoExpediente(e)) return { txt: 'Falta operador', cls: 'st-falta' };
+  return { txt: 'Fora de expediente', cls: 'st-off' };
+}
+
 function _htmlGridEquip(porEquip, origem) {
   if (!porEquip.length) return `<div class="empty-state"><span class="emoji">🚛</span>Nenhum equipamento cadastrado.</div>`;
   return porEquip.map(item => {
     const e = item.equipamento;
-    let pill;
-    if (e.status === 'manutencao') pill = `<span class="v" style="color:var(--iron)">🔧 Manutenção</span>`;
-    else if (e.status === 'reserva') pill = `<span class="v" style="color:var(--blue)">🅿️ Reserva</span>`;
-    else if (e.ativo === false) pill = `<span class="v text-label">⏸ Desativado</span>`;
-    else if (item.emRota) pill = `<span class="v" style="color:var(--amber)">🚛 Em Rota</span>`;
-    else if (item.temTurnoAtivo) pill = `<span class="v" style="color:var(--green)">🟢 Operando</span>`;
-    else if (Equipamentos.dentroDoExpediente(e)) pill = `<span class="v" style="color:var(--iron)">🔴 Falta de Operador</span>`;
-    else pill = `<span class="v text-label">🌙 Fora de Expediente</span>`;
+    const st = _statusEquip(e, item);
     const onclick = origem === 'viagens'
       ? `abrirPainelEquipamento('${e.id}', {origem:'viagens', historico:true})`
       : `abrirPainelEquipamento('${e.id}')`;
+    const tempoMedio = item.tempoMedioMs ? fmtDuracao(item.tempoMedioMs) : '—';
+    const consumo = item.consumoKmL != null ? _fmtNum(item.consumoKmL, 1) : '—';
     return `
-      <div class="list-item" onclick="${onclick}" style="cursor:pointer">
-        <div>
-          <div class="li-main">${e.codigo} — ${e.modelo}</div>
-          <div class="li-sub">🚛 ${item.totalViagens} viagens • ⛽ ${item.totalAbastecimentos} • 🛠 ${item.totalLubrificacoes}${item.emRota && item.rotaAtualNome ? ' • Rota: ' + item.rotaAtualNome : ''}</div>
+      <div class="equip-card" onclick="${onclick}">
+        <div class="eq-top">
+          <div>
+            <div class="eq-code">${e.codigo}</div>
+            <div class="eq-sub">${e.modelo || '—'} • ${item.motoristaAtual ? '👤 <b>' + item.motoristaAtual + '</b>' : 'sem operador'}</div>
+          </div>
+          <span class="status-badge ${st.cls}"><span class="dot"></span>${st.txt}</span>
         </div>
-        ${pill}
+        ${item.emRota && item.rotaAtualNome ? `<div class="eq-rota">🚚 ${item.rotaAtualNome}</div>` : ''}
+        <div class="stat-tiles">
+          <div class="stat-tile hl"><div class="v">${item.viagensHoje || 0}</div><div class="k">Viagens hoje</div></div>
+          <div class="stat-tile"><div class="v">${tempoMedio}</div><div class="k">Tempo médio</div></div>
+          <div class="stat-tile"><div class="v">${consumo}<small> km/L</small></div><div class="k">Consumo</div></div>
+        </div>
+        <div class="eq-meta">
+          <span>🛞 <b>${_fmtNum(e.kmAtual)}</b> km</span>
+          <span>⏱ <b>${_fmtNum(e.horimetroAtual, 1)}</b> h</span>
+          <span>🕒 última <b>${item.ultimaViagemEm ? fmtHoraBR(item.ultimaViagemEm) : '—'}</b></span>
+        </div>
       </div>`;
   }).join('');
+}
+
+// ---------- HELPERS COMPARTILHADOS: TIMELINE + RESUMO POR TRAJETO ----------
+// Badge de duração; kind: 'good' (recorde 🏆), 'bad' (mais lento) ou neutro.
+function _durBadge(ms, kind) {
+  if (!ms) return '';
+  const cls = kind === 'good' ? ' good' : kind === 'bad' ? ' bad' : '';
+  const pre = kind === 'good' ? '🏆 ' : '';
+  return `<span class="dur-badge${cls}">${pre}${fmtDuracao(ms)}</span>`;
+}
+
+// Agrupa viagens concluídas por trajeto (rotaNome). Retorna [{trajeto, qtd, melhorMs, mediaMs}].
+function _resumoPorTrajeto(viagens) {
+  const mapa = {};
+  (viagens || []).filter(v => v.status === 'concluida').forEach(v => {
+    const key = v.rotaNome || '—';
+    if (!mapa[key]) mapa[key] = { trajeto: key, qtd: 0, tempos: [] };
+    mapa[key].qtd++;
+    if (v.tempoTotalMs > 0) mapa[key].tempos.push(v.tempoTotalMs);
+  });
+  return Object.values(mapa).map(g => ({
+    trajeto: g.trajeto,
+    qtd: g.qtd,
+    melhorMs: g.tempos.length ? Math.min(...g.tempos) : null,
+    mediaMs: g.tempos.length ? g.tempos.reduce((a, b) => a + b, 0) / g.tempos.length : null
+  })).sort((a, b) => b.qtd - a.qtd);
+}
+
+function _htmlResumoTrajeto(lista, titulo) {
+  if (!lista.length) return '';
+  return `<div class="card-title mt16">${titulo || '🚛 Resumo por trajeto'}</div>
+    <div class="traj-resumo">` + lista.map(t => `
+      <div class="traj-row">
+        <div>
+          <div class="tr-main">${t.trajeto}</div>
+          <div class="tr-sub">${t.melhorMs ? '🏆 ' + fmtDuracao(t.melhorMs) : 'sem tempo'}${t.mediaMs ? ' · média ' + fmtDuracao(t.mediaMs) : ''}</div>
+        </div>
+        <div class="tr-qtd">${t.qtd}<small> ${t.qtd === 1 ? 'viagem' : 'viagens'}</small></div>
+      </div>`).join('') + `</div>`;
+}
+
+// Renderiza itens numa linha do tempo com trilho, agrupada por dia.
+// itens: [{quando, cls, t (título HTML), s (sub HTML), durHtml, actionsHtml, desl}]
+function _htmlTimeline(itens) {
+  if (!itens.length) return `<div class="empty-state"><span class="emoji">📭</span>Nenhum registro.</div>`;
+  const ordenados = itens.slice().sort((a, b) => new Date(b.quando) - new Date(a.quando));
+  const grupos = [];
+  let atual = null;
+  ordenados.forEach(it => {
+    const dia = fmtDataBR(it.quando);
+    if (!atual || atual.dia !== dia) { atual = { dia, itens: [] }; grupos.push(atual); }
+    atual.itens.push(it);
+  });
+  return grupos.map(g => `
+    <div class="tl-day">${g.dia}</div>
+    <div class="tl2">
+      ${g.itens.map(it => `
+        <div class="tl-it ${it.cls || ''}${it.desl ? ' desl' : ''}">
+          <div class="tl-t">${it.t}${it.durHtml || ''}${it.actionsHtml ? `<span class="tl-actions">${it.actionsHtml}</span>` : ''}</div>
+          <div class="tl-s">${it.s}</div>
+        </div>`).join('')}
+    </div>`).join('');
 }
 
 // ---------- PAINEL DO MOTORISTA (simplificado + WhatsApp) ----------
@@ -2170,61 +2248,57 @@ async function alternarHistoricoEquipamentoUI() {
   const viagensVisiveis = Permissoes.filtrarPorVisibilidade(d.viagens, 'motoristaId');
   const deslocVisiveis = Permissoes.filtrarPorVisibilidade(d.deslocamentos, 'motoristaId');
 
-  // ---- OPERAÇÃO: deslocamentos, viagens, carregamento/aguardando e paradas em sequência ----
+  // Resumo por trajeto (viagens de hoje) + melhor tempo por trajeto (p/ marcar recorde 🏆)
+  const hoje = todayKey();
+  const viagensHoje = viagensVisiveis.filter(v => v.dia === hoje);
+  const resumo = _resumoPorTrajeto(viagensHoje);
+  const melhorPorTrajeto = {};
+  resumo.forEach(t => { melhorPorTrajeto[t.trajeto] = t.melhorMs; });
+
+  // ---- OPERAÇÃO: viagens, deslocamentos e paradas em sequência ----
   const opItens = [];
   viagensVisiveis.forEach(v => {
     const temTrajeto = (v.trilha && v.trilha.length >= 2) || (v.localInicio && v.localFim);
-    opItens.push({ quando: v.inicioEm, html: `
-      <div class="list-item">
-        <div class="li-sub">🚛 Viagem — ${v.rotaNome} • ${fmtHoraBR(v.inicioEm)}${v.descarregadoEm ? ' → ' + fmtHoraBR(v.descarregadoEm) : ' (em andamento)'} • ${fmtDataBR(v.inicioEm)}${v.motoristaNome ? ' • ' + v.motoristaNome : ''}${v.tempoTotalMs ? ' • ' + fmtDuracao(v.tempoTotalMs) : ''}</div>
-        <div style="display:flex;align-items:center;gap:6px">
-          ${temTrajeto ? `<button class="li-fav" onclick="abrirTrajetoViagem('${v.id}')" title="Ver trajeto">🗺️</button>` : ''}
-          ${gestao ? `<button class="li-fav" onclick="editarViagemUI('${v.id}')">✏️</button><button class="li-fav" onclick="apagarViagemUI('${v.id}')">🗑️</button>` : ''}
-        </div>
-      </div>` });
+    const recorde = v.tempoTotalMs && melhorPorTrajeto[v.rotaNome] === v.tempoTotalMs;
+    opItens.push({
+      quando: v.inicioEm, cls: 'v',
+      t: `🚛 ${v.rotaNome}`,
+      s: `Viagem · ${fmtHoraBR(v.inicioEm)}${v.descarregadoEm ? ' → ' + fmtHoraBR(v.descarregadoEm) : ' (em andamento)'}${v.motoristaNome ? ' · ' + v.motoristaNome : ''}`,
+      durHtml: _durBadge(v.tempoTotalMs, recorde ? 'good' : ''),
+      actionsHtml: `${temTrajeto ? `<button class="li-fav" onclick="abrirTrajetoViagem('${v.id}')" title="Ver trajeto">🗺️</button>` : ''}${gestao ? `<button class="li-fav" onclick="editarViagemUI('${v.id}')">✏️</button><button class="li-fav" onclick="apagarViagemUI('${v.id}')">🗑️</button>` : ''}`
+    });
   });
   deslocVisiveis.forEach(x => {
     const temTrajeto = (x.trilha && x.trilha.length >= 2) || (x.localInicio && x.localFim);
-    opItens.push({ quando: x.inicioEm, html: `
-      <div class="list-item" style="opacity:.85;border-style:dashed">
-        <div class="li-sub">🚚 Deslocamento — ${x.origem} → ${x.destino} • ${fmtHoraBR(x.inicioEm)}${x.fimEm ? ' → ' + fmtHoraBR(x.fimEm) : ''} • ${fmtDataBR(x.inicioEm)}${x.tempoTotalMs ? ' • ' + fmtDuracao(x.tempoTotalMs) : ''}</div>
-        <div style="display:flex;align-items:center;gap:6px">
-          ${temTrajeto ? `<button class="li-fav" onclick="abrirTrajetoDeslocamento('${x.id}')" title="Ver trajeto">🗺️</button>` : ''}
-          ${gestao ? `<button class="li-fav" onclick="apagarDeslocamentoUI('${x.id}')">🗑️</button>` : ''}
-        </div>
-      </div>` });
+    opItens.push({
+      quando: x.inicioEm, cls: 'd', desl: true,
+      t: `🚚 ${x.origem} → ${x.destino}`,
+      s: `Deslocamento${x.motivo ? ' · ' + x.motivo : ''} · ${fmtHoraBR(x.inicioEm)}${x.fimEm ? ' → ' + fmtHoraBR(x.fimEm) : ''}`,
+      durHtml: _durBadge(x.tempoTotalMs, ''),
+      actionsHtml: `${temTrajeto ? `<button class="li-fav" onclick="abrirTrajetoDeslocamento('${x.id}')" title="Ver trajeto">🗺️</button>` : ''}${gestao ? `<button class="li-fav" onclick="apagarDeslocamentoUI('${x.id}')">🗑️</button>` : ''}`
+    });
   });
   (d.paradas || []).forEach(p => {
-    opItens.push({ quando: p.inicioEm, html: `
-      <div class="list-item">
-        <div class="li-sub">${p.icone || '⏱️'} ${p.nome || 'Parada'} — ${fmtDuracao(p.tempoTotalMs || 0)}${p.atrasoMs > 0 ? ' (atraso +' + fmtDuracao(p.atrasoMs) + ')' : ''} • ${p.motoristaNome ? p.motoristaNome + ' • ' : ''}${fmtDataHoraBR(p.inicioEm)}</div>
-      </div>` });
+    opItens.push({
+      quando: p.inicioEm, cls: p.subtipo === 'carregamento' ? 'f' : 'p',
+      t: `${p.icone || '⏱️'} ${p.nome || 'Parada'}`,
+      s: `${fmtHoraBR(p.inicioEm)}${p.motoristaNome ? ' · ' + p.motoristaNome : ''}`,
+      durHtml: _durBadge(p.tempoTotalMs || 0, p.atrasoMs > 0 ? 'bad' : '') + (p.atrasoMs > 0 ? ` <span class="dur-badge bad">+${fmtDuracao(p.atrasoMs)}</span>` : '')
+    });
   });
-  // ordem cronológica (a sequência real do apontamento)
-  opItens.sort((a, b) => new Date(a.quando) - new Date(b.quando));
 
   // ---- MANUTENÇÃO: manutenções, abastecimentos e lubrificações ----
   const podeApagarManutencao = podeGerenciarFrota();
   const mntItens = [
     ...d.manutencoes.map(m => ({
-      quando: m.entradaEm,
-      html: `🔧 Manutenção${m.motivo ? ' — ' + m.motivo : ''} • entrou ${fmtDataHoraBR(m.entradaEm)}${m.saidaEm ? ' • retornou ' + fmtDataHoraBR(m.saidaEm) : ' • ainda em manutenção'}`,
-      manutencaoId: m.id
+      quando: m.entradaEm, cls: 'm',
+      t: `🔧 Manutenção${m.motivo ? ' — ' + m.motivo : ''}`,
+      s: `Entrou ${fmtDataHoraBR(m.entradaEm)}${m.saidaEm ? ' · retornou ' + fmtDataHoraBR(m.saidaEm) : ' · ainda em manutenção'}`,
+      actionsHtml: (podeApagarManutencao ? `<button class="li-fav" onclick="apagarManutencaoUI('${m.id}')">🗑️</button>` : '')
     })),
-    ...d.abasts.map(a => ({ quando: a.criadoEm, html: `⛽ Abastecimento — ${a.litros} L • ${fmtDataHoraBR(a.criadoEm)}` })),
-    ...d.lubs.map(l => ({ quando: l.criadoEm, html: `🛠 Lubrificação — ${l.tipoServico} • ${fmtDataHoraBR(l.criadoEm)}` }))
-  ].sort((a, b) => new Date(b.quando) - new Date(a.quando));
-
-  const htmlOp = opItens.length
-    ? opItens.map(i => i.html).join('')
-    : `<div class="empty-state"><span class="emoji">📭</span>Nenhum registro de operação.</div>`;
-  const htmlMnt = mntItens.length
-    ? mntItens.map(i => `
-      <div class="list-item">
-        <div class="li-sub">${i.html}</div>
-        ${i.manutencaoId && podeApagarManutencao ? `<button class="li-fav" onclick="apagarManutencaoUI('${i.manutencaoId}')">🗑️</button>` : ''}
-      </div>`).join('')
-    : `<div class="empty-state"><span class="emoji">📭</span>Nenhum registro de manutenção.</div>`;
+    ...d.abasts.map(a => ({ quando: a.criadoEm, cls: 'p', t: `⛽ Abastecimento`, s: `${a.litros} L · ${fmtHoraBR(a.criadoEm)}` })),
+    ...d.lubs.map(l => ({ quando: l.criadoEm, cls: 'p', t: `🛠 Lubrificação`, s: `${l.tipoServico} · ${fmtHoraBR(l.criadoEm)}` }))
+  ];
 
   box.classList.remove('hidden');
   box.innerHTML = `
@@ -2232,8 +2306,8 @@ async function alternarHistoricoEquipamentoUI() {
       <button class="btn btn-sm btn-primary" id="hist-tab-op" onclick="_abaHistEquip('operacao')">🚛 Operação</button>
       <button class="btn btn-sm btn-outline" id="hist-tab-mnt" onclick="_abaHistEquip('manutencao')">🔧 Manutenção</button>
     </div>
-    <div id="hist-op" class="mt8">${htmlOp}</div>
-    <div id="hist-mnt" class="mt8 hidden">${htmlMnt}</div>`;
+    <div id="hist-op" class="mt8">${_htmlResumoTrajeto(resumo, '🚛 Trajetos de hoje')}${_htmlTimeline(opItens)}</div>
+    <div id="hist-mnt" class="mt8 hidden">${_htmlTimeline(mntItens)}</div>`;
 }
 
 // Alterna entre as abas Operação / Manutenção do histórico do equipamento.

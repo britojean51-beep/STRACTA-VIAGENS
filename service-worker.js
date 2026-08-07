@@ -5,7 +5,7 @@
    atualização em segundo plano quando há conexão.
    ══════════════════════════════════════════════════════════ */
 
-const CACHE_VERSION = 'stracta-viagens-v57-instalar-label';
+const CACHE_VERSION = 'stracta-viagens-v58-viagens-redesign';
 
 const APP_SHELL = [
   './',
