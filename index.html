@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="./css/style.css?v=4.15.3">
+<link rel="stylesheet" href="./css/style.css?v=4.15.4">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -140,26 +140,36 @@
     <div class="card-title">Equipamentos</div>
     <button class="btn btn-outline" id="frota-cadastrar-btn" onclick="abrirNovoEquipamento()">➕ Cadastrar Equipamento</button>
     <div id="frota-lista" class="mt8"></div>
+  </div>
 
-    <div class="card-title mt24">⛽ Abastecimento</div>
-    <div class="field"><label>Equipamento</label><select id="abast-equip"></select></div>
-    <div class="field"><label>Litros</label><input id="abast-litros" type="number" inputmode="decimal"></div>
-    <div class="field"><label>KM Atual</label><input id="abast-km" type="number" inputmode="numeric" placeholder="opcional"></div>
-    <div class="field"><label>Horímetro Atual</label><input id="abast-horimetro" type="number" inputmode="numeric" placeholder="opcional"></div>
-    <div class="field"><label>Situação do Caminhão</label>
-      <select id="abast-situacao">
-        <option value="operacao">Abastecendo e continua em operação</option>
-        <option value="desloc_manutencao">Em deslocamento para manutenção</option>
-        <option value="retorno_manutencao">Retorno da manutenção</option>
-      </select>
+  <!-- ═══ SERVIÇOS (abastecimento + lubrificação) ═══ -->
+  <div class="screen" id="screen-servicos">
+    <h1 class="page-title">Serviços</h1>
+    <div class="page-sub">Abastecimento e Lubrificação</div>
+
+    <div class="card">
+      <div class="card-title">⛽ Abastecimento</div>
+      <div class="field"><label>Equipamento</label><select id="abast-equip"></select></div>
+      <div class="field"><label>Litros</label><input id="abast-litros" type="number" inputmode="decimal"></div>
+      <div class="field"><label>KM Atual</label><input id="abast-km" type="number" inputmode="numeric" placeholder="opcional"></div>
+      <div class="field"><label>Horímetro Atual</label><input id="abast-horimetro" type="number" inputmode="numeric" placeholder="opcional"></div>
+      <div class="field"><label>Situação do Caminhão</label>
+        <select id="abast-situacao">
+          <option value="operacao">Abastecendo e continua em operação</option>
+          <option value="desloc_manutencao">Em deslocamento para manutenção</option>
+          <option value="retorno_manutencao">Retorno da manutenção</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="registrarAbastecimentoUI()">Registrar Abastecimento</button>
     </div>
-    <button class="btn btn-primary" onclick="registrarAbastecimentoUI()">Registrar Abastecimento</button>
 
-    <div class="card-title mt24">🛢️ Lubrificação</div>
-    <div class="field"><label>Equipamento</label><select id="lub-equip"></select></div>
-    <div class="field"><label>Serviço</label><input id="lub-tipo" placeholder="Ex: Troca de óleo" value="Lubrificação geral"></div>
-    <div class="field"><label>Horímetro Atual</label><input id="lub-horimetro" type="number" inputmode="numeric"></div>
-    <button class="btn btn-primary" onclick="registrarLubrificacaoUI()">Registrar Lubrificação</button>
+    <div class="card">
+      <div class="card-title">🛢️ Lubrificação</div>
+      <div class="field"><label>Equipamento</label><select id="lub-equip"></select></div>
+      <div class="field"><label>Serviço</label><input id="lub-tipo" placeholder="Ex: Troca de óleo" value="Lubrificação geral"></div>
+      <div class="field"><label>Horímetro Atual</label><input id="lub-horimetro" type="number" inputmode="numeric"></div>
+      <button class="btn btn-primary" onclick="registrarLubrificacaoUI()">Registrar Lubrificação</button>
+    </div>
   </div>
 
   <!-- ═══ PAINEL (dashboard) ═══ -->
@@ -336,6 +346,7 @@
     <button class="nav-item" data-tela="home" onclick="navigate('home')"><span class="ic">🏠</span>Início</button>
     <button class="nav-item" data-tela="operacao" onclick="navigate('operacao')"><span class="ic">🗺️</span>Operação</button>
     <button class="nav-item" data-tela="viagens" onclick="navigate('viagens')"><span class="ic">📋</span>Viagens</button>
+    <button class="nav-item" data-tela="servicos" onclick="navigate('servicos')"><span class="ic">⛽</span>Serviços</button>
     <button class="nav-item" data-tela="frota" onclick="navigate('frota')"><span class="ic">🚛</span>Frota</button>
     <button class="nav-item" data-tela="painel" onclick="navigate('painel')"><span class="ic">📊</span>Painel</button>
   </div>

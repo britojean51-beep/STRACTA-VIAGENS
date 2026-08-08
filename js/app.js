@@ -319,6 +319,7 @@ async function navigate(tela) {
     operacao: renderOperacao,
     viagens: renderViagens,
     'lancar-rotas': renderLancarRotas,
+    servicos: renderServicos,
     frota: renderFrota,
     painel: renderPainel,
     'painel-equip': renderPainelEquip,
@@ -1756,10 +1757,13 @@ async function renderFrota() {
         ${gestao ? `<button class="li-fav" onclick="apagarEquipamentoUI('${e.id}')">🗑️</button>` : ''}
       </div>
     </div>`).join('') : `<div class="empty-state"><span class="emoji">🚛</span>Nenhum equipamento cadastrado.</div>`;
+}
 
-  const equipSel = ['abast-equip', 'lub-equip'];
+// Tela Serviços (Abastecimento + Lubrificação) — preenche os seletores de equipamento.
+async function renderServicos() {
+  const equipamentos = await Equipamentos.listar();
   const options = '<option value="">Selecione...</option>' + equipamentos.map(e => `<option value="${e.id}">${e.codigo}</option>`).join('');
-  equipSel.forEach(id => { const s = qs('#' + id); if (s) s.innerHTML = options; });
+  ['abast-equip', 'lub-equip'].forEach(id => { const s = qs('#' + id); if (s) s.innerHTML = options; });
 }
 
 function alternarManutencaoUI(id) {
@@ -1832,7 +1836,7 @@ async function registrarAbastecimentoUI() {
   });
   showToast('⛽ Abastecimento registrado!');
   qs('#abast-litros').value = ''; qs('#abast-km').value = ''; qs('#abast-horimetro').value = '';
-  renderFrota();
+  renderServicos();
 }
 
 async function registrarLubrificacaoUI() {
@@ -1844,7 +1848,7 @@ async function registrarLubrificacaoUI() {
   await Lubrificacao.registrar({ equipamentoId: equipId, equipamentoCodigo: equip.codigo, tipoServico, horimetroAtual: horimetro });
   showToast('🛢️ Lubrificação registrada!');
   qs('#lub-horimetro').value = '';
-  renderFrota();
+  renderServicos();
 }
 
 // ---------- RELATÓRIO PDF ----------
