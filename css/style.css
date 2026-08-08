@@ -290,6 +290,7 @@ h1.page-title {
 .eq-code { font-family: var(--display); font-weight: 700; font-size: 21px; line-height: 1; }
 .eq-sub { color: var(--label); font-size: 12.5px; margin-top: 5px; }
 .eq-sub b { color: var(--white); font-weight: 600; }
+.eq-info { color: var(--label); font-size: 12.5px; margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--border); }
 .eq-rota {
   display: flex; align-items: center; gap: 7px; margin: 11px 0;
   background: rgba(245,166,35,.12); border: 1px solid rgba(245,166,35,.30);
@@ -307,6 +308,7 @@ h1.page-title {
 .st-reserva  { color: var(--blue);   background: rgba(46,134,222,.16); }
 .st-off      { color: var(--label);  background: rgba(143,160,168,.15); }
 .stat-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.stat-tiles.cols2 { grid-template-columns: repeat(2, 1fr); }
 .stat-tile { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 8px; text-align: center; }
 .stat-tile .v { font-family: var(--mono); font-weight: 700; font-size: 18px; }
 .stat-tile .v small { font-size: 11px; color: var(--label); font-weight: 700; }

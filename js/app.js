@@ -2286,30 +2286,40 @@ async function renderPainelEquip() {
   if (!d.equipamento) { showToast('Equipamento não encontrado', 'var(--iron)'); navigate('painel'); return; }
   const e = d.equipamento;
 
-  let pill;
-  if (e.status === 'manutencao') pill = `<span style="color:var(--iron)">🔧 Em Manutenção</span>`;
-  else if (e.status === 'reserva') pill = `<span style="color:var(--blue)">🅿️ Em Reserva</span>`;
-  else if (e.ativo === false) pill = `<span class="text-label">⏸ Desativado</span>`;
-  else if (d.emRota) pill = `<span style="color:var(--amber)">🚛 Em Rota${d.rotaAtualNome ? ' — ' + d.rotaAtualNome : ''}</span>`;
-  else if (d.motoristaAtual) pill = `<span style="color:var(--green)">🟢 Operando</span>`;
-  else if (Equipamentos.dentroDoExpediente(e)) pill = `<span style="color:var(--iron)">🔴 Falta de Operador</span>`;
-  else pill = `<span class="text-label">🌙 Fora de Expediente (${e.expedienteInicio || '-'} às ${e.expedienteFim || '-'})</span>`;
+  const st = _statusEquip(e, { emRota: d.emRota, temTurnoAtivo: !!d.motoristaAtual, motoristaAtual: d.motoristaAtual });
+  // Linha de contexto do status: rota atual, expediente, ou motorista.
+  let infoStatus;
+  if (d.emRota) infoStatus = `🚚 ${d.rotaAtualNome || 'Em rota'}`;
+  else if (d.motoristaAtual) infoStatus = `👤 <b style="color:var(--white)">${d.motoristaAtual}</b>${d.turnoAtivoDesde ? ' · desde ' + fmtHoraBR(d.turnoAtivoDesde) : ''}`;
+  else if (e.status === 'manutencao') infoStatus = '🔧 Em manutenção';
+  else if (e.status === 'reserva') infoStatus = '🅿️ Em reserva';
+  else infoStatus = `🌙 Expediente ${e.expedienteInicio || '-'} às ${e.expedienteFim || '-'} · sem turno ativo`;
 
   qs('#painel-equip-conteudo').innerHTML = `
-    <div class="card text-center">
-      <div style="font-family:var(--display);font-weight:700;font-size:22px">${e.codigo}</div>
-      <div class="mt8" style="font-size:15px">${pill}</div>
+    <div class="equip-card" style="cursor:default">
+      <div class="eq-top">
+        <div>
+          <div class="eq-code">${e.codigo}</div>
+          <div class="eq-sub">${e.modelo || '—'}${e.categoria ? ' • ' + e.categoria : ''}</div>
+        </div>
+        <span class="status-badge ${st.cls}"><span class="dot"></span>${st.txt}</span>
+      </div>
+      <div class="eq-info">${infoStatus}</div>
     </div>
+
+    ${d.motoristaAtual && d.turnoAtivoId && podeGerenciarFrota() ? `<button class="btn btn-danger" onclick="tirarMotoristaUI('${d.turnoAtivoId}', '${(d.motoristaAtual || '').replace(/'/g, '')}')">🚫 Tirar motorista do equipamento</button>` : ''}
+
     <div class="card">
-      <div class="row-kv"><span class="k">👤 Motorista atual</span><span class="v">${d.motoristaAtual ? d.motoristaAtual : '— (sem turno ativo)'}</span></div>
-      ${d.motoristaAtual ? `<div class="row-kv"><span class="k">Desde</span><span class="v">${fmtHoraBR(d.turnoAtivoDesde)}</span></div>` : ''}
-      ${d.motoristaAtual && d.turnoAtivoId && podeGerenciarFrota() ? `<button class="btn btn-danger mt12" onclick="tirarMotoristaUI('${d.turnoAtivoId}', '${(d.motoristaAtual || '').replace(/'/g, '')}')">🚫 Tirar motorista do equipamento</button>` : ''}
-      <div class="row-kv" style="border-top:1px solid var(--border);margin-top:8px;padding-top:12px"><span class="k">KM</span><span class="v">${e.kmAtual}</span></div>
-      <div class="row-kv"><span class="k">Horímetro</span><span class="v">${e.horimetroAtual}</span></div>
-      <div class="row-kv" style="border-top:1px solid var(--border);margin-top:8px;padding-top:12px"><span class="k">🚛 Viagens</span><span class="v">${d.totalViagens}</span></div>
-      <div class="row-kv"><span class="k">⛽ Abastecimentos</span><span class="v">${d.totalAbastecimentos}</span></div>
-      <div class="row-kv"><span class="k">🛠 Lubrificações</span><span class="v">${d.totalLubrificacoes}</span></div>
-      <div class="row-kv"><span class="k">📅 Última manutenção</span><span class="v">${d.ultimaManutencao ? fmtDataBR(d.ultimaManutencao.entradaEm) : '—'}</span></div>
+      <div class="stat-tiles cols2">
+        <div class="stat-tile"><div class="v">${_fmtNum(e.kmAtual, 0)}</div><div class="k">KM</div></div>
+        <div class="stat-tile"><div class="v">${_fmtNum(e.horimetroAtual, 0)}</div><div class="k">Horímetro</div></div>
+      </div>
+      <div class="stat-tiles">
+        <div class="stat-tile"><div class="v">${d.totalViagens}</div><div class="k">Viagens</div></div>
+        <div class="stat-tile"><div class="v">${d.totalAbastecimentos}</div><div class="k">Abastec.</div></div>
+        <div class="stat-tile"><div class="v">${d.totalLubrificacoes}</div><div class="k">Lubrific.</div></div>
+      </div>
+      <div class="eq-meta"><span>📅 Última manutenção <b>${d.ultimaManutencao ? fmtDataBR(d.ultimaManutencao.entradaEm) : '—'}</b></span></div>
     </div>
     <button class="btn btn-outline" onclick="alternarManutencaoEquipPainelUI('${e.id}')">${e.status === 'manutencao' ? '🔧 Retornar da Manutenção' : '🔧 Enviar para Manutenção'}</button>
     ${e.status !== 'manutencao' ? `<button class="btn btn-outline" onclick="alternarReservaUI('${e.id}')">${e.status === 'reserva' ? '▶️ Tirar da Reserva' : '🅿️ Colocar em Reserva'}</button>` : ''}
