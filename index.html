@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="./css/style.css?v=4.15.1">
+<link rel="stylesheet" href="./css/style.css?v=4.15.2">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -170,7 +170,7 @@
     <div id="painel-relatorios">
       <div class="card">
         <div class="card-title">📄 Relatório do Dia</div>
-        <div class="field"><label>Escolher o dia</label><input type="date" id="relatorio-data"></div>
+        <div class="field"><label>Escolher o dia</label><input type="date" id="relatorio-data" onchange="mudarDiaPainel()"></div>
         <div class="btn-row">
           <button class="btn btn-secondary" onclick="gerarRelatorioPDFUI()">📄 PDF</button>
           <button class="btn btn-outline" onclick="gerarExcelDiaUI()">📊 Excel</button>

@@ -5,7 +5,7 @@
    atualização em segundo plano quando há conexão.
    ══════════════════════════════════════════════════════════ */
 
-const CACHE_VERSION = 'stracta-viagens-v59-atualizar-sem-apagar';
+const CACHE_VERSION = 'stracta-viagens-v60-painel-dashboard';
 
 const APP_SHELL = [
   './',

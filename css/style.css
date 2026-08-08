@@ -312,6 +312,34 @@ h1.page-title {
 .stat-tile .v small { font-size: 11px; color: var(--label); font-weight: 700; }
 .stat-tile .k { color: var(--label); font-size: 10.5px; margin-top: 3px; text-transform: uppercase; letter-spacing: .03em; }
 .stat-tile.hl .v { color: var(--amber); }
+.stat-tile.good .v { color: var(--green); }
+.stat-tile.warn .v { color: var(--amber); }
+.stat-tile.info .v { color: var(--blue); }
+.stat-tile.click { cursor: pointer; position: relative; }
+.stat-tile.click:active { background: var(--border); }
+.stat-tile.click::after { content: "›"; position: absolute; top: 6px; right: 8px; color: var(--label); font-size: 13px; line-height: 1; }
+
+/* ---------- PAINEL: frota agora (chips por status) ---------- */
+.fleet-chips { display: flex; flex-direction: column; gap: 2px; }
+.fchip { display: flex; align-items: center; gap: 7px; font-size: 12.5px; padding: 4px 0; cursor: pointer; }
+.fchip:active { opacity: .7; }
+.fchip .fdot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.fchip .fn { margin-left: auto; font-family: var(--mono); font-weight: 700; font-size: 14px; }
+.fd-op { background: var(--green); } .fd-rota { background: var(--amber); }
+.fd-falta { background: var(--iron); } .fd-manut { background: var(--iron); }
+.fd-fora { background: var(--label); }
+.painel-top2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.painel-top2 .card { margin-bottom: 0; }
+.prod-big { font-family: var(--mono); font-weight: 700; font-size: 38px; color: var(--green); line-height: 1; }
+.prod-lb { color: var(--label); font-size: 12px; margin-top: 2px; }
+.prod-sec { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.prod-sec .r { display: flex; font-size: 12px; color: var(--label); }
+.prod-sec .r b { margin-left: auto; color: var(--white); font-family: var(--mono); }
+.painel-turnos { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border); font-size: 12px; color: var(--label); display: flex; align-items: center; cursor: pointer; }
+.painel-turnos b { margin-left: auto; color: var(--green); font-family: var(--mono); font-size: 15px; }
+
+/* ---------- MODAL DE DETALHE (rolável) ---------- */
+.modal-card.detalhe { max-height: 80vh; overflow-y: auto; }
 .eq-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--label); font-size: 11.5px; margin-top: 12px; }
 .eq-meta b { color: var(--white); font-family: var(--mono); font-weight: 600; }
 

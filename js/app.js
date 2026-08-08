@@ -87,6 +87,28 @@ function abrirModalFormulario({ titulo, subtitulo, campos, aoSalvar, textoSalvar
   };
 }
 
+// Modal genérico só de leitura (rolável) para mostrar detalhes/listas.
+function abrirModalDetalhe({ titulo, subtitulo, conteudo }) {
+  const antigo = qs('#modal-overlay-ativo');
+  if (antigo) antigo.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'modal-overlay-ativo';
+  overlay.innerHTML = `
+    <div class="modal-card detalhe">
+      <div class="modal-titulo">${titulo}</div>
+      ${subtitulo ? `<div class="modal-subtitulo">${subtitulo}</div>` : ''}
+      <div class="mt8">${conteudo}</div>
+      <div class="btn-row mt12">
+        <button class="btn btn-primary" id="modal-btn-fechar">Fechar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const fechar = () => overlay.remove();
+  overlay.addEventListener('click', (ev) => { if (ev.target === overlay) fechar(); });
+  overlay.querySelector('#modal-btn-fechar').onclick = fechar;
+}
+
 // ---------- BOOTSTRAP ----------
 // ---------- INSTALAÇÃO DO APP (PWA) ----------
 let _promptInstalar = null;
@@ -1920,29 +1942,143 @@ async function renderPainel() {
     return;
   }
   if (relBox) relBox.style.display = '';
-  if (subt) subt.textContent = 'Resumo de produção do dia';
+  if (subt) subt.textContent = 'Resumo de produção — toque no dia para trocar';
 
-  const [r, porEquip] = await Promise.all([Dashboard.resumoDoDia(), Dashboard.resumoPorEquipamento()]);
+  const campo = qs('#relatorio-data');
+  const dia = (campo && campo.value) ? campo.value : todayKey();
+  await renderPainelGestao(dia);
+}
+
+let _painelDia = null;
+let _painelPorEquip = [];
+
+// Troca o dia do painel (ligado ao onchange do seletor "Escolher o dia").
+function mudarDiaPainel() {
+  const campo = qs('#relatorio-data');
+  const dia = (campo && campo.value) ? campo.value : todayKey();
+  renderPainelGestao(dia);
+}
+
+async function renderPainelGestao(dia) {
+  _painelDia = dia;
+  const [r, porEquip] = await Promise.all([Dashboard.resumoDoDia(dia), Dashboard.resumoPorEquipamento()]);
+  _painelPorEquip = porEquip;
+
+  // contagem da frota por status (estado ao vivo)
+  const cont = { op: 0, rota: 0, falta: 0, manut: 0, fora: 0 };
+  porEquip.forEach(item => {
+    const cls = _statusEquip(item.equipamento, item).cls;
+    if (cls === 'st-operando') cont.op++;
+    else if (cls === 'st-rota') cont.rota++;
+    else if (cls === 'st-falta') cont.falta++;
+    else if (cls === 'st-manut') cont.manut++;
+    else cont.fora++;
+  });
+
   qs('#painel-conteudo').innerHTML = `
+    <div class="painel-top2">
+      <div class="card">
+        <div class="card-title">🚚 Frota agora</div>
+        <div class="fleet-chips">
+          <div class="fchip" onclick="detalhePainel('frota-op')"><span class="fdot fd-op"></span>Operando<span class="fn">${cont.op}</span></div>
+          <div class="fchip" onclick="detalhePainel('frota-rota')"><span class="fdot fd-rota"></span>Em rota<span class="fn">${cont.rota}</span></div>
+          <div class="fchip" onclick="detalhePainel('frota-falta')"><span class="fdot fd-falta"></span>Falta operador<span class="fn">${cont.falta}</span></div>
+          <div class="fchip" onclick="detalhePainel('frota-manut')"><span class="fdot fd-manut"></span>Manutenção<span class="fn">${cont.manut}</span></div>
+          <div class="fchip" onclick="detalhePainel('frota-fora')"><span class="fdot fd-fora"></span>Fora<span class="fn">${cont.fora}</span></div>
+        </div>
+        <div class="painel-turnos" onclick="detalhePainel('turnos')">Turnos ativos<b>${r.turnosAtivos}</b></div>
+      </div>
+      <div class="card">
+        <div class="card-title">📦 Produção · ${r.dia}</div>
+        <div class="prod-big" onclick="detalhePainel('viagens')" style="cursor:pointer">${r.totalViagens}</div>
+        <div class="prod-lb">viagens concluídas ›</div>
+        <div class="prod-sec">
+          <div class="r">Tempo médio<b>${fmtDuracao(r.tempoMedioMs)}</b></div>
+          <div class="r">Tempo total<b>${fmtDuracao(r.tempoTotalMs)}</b></div>
+        </div>
+      </div>
+    </div>
+
     <div class="card">
-      <div class="card-title">Produção — ${r.dia}</div>
-      <div class="row-kv"><span class="k">Viagens concluídas</span><span class="v">${r.totalViagens}</span></div>
-      <div class="row-kv"><span class="k">Tempo médio/viagem</span><span class="v">${fmtDuracao(r.tempoMedioMs)}</span></div>
-      <div class="row-kv"><span class="k">Tempo total em viagens</span><span class="v">${fmtDuracao(r.tempoTotalMs)}</span></div>
-      <div class="row-kv"><span class="k">Deslocamentos</span><span class="v">${r.totalDeslocamentos}</span></div>
-      <div class="row-kv"><span class="k">Tempo em deslocamento</span><span class="v">${fmtDuracao(r.tempoDeslocamentoMs)}</span></div>
-      <div class="row-kv"><span class="k">Tempo parado</span><span class="v text-amber">${fmtDuracao(r.tempoParadoMs)}</span></div>
-      <div class="row-kv"><span class="k">Paradas registradas</span><span class="v">${r.totalParadas || 0} • ${fmtDuracao(r.tempoParadasMs || 0)}</span></div>
-      <div class="row-kv"><span class="k">Abastecimentos (litros)</span><span class="v">${r.totalLitros} L</span></div>
-      <div class="row-kv"><span class="k">Lubrificações</span><span class="v">${r.totalLubrificacoes}</span></div>
-      <div class="row-kv"><span class="k">Equipamentos ativos</span><span class="v">${r.equipamentosAtivos}/${r.equipamentosTotal}</span></div>
-      <div class="row-kv"><span class="k">Em manutenção</span><span class="v">${r.equipamentosManutencao}</span></div>
-      <div class="row-kv"><span class="k">Turnos ativos agora</span><span class="v">${r.turnosAtivos}</span></div>
+      <div class="card-title">Operação do dia</div>
+      <div class="stat-tiles">
+        <div class="stat-tile click" onclick="detalhePainel('deslocamentos')"><div class="v">${r.totalDeslocamentos}</div><div class="k">Deslocamentos</div></div>
+        <div class="stat-tile click" onclick="detalhePainel('deslocamentos')"><div class="v">${fmtDuracao(r.tempoDeslocamentoMs)}</div><div class="k">Tempo desloc.</div></div>
+        <div class="stat-tile warn"><div class="v">${fmtDuracao(r.tempoParadoMs)}</div><div class="k">Tempo parado</div></div>
+      </div>
+      <div class="stat-tiles" style="margin-top:8px">
+        <div class="stat-tile click" onclick="detalhePainel('paradas')"><div class="v">${r.totalParadas || 0}</div><div class="k">Paradas</div></div>
+        <div class="stat-tile click" onclick="detalhePainel('abastecimentos')"><div class="v">${_fmtNum(r.totalLitros)}<small> L</small></div><div class="k">Abastecim.</div></div>
+        <div class="stat-tile click" onclick="detalhePainel('lubrificacoes')"><div class="v">${r.totalLubrificacoes}</div><div class="k">Lubrificações</div></div>
+      </div>
+      <div class="stat-tiles" style="margin-top:8px">
+        <div class="stat-tile info click" onclick="detalhePainel('equipamentos')"><div class="v">${r.equipamentosAtivos}/${r.equipamentosTotal}</div><div class="k">Equip. ativos</div></div>
+        <div class="stat-tile click" onclick="detalhePainel('manutencao')"><div class="v">${r.equipamentosManutencao}</div><div class="k">Em manutenção</div></div>
+        <div class="stat-tile click" onclick="detalhePainel('paradas')"><div class="v">${fmtDuracao(r.tempoParadasMs || 0)}</div><div class="k">Tempo paradas</div></div>
+      </div>
     </div>
 
     <div class="card-title mt16">🚛 Por Equipamento</div>
     <div id="painel-equip-grid">${_htmlGridEquip(porEquip, 'painel')}</div>
   `;
+}
+
+// Abre o detalhe (lista) de um quadro do painel, para o dia selecionado.
+async function detalhePainel(tipo) {
+  const dia = _painelDia || todayKey();
+  const vazio = `<div class="empty-state"><span class="emoji">📭</span>Nenhum registro.</div>`;
+  let titulo = '', conteudo = '';
+
+  const listaEquip = (itens) => itens.length ? itens.map(item => {
+    const e = item.equipamento || item;
+    const st = _statusEquip(e, item.equipamento ? item : { });
+    return `<div class="list-item"><div><div class="li-main">${e.codigo}</div><div class="li-sub">${e.modelo || ''}${item.motoristaAtual ? ' · 👤 ' + item.motoristaAtual : ''}${item.rotaAtualNome ? ' · ' + item.rotaAtualNome : ''}</div></div><span class="status-badge ${st.cls}"><span class="dot"></span>${st.txt}</span></div>`;
+  }).join('') : vazio;
+
+  const frotaFiltro = (cls) => _painelPorEquip.filter(item => _statusEquip(item.equipamento, item).cls === cls);
+
+  if (tipo === 'viagens') {
+    const vs = (await Viagens.historicoDoDia(dia)).filter(v => v.status === 'concluida');
+    titulo = '🚛 Viagens concluídas';
+    conteudo = _htmlTimeline(vs.map(v => ({ quando: v.inicioEm, cls: 'v', t: `🚛 ${v.rotaNome}`, s: `${v.equipamentoCodigo || ''}${v.motoristaNome ? ' · ' + v.motoristaNome : ''} · ${fmtHoraBR(v.inicioEm)}${v.descarregadoEm ? ' → ' + fmtHoraBR(v.descarregadoEm) : ''}`, durHtml: _durBadge(v.tempoTotalMs, '') })));
+  } else if (tipo === 'deslocamentos') {
+    const ds = await Operacao.deslocamentosDoDia(dia);
+    titulo = '🚚 Deslocamentos';
+    conteudo = _htmlTimeline(ds.map(d => ({ quando: d.inicioEm, cls: 'd', desl: true, t: `🚚 ${d.origem} → ${d.destino}`, s: `${d.motivo ? d.motivo + ' · ' : ''}${fmtHoraBR(d.inicioEm)}${d.fimEm ? ' → ' + fmtHoraBR(d.fimEm) : ''}`, durHtml: _durBadge(d.tempoTotalMs, '') })));
+  } else if (tipo === 'paradas') {
+    const ps = await Operacao.paradasDoDia(dia);
+    titulo = '⏱️ Paradas';
+    conteudo = _htmlTimeline(ps.map(p => ({ quando: p.inicioEm, cls: p.subtipo === 'carregamento' ? 'f' : 'p', t: `${p.icone || '⏱️'} ${p.nome || 'Parada'}`, s: `${p.equipamentoCodigo ? p.equipamentoCodigo + ' · ' : ''}${p.motoristaNome ? p.motoristaNome + ' · ' : ''}${fmtHoraBR(p.inicioEm)}`, durHtml: _durBadge(p.tempoTotalMs || 0, p.atrasoMs > 0 ? 'bad' : '') })));
+  } else if (tipo === 'abastecimentos') {
+    const as = await Abastecimento.doDia(dia);
+    titulo = '⛽ Abastecimentos';
+    conteudo = _htmlTimeline(as.map(a => ({ quando: a.criadoEm, cls: 'p', t: `⛽ ${_fmtNum(a.litros)} L`, s: `${a.equipamentoCodigo || ''} · ${fmtHoraBR(a.criadoEm)}` })));
+  } else if (tipo === 'lubrificacoes') {
+    const ls = await Lubrificacao.doDia(dia);
+    titulo = '🛠 Lubrificações';
+    conteudo = _htmlTimeline(ls.map(l => ({ quando: l.criadoEm, cls: 'p', t: `🛠 ${l.tipoServico || 'Lubrificação'}`, s: `${l.equipamentoCodigo || ''} · ${fmtHoraBR(l.criadoEm)}` })));
+  } else if (tipo === 'manutencao') {
+    titulo = '🔧 Em manutenção';
+    conteudo = listaEquip(frotaFiltro('st-manut'));
+  } else if (tipo === 'equipamentos') {
+    titulo = '🚛 Equipamentos ativos';
+    conteudo = listaEquip(_painelPorEquip.filter(item => item.equipamento.status !== 'manutencao' && item.equipamento.ativo !== false));
+  } else if (tipo === 'turnos') {
+    const ts = await DB.getByIndex('turnos', 'status', 'ativo');
+    titulo = '🟢 Turnos ativos';
+    conteudo = ts.length ? ts.map(t => `<div class="list-item"><div><div class="li-main">${t.motoristaNome || '—'}</div><div class="li-sub">${t.equipamentoCodigo || ''} · desde ${fmtHoraBR(t.iniciadoEm)}</div></div></div>`).join('') : vazio;
+  } else if (tipo.startsWith('frota-')) {
+    const mapa = { 'frota-op': ['st-operando', '🟢 Operando'], 'frota-rota': ['st-rota', '🚚 Em rota'], 'frota-falta': ['st-falta', '🔴 Falta operador'], 'frota-manut': ['st-manut', '🔧 Manutenção'], 'frota-fora': ['st-off', '🌙 Fora / desativado'] };
+    const [cls, tit] = mapa[tipo] || ['st-off', 'Frota'];
+    titulo = tit;
+    conteudo = listaEquip(tipo === 'frota-fora'
+      ? _painelPorEquip.filter(item => !['st-operando', 'st-rota', 'st-falta', 'st-manut'].includes(_statusEquip(item.equipamento, item).cls))
+      : frotaFiltro(cls));
+  } else {
+    titulo = 'Detalhe'; conteudo = vazio;
+  }
+
+  abrirModalDetalhe({ titulo, subtitulo: `Dia ${dia}`, conteudo });
 }
 
 // Grade de equipamentos (reusada no Painel e nas Viagens da gestão).
