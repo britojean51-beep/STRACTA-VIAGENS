@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="./css/style.css?v=4.15.0">
+<link rel="stylesheet" href="./css/style.css?v=4.15.1">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -232,6 +232,10 @@
     <button class="btn btn-secondary" onclick="salvarFirebaseConfigUI()">💾 Salvar Configuração do Firebase</button>
     <div class="card mt12" id="config-firebase-status"></div>
 
+    <div class="card-title mt16">Aplicativo</div>
+    <button class="btn btn-primary" onclick="forcarAtualizacaoUI()">🔄 Atualizar aplicativo (sem apagar dados)</button>
+    <div class="text-label" style="font-size:12px;margin-top:6px">Pega a versão mais nova sem perder nada. Precisa de internet.</div>
+
     <button class="btn btn-ghost mt16" onclick="navigate('home')">Voltar</button>
   </div>
 
@@ -241,8 +245,14 @@
     <div class="page-sub">Testa Firebase, Google Sheets e IndexedDB, e compara as quantidades entre os três. Só leitura — não altera nada.</div>
     <button class="btn btn-primary" onclick="rodarDiagnosticoUI()">▶️ Rodar Diagnóstico</button>
     <button class="btn btn-secondary" onclick="reenviarFirebaseUI()">🔥 Reenviar tudo (Firebase + Sheets)</button>
-    <button class="btn btn-danger" onclick="resetarDadosLocaisUI()">🗑️ Zerar Dados Locais deste Aparelho</button>
-    <button class="btn btn-danger" onclick="dispararResetRemotoUI()">📡 Zerar TODOS os Aparelhos (remoto, via Firebase)</button>
+
+    <div class="card-title mt16">Atualizar (sem apagar dados)</div>
+    <button class="btn btn-primary" onclick="forcarAtualizacaoUI()">🔄 Atualizar este aparelho</button>
+    <button class="btn btn-primary" onclick="dispararAtualizacaoRemotaUI()">📡 Atualizar TODOS os aparelhos</button>
+
+    <div class="card-title mt16">Zona de perigo — APAGA dados</div>
+    <button class="btn btn-danger" onclick="resetarDadosLocaisUI()">🗑️ Zerar dados deste aparelho (mantém usuários)</button>
+    <button class="btn btn-danger" onclick="dispararResetRemotoUI()">📡 Zerar TODOS os aparelhos (APAGA a operação)</button>
     <div id="diagnostico-progresso" class="text-label mt8" style="font-size:12px"></div>
     <div id="diagnostico-resultado" class="mt16"></div>
     <button class="btn btn-ghost mt16" onclick="navigate('config')">Voltar</button>

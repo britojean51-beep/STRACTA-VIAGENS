@@ -132,7 +132,23 @@ const FirebaseSync = {
       await this._db.collection('sistema').doc('comandos').set({
         resetEm: agoraISO(),
         disparadoPor: usuarioNome || 'desconhecido'
-      });
+      }, { merge: true });
+      return { sucesso: true };
+    } catch (e) {
+      return { sucesso: false, erro: String(e) };
+    }
+  },
+
+  // Pede que todos os aparelhos ATUALIZEM o app (sem apagar dados). Usa merge
+  // para não sobrescrever o resetEm existente no mesmo documento.
+  async dispararAtualizacaoRemota(usuarioNome) {
+    const ok = await this.iniciar();
+    if (!ok) return { sucesso: false, erro: 'Firebase não conectado' };
+    try {
+      await this._db.collection('sistema').doc('comandos').set({
+        atualizarEm: agoraISO(),
+        atualizadoPor: usuarioNome || 'desconhecido'
+      }, { merge: true });
       return { sucesso: true };
     } catch (e) {
       return { sucesso: false, erro: String(e) };

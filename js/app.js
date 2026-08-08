@@ -2546,7 +2546,7 @@ async function reenviarFirebaseUI() {
 // reconfigurar). Usado antes de começar a operação de verdade, depois de
 // já ter limpado o Firebase e o Sheets, pra não sincronizar sujeira de volta.
 async function resetarDadosLocaisUI() {
-  const confirmacao = prompt('Isso vai apagar TODOS os dados locais deste aparelho (viagens, turnos, usuários, etc). A configuração de conexão (Firebase/Sheets) é mantida. Digite CONFIRMAR para prosseguir:');
+  const confirmacao = prompt('Isso vai apagar os dados de operação deste aparelho (viagens, turnos, deslocamentos, etc). Os USUÁRIOS e a configuração de conexão são mantidos. Se você só quer atualizar o app, use "🔄 Atualizar" — não precisa apagar nada. Digite CONFIRMAR para prosseguir:');
   if (!confirmacao || confirmacao.trim().toUpperCase() !== 'CONFIRMAR') { showToast('Cancelado'); return; }
   await executarResetLocal();
   setTimeout(() => window.location.reload(), 1200);
@@ -2555,8 +2555,9 @@ async function resetarDadosLocaisUI() {
 // A limpeza de verdade — reaproveitada tanto pelo botão manual quanto
 // pelo reset automático disparado remotamente por outro aparelho.
 async function executarResetLocal() {
+  // NÃO limpa 'usuarios' — os logins são preservados mesmo ao zerar os dados.
   const storesParaLimpar = [
-    'usuarios', 'motoristas', 'equipamentos', 'rotas', 'rotasDeslocamento', 'viagens',
+    'motoristas', 'equipamentos', 'rotas', 'rotasDeslocamento', 'viagens',
     'deslocamentos', 'abastecimentos', 'lubrificacoes', 'manutencoes',
     'turnos', 'logs', 'syncQueue'
   ];
@@ -2572,19 +2573,55 @@ async function executarResetLocal() {
   showToast('🗑️ Dados locais zerados! Recarregando...');
 }
 
-// Escuta um comando de reset disparado remotamente (por um Desenvolvedor em
-// qualquer aparelho) e reage sozinho, sem precisar abrir o Diagnóstico aqui.
+// Força a atualização do app SEM apagar dados: limpa apenas o cache do Service
+// Worker e desregistra o SW, depois recarrega. O IndexedDB (viagens, turnos,
+// usuários...) NÃO é tocado — nada é perdido.
+async function forcarAtualizacaoUI() {
+  showToast('🔄 Atualizando o aplicativo...', 'var(--blue)', 4000);
+  try {
+    if ('caches' in window) {
+      const chaves = await caches.keys();
+      await Promise.all(chaves.map(c => caches.delete(c)));
+    }
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+  } catch (e) { console.warn('Falha ao limpar cache', e); }
+  setTimeout(() => window.location.reload(), 900);
+}
+
+// Pede que TODOS os aparelhos conectados se atualizem (sem apagar dados).
+async function dispararAtualizacaoRemotaUI() {
+  if (!Permissoes.podeVerTudoOperacional()) { showToast('Acesso restrito à gestão', 'var(--iron)'); return; }
+  if (!confirm('Atualizar o app em TODOS os aparelhos conectados? Ninguém perde dados (viagens, turnos, etc.) — só pega a versão nova.')) return;
+  const usuario = Auth.usuarioAtual();
+  const r = await FirebaseSync.dispararAtualizacaoRemota(usuario ? usuario.nome : 'Gestão');
+  if (!r || !r.sucesso) { showToast((r && r.erro) || 'Falha ao enviar', 'var(--iron)'); return; }
+  showToast('📡 Atualização enviada! Os aparelhos vão se atualizar em instantes (sem perder dados).');
+}
+
+// Escuta comandos remotos (por um gestor em qualquer aparelho) e reage sozinho:
+// - resetEm     → limpa os dados locais (mantendo usuários) e recarrega
+// - atualizarEm → só atualiza o app (limpa cache do SW), SEM apagar dados
 async function iniciarEscutaResetRemoto() {
   if (typeof FirebaseSync === 'undefined') return;
   const configurado = await FirebaseSync.configurado();
   if (!configurado) return;
   FirebaseSync.escutarComandoReset(async (comando) => {
-    const jaProcessado = await DB.getConfig('ultimo_reset_processado', '');
-    if (comando.resetEm && comando.resetEm > jaProcessado) {
+    const jaReset = await DB.getConfig('ultimo_reset_processado', '');
+    if (comando.resetEm && comando.resetEm > jaReset) {
       await DB.setConfig('ultimo_reset_processado', comando.resetEm);
       showToast(`🗑️ Reset remoto disparado por ${comando.disparadoPor} — limpando...`, 'var(--iron)', 4000);
       await executarResetLocal();
       setTimeout(() => window.location.reload(), 2000);
+      return;
+    }
+    const jaAtualizou = await DB.getConfig('ultima_atualizacao_processada', '');
+    if (comando.atualizarEm && comando.atualizarEm > jaAtualizou) {
+      await DB.setConfig('ultima_atualizacao_processada', comando.atualizarEm);
+      showToast(`🔄 Atualização enviada por ${comando.atualizadoPor || 'gestão'} — atualizando...`, 'var(--blue)', 4000);
+      await forcarAtualizacaoUI();
     }
   });
 }
