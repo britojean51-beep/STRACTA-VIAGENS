@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="./css/style.css?v=4.15.4">
+<link rel="stylesheet" href="./css/style.css?v=4.15.5">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -42,15 +42,16 @@
   <!-- ═══ HOME ═══ -->
   <div class="screen" id="screen-home">
     <h1 class="page-title" id="home-saudacao">Olá</h1>
-    <div class="page-sub">O que você precisa fazer agora?</div>
+    <div class="page-sub" id="home-sub">O que você precisa fazer agora?</div>
     <div id="home-turno-box"></div>
 
     <div class="card-title mt24">Atalhos</div>
     <div class="grid-atalhos">
       <div class="atalho" onclick="navigate('operacao')"><span class="ic">🗺️</span><span class="lb">Operação</span></div>
       <div class="atalho" onclick="navigate('viagens')"><span class="ic">📋</span><span class="lb">Viagens</span></div>
-      <div class="atalho" onclick="navigate('frota')"><span class="ic">🚛</span><span class="lb">Frota</span></div>
       <div class="atalho" onclick="navigate('painel')"><span class="ic">📊</span><span class="lb">Painel</span></div>
+      <div class="atalho" onclick="navigate('servicos')"><span class="ic">⛽</span><span class="lb">Serviços</span></div>
+      <div class="atalho" id="atalho-frota" onclick="navigate('frota')"><span class="ic">🚛</span><span class="lb">Frota</span></div>
     </div>
     <div class="card menu-lista mt24">
       <button class="menu-item" id="btn-instalar" onclick="instalarApp()" style="display:none"><span class="mi-ic">📲</span><span class="mi-lb">Instalar app na tela inicial</span><span class="mi-ar">›</span></button>

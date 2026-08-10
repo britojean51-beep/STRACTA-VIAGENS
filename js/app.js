@@ -409,15 +409,22 @@ function fazerLogout() {
 // ---------- HOME ----------
 async function renderHome() {
   const u = Auth.usuarioAtual();
+  const gestao = Permissoes.podeVerTudoOperacional();
   qs('#home-saudacao').textContent = u ? `Olá, ${u.nome.split(' ')[0]}` : '';
   _turnoAtivoCache = await Motorista.turnoAtivo();
   const box = qs('#home-turno-box');
 
-  // botão do mapa ao vivo e das áreas só aparecem para a gestão (Encarregado+)
+  // subtítulo por perfil
+  const sub = qs('#home-sub');
+  if (sub) sub.textContent = gestao ? 'O que você precisa fazer agora?' : 'Bora operar 🚛';
+
+  // atalhos/menus de gestão só aparecem para quem tem permissão
   const btnMapa = qs('#btn-mapa-vivo');
-  if (btnMapa) btnMapa.style.display = Permissoes.podeVerTudoOperacional() ? 'flex' : 'none';
+  if (btnMapa) btnMapa.style.display = gestao ? 'flex' : 'none';
   const btnAreas = qs('#btn-areas');
   if (btnAreas) btnAreas.style.display = Permissoes.podeGerenciarRotas() ? 'flex' : 'none';
+  const atalhoFrota = qs('#atalho-frota');
+  if (atalhoFrota) atalhoFrota.style.display = podeGerenciarFrota() ? '' : 'none';
 
   // liga ou desliga o rastreamento em tempo real conforme houver turno ativo
   sincronizarRastreamento();
@@ -427,19 +434,22 @@ async function renderHome() {
       <div class="card">
         <div class="card-title">Turno</div>
         <div class="text-label" style="font-size:13px;margin-bottom:12px">Nenhum turno em andamento.</div>
-        <button class="btn btn-primary" onclick="navigate('turno')">▶️ Iniciar Turno</button>
+        <button class="btn btn-primary btn-hero" onclick="navigate('turno')">▶️ Iniciar Turno</button>
       </div>`;
   } else {
     const t = _turnoAtivoCache;
     const resumo = await Motorista.resumoTurno(t.id);
     box.innerHTML = `
       <div class="card">
-        <div class="card-title">Turno em Andamento</div>
-        <div class="row-kv"><span class="k">Equipamento</span><span class="v">${t.equipamentoCodigo}</span></div>
-        <div class="row-kv"><span class="k">Iniciado às</span><span class="v">${fmtHoraBR(t.iniciadoEm)}</span></div>
-        <div class="row-kv"><span class="k">Viagens concluídas</span><span class="v">${resumo.totalViagens}</span></div>
-        <div class="row-kv"><span class="k">Tempo médio/viagem</span><span class="v">${fmtDuracao(resumo.tempoMedioMs)}</span></div>
-        <button class="btn btn-danger mt12" onclick="abrirEncerrarTurno()">⏹️ Encerrar Turno</button>
+        <div class="card-title">🟢 Turno em andamento</div>
+        <div style="font-family:var(--display);font-weight:700;font-size:16px">🚛 ${t.equipamentoCodigo || 'Equipamento'}</div>
+        <div class="text-label" style="font-size:12px;margin-top:2px">Iniciado às ${fmtHoraBR(t.iniciadoEm)}</div>
+        <div class="stat-tiles cols2">
+          <div class="stat-tile hl"><div class="v">${resumo.totalViagens}</div><div class="k">Viagens hoje</div></div>
+          <div class="stat-tile"><div class="v">${fmtDuracao(resumo.tempoMedioMs)}</div><div class="k">Tempo médio</div></div>
+        </div>
+        <button class="btn btn-primary btn-hero" onclick="navigate('operacao')">🗺️ Operar agora</button>
+        <button class="btn btn-ghost mt8" style="color:var(--iron)" onclick="abrirEncerrarTurno()">⏹️ Encerrar Turno</button>
       </div>`;
   }
 }
