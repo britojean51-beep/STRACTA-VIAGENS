@@ -16,7 +16,7 @@ const Auth = {
         usuario: 'admin',
         senha: 'admin123',
         nome: 'Administrador',
-        nivel: 'Desenvolvedor',
+        nivel: 'Administrador',
         criadoEm: agoraISO()
       };
       await DB.put('usuarios', admin);

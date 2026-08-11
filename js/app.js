@@ -194,6 +194,7 @@ async function iniciarApp() {
   await abrirBanco();
   await aplicarConfigPadraoSeNecessario();
   await Auth.garantirUsuarioPadrao();
+  await migrarDesenvolvedorParaAdmin();
   await registrarVersaoInstalada();
   await aplicarTemaSalvo();
   await aplicarMarca();
@@ -258,6 +259,64 @@ async function migrarAreasParaObjetos() {
   } catch (e) {
     console.warn('Falha ao migrar áreas', e);
   }
+}
+
+// ---------- MIGRAÇÃO: nível "Desenvolvedor" → "Administrador" ----------
+// O perfil Desenvolvedor deixou de existir; o Administrador é o topo. Converte
+// usuários antigos para não perderem acesso. Idempotente.
+async function migrarDesenvolvedorParaAdmin() {
+  try {
+    const usuarios = await DB.getAll('usuarios');
+    for (const u of usuarios) {
+      if (u.nivel === 'Desenvolvedor') {
+        u.nivel = 'Administrador';
+        u.editadoEm = agoraISO();
+        await DB.put('usuarios', u);
+        if (typeof Sync !== 'undefined') Sync.enfileirar('usuario', u);
+      }
+    }
+  } catch (e) {
+    console.warn('Falha ao migrar níveis', e);
+  }
+}
+
+// ---------- MODO TESTE DE OPERAÇÃO (administrador) ----------
+// Inicia um turno de teste num equipamento fictício. Tudo criado é marcado
+// como teste e NÃO entra nos relatórios/painel; pode ser apagado depois.
+async function iniciarTesteOperacaoUI() {
+  if (!Permissoes.podeVerDiagnostico()) { showToast('Acesso restrito a Administrador', 'var(--iron)'); return; }
+  const jaAtivo = await Motorista.turnoAtivo();
+  if (jaAtivo) { showToast('Encerre o turno atual antes de testar', 'var(--iron)'); return; }
+  const u = Auth.usuarioAtual();
+  const equip = await Equipamentos.garantirEquipTeste();
+  const t = await Motorista.iniciarTurno({
+    motoristaId: u.id, motoristaNome: u.nome,
+    equipamentoId: equip.id, equipamentoCodigo: equip.codigo,
+    kmInicial: 0, horimetroInicial: 0, teste: true
+  });
+  if (t && t.erro) { showToast(t.erro, 'var(--iron)'); return; }
+  _turnoAtivoCache = t;
+  showToast('🧪 Modo teste iniciado');
+  navigate('operacao');
+}
+
+async function apagarDadosTesteUI() {
+  if (!Permissoes.podeVerDiagnostico()) { showToast('Acesso restrito a Administrador', 'var(--iron)'); return; }
+  if (!confirm('Apagar TODOS os dados de teste (turnos, viagens, deslocamentos e paradas marcados como teste)?')) return;
+  const mapaTipo = { turnos: 'turno', viagens: 'viagem', deslocamentos: 'deslocamento', paradas: 'parada' };
+  for (const store of Object.keys(mapaTipo)) {
+    const todos = await DB.getAll(store);
+    for (const r of todos) {
+      if (r.teste) {
+        await DB.delete(store, r.id);
+        if (typeof Sync !== 'undefined') Sync.enfileirarExclusao(mapaTipo[store], r.id);
+      }
+    }
+  }
+  localStorage.removeItem('stracta_viagens_turno_ativo_id');
+  _turnoAtivoCache = await Motorista.turnoAtivo();
+  showToast('🧹 Dados de teste apagados');
+  navigate('home');
 }
 
 // ---------- IDENTIDADE DA EMPRESA (white-label) ----------
@@ -356,7 +415,7 @@ async function navigate(tela) {
   };
   if (tela === 'usuarios') {
     if (!Permissoes.podeGerenciarUsuarios()) {
-      showToast('Acesso restrito a Administrador ou Desenvolvedor', 'var(--iron)');
+      showToast('Acesso restrito a Administrador', 'var(--iron)');
       qsa('.screen').forEach(s => s.classList.remove('active'));
       qs('#screen-config').classList.add('active');
       return;
@@ -364,7 +423,7 @@ async function navigate(tela) {
   }
   if (tela === 'lancar-rotas') {
     if (!podeGerenciarFrota()) {
-      showToast('Acesso restrito a Gerência, Supervisor, Encarregado, Administrador ou Desenvolvedor', 'var(--iron)');
+      showToast('Acesso restrito a Encarregado, Supervisor, Gerência ou Administrador', 'var(--iron)');
       qsa('.screen').forEach(s => s.classList.remove('active'));
       qs('#screen-viagens').classList.add('active');
       return;
@@ -372,7 +431,7 @@ async function navigate(tela) {
   }
   if (tela === 'diagnostico') {
     if (!Permissoes.podeVerDiagnostico()) {
-      showToast('Acesso restrito a Desenvolvedor', 'var(--iron)');
+      showToast('Acesso restrito a Administrador', 'var(--iron)');
       qsa('.screen').forEach(s => s.classList.remove('active'));
       qs('#screen-config').classList.add('active');
       return;
@@ -831,9 +890,18 @@ async function renderOperacao() {
     <button class="btn btn-primary btn-hero" onclick="iniciarViagemAutoUI()">🚀 Iniciar viagem</button>`;
 
   area.innerHTML = `
+    ${_turnoAtivoCache.teste ? `
+    <div class="card" style="border-color:var(--amber);background:rgba(245,166,35,.10)">
+      <div style="font-weight:700;color:var(--amber)">🧪 MODO TESTE</div>
+      <div class="text-label" style="font-size:12px;margin-top:2px">Nada disto conta nos relatórios. Ao terminar, encerre e apague os dados de teste.</div>
+      <div class="btn-row mt8">
+        <button class="btn btn-outline btn-sm" onclick="abrirEncerrarTurno()">⏹️ Encerrar teste</button>
+        <button class="btn btn-danger btn-sm" onclick="apagarDadosTesteUI()">🧹 Apagar dados de teste</button>
+      </div>
+    </div>` : ''}
     <div class="card op-hero">
       <div class="op-hero-equip">🚛 ${_turnoAtivoCache.equipamentoCodigo || 'Equipamento'}</div>
-      ${totalAreas === 0 ? `<div class="op-aviso">⚠️ Nenhuma área definida ainda — as rotas sairão como "Local não identificado".</div>` : ''}
+      ${totalAreas === 0 && !_turnoAtivoCache.teste ? `<div class="op-aviso">⚠️ Nenhuma área definida ainda — as rotas sairão como "Local não identificado".</div>` : ''}
     </div>
 
     <div id="parada-ativa-box"></div>
@@ -931,7 +999,7 @@ async function iniciarParadaUI(subtipo) {
   if (ativa) await Operacao.finalizarParada(ativa.id); // só uma parada por vez
   await Operacao.iniciarParada({
     turnoId: t.id, motoristaId: u.id, motoristaNome: u.nome,
-    equipamentoId: t.equipamentoId, equipamentoCodigo: t.equipamentoCodigo, subtipo
+    equipamentoId: t.equipamentoId, equipamentoCodigo: t.equipamentoCodigo, subtipo, teste: !!t.teste
   });
   renderOperacao();
 }
@@ -1022,7 +1090,7 @@ async function iniciarViagemUI(rotaId) {
   await Operacao.iniciarViagem({
     turnoId: t.id, motoristaId: u.id, motoristaNome: u.nome,
     equipamentoId: t.equipamentoId, equipamentoCodigo: t.equipamentoCodigo,
-    rotaId: rota.id, rotaNome: rota.nome
+    rotaId: rota.id, rotaNome: rota.nome, teste: !!t.teste
   });
   renderOperacao();
 }
@@ -1065,7 +1133,7 @@ async function iniciarViagemAutoUI() {
   await Operacao.iniciarViagemAutomatica({
     turnoId: t.id, motoristaId: u.id, motoristaNome: u.nome,
     equipamentoId: t.equipamentoId, equipamentoCodigo: t.equipamentoCodigo,
-    posInicio: pos
+    posInicio: pos, teste: !!t.teste
   });
   showToast(pos && pos.area ? `🚀 Viagem iniciada em ${pos.area}` : '🚀 Viagem iniciada');
   renderOperacao();
@@ -1104,7 +1172,7 @@ async function _iniciarDeslocAuto(motivo, destinoEsperado) {
   if (!pos) showToast('Sem GPS agora — o deslocamento inicia sem origem identificada', 'var(--iron)', 3500);
   const d = await Operacao.iniciarDeslocamentoAutomatico({
     turnoId: t.id, motoristaId: t.motoristaId, equipamentoId: t.equipamentoId,
-    posInicio: pos, motivo: motivo || '', destinoEsperado: destinoEsperado || null
+    posInicio: pos, motivo: motivo || '', destinoEsperado: destinoEsperado || null, teste: !!t.teste
   });
   showToast(pos && pos.area ? `🚚 Deslocamento iniciado em ${pos.area}` : '🚚 Deslocamento iniciado');
   renderTimerDeslocamento(d, d.origem || 'Origem', destinoEsperado || '…', d.motivo || '');
@@ -1322,7 +1390,7 @@ async function iniciarDeslocamentoUI(rotaDeslocId) {
   const t = _turnoAtivoCache;
   const d = await Operacao.iniciarDeslocamento({
     turnoId: t.id, motoristaId: t.motoristaId, equipamentoId: t.equipamentoId,
-    origem: rota.origem, destino: rota.destino, motivo: rota.motivo
+    origem: rota.origem, destino: rota.destino, motivo: rota.motivo, teste: !!t.teste
   });
   showToast('🚚 Deslocamento iniciado');
   renderTimerDeslocamento(d, rota.origem, rota.destino, rota.motivo);
@@ -2568,8 +2636,10 @@ async function renderConfig() {
   const usuarioAtual = Auth.usuarioAtual();
   qs('#btn-diagnostico').classList.toggle('hidden', !Permissoes.podeVerDiagnostico());
   qs('#btn-usuarios').classList.toggle('hidden', !Permissoes.podeGerenciarUsuarios());
+  const bTest = qs('#btn-testar-operacao'); if (bTest) bTest.classList.toggle('hidden', !Permissoes.podeVerDiagnostico());
+  const bApag = qs('#btn-apagar-teste'); if (bApag) bApag.classList.toggle('hidden', !Permissoes.podeVerDiagnostico());
 
-  // Identidade da empresa (white-label) — só Admin/Desenvolvedor
+  // Identidade da empresa (white-label) — só Administrador
   const idBox = qs('#config-identidade');
   if (idBox) {
     idBox.classList.toggle('hidden', !Permissoes.podeGerenciarUsuarios());

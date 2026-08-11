@@ -6,7 +6,12 @@
    vários lugares (e esquecer de atualizar uma delas depois).
    ══════════════════════════════════════════════════════════ */
 
-const NIVEL_HIERARQUIA = ['Motorista', 'Encarregado', 'Supervisor', 'Gerente', 'Administrador', 'Desenvolvedor'];
+const NIVEL_HIERARQUIA = ['Motorista', 'Encarregado', 'Supervisor', 'Gerente', 'Administrador'];
+
+// Normaliza níveis legados: 'Desenvolvedor' deixou de existir e conta como 'Administrador'.
+function _normalizarNivel(n) {
+  return n === 'Desenvolvedor' ? 'Administrador' : n;
+}
 
 const Permissoes = {
   usuarioAtual() {
@@ -15,20 +20,19 @@ const Permissoes = {
 
   nivelAtual() {
     const u = this.usuarioAtual();
-    return u ? u.nivel : null;
+    return u ? _normalizarNivel(u.nivel) : null;
   },
 
   nivelPeloMenos(nivelMinimo) {
     const atual = this.nivelAtual();
     if (!atual) return false;
     const idxAtual = NIVEL_HIERARQUIA.indexOf(atual);
-    const idxMinimo = NIVEL_HIERARQUIA.indexOf(nivelMinimo);
+    const idxMinimo = NIVEL_HIERARQUIA.indexOf(_normalizarNivel(nivelMinimo));
     if (idxAtual === -1 || idxMinimo === -1) return false;
     return idxAtual >= idxMinimo;
   },
 
   ehMotorista() { return this.nivelAtual() === 'Motorista'; },
-  ehDesenvolvedor() { return this.nivelAtual() === 'Desenvolvedor'; },
 
   // Ver todos os dados operacionais (viagens/abastecimentos/deslocamentos de todo mundo)
   podeVerTudoOperacional() { return this.nivelPeloMenos('Encarregado'); },

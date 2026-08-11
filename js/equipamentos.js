@@ -3,10 +3,31 @@
    Cadastro de equipamentos da frota.
    ══════════════════════════════════════════════════════════ */
 
+const EQUIP_TESTE_ID = 'equip-teste';
+
 const Equipamentos = {
   async listar() {
     const todos = await DB.getAll('equipamentos');
-    return todos.sort((a, b) => (a.codigo || '').localeCompare(b.codigo || ''));
+    // o equipamento de teste não aparece nas listas normais (frota, painel, seletores)
+    return todos
+      .filter(e => !e.teste)
+      .sort((a, b) => (a.codigo || '').localeCompare(b.codigo || ''));
+  },
+
+  // Cria (uma vez) e retorna o equipamento fictício de teste, usado só no Modo Teste.
+  async garantirEquipTeste() {
+    let e = await DB.get('equipamentos', EQUIP_TESTE_ID);
+    if (!e) {
+      e = {
+        id: EQUIP_TESTE_ID, tipo: 'equipamento', codigo: 'TESTE',
+        modelo: 'Equipamento de teste', categoria: 'Caminhão',
+        kmAtual: 0, horimetroAtual: 0, status: 'ativo', ativo: true,
+        teste: true, expedienteInicio: '00:00', expedienteFim: '23:59',
+        criadoEm: agoraISO()
+      };
+      await DB.put('equipamentos', e);
+    }
+    return e;
   },
 
   async ativos() {

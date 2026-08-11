@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="./css/style.css?v=4.16.0">
+<link rel="stylesheet" href="./css/style.css?v=4.16.1">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -218,6 +218,8 @@
     <button class="btn btn-outline" id="config-tema-btn" onclick="alternarTema()">🌙 Tema Escuro (tocar para claro)</button>
     <button class="btn btn-outline hidden" id="btn-usuarios" onclick="navigate('usuarios')">👥 Gerenciar Usuários</button>
     <button class="btn btn-outline hidden" id="btn-diagnostico" onclick="navigate('diagnostico')">🧪 Diagnóstico</button>
+    <button class="btn btn-outline hidden" id="btn-testar-operacao" onclick="iniciarTesteOperacaoUI()">🧪 Testar operação</button>
+    <button class="btn btn-outline hidden" id="btn-apagar-teste" onclick="apagarDadosTesteUI()">🧹 Apagar dados de teste</button>
 
     <div class="card mt16 hidden" id="config-identidade">
       <div class="card-title">🏢 Identidade da empresa</div>
@@ -292,7 +294,6 @@
         <option value="Supervisor">Supervisor</option>
         <option value="Gerente">Gerente</option>
         <option value="Administrador">Administrador</option>
-        <option value="Desenvolvedor">Desenvolvedor</option>
       </select>
     </div>
     <button class="btn btn-primary" onclick="criarUsuarioUI()">➕ Criar Usuário</button>

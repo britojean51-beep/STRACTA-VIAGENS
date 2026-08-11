@@ -28,7 +28,7 @@ const Motorista = {
     return null;
   },
 
-  async iniciarTurno({ motoristaId, motoristaNome, equipamentoId, equipamentoCodigo, kmInicial, horimetroInicial }) {
+  async iniciarTurno({ motoristaId, motoristaNome, equipamentoId, equipamentoCodigo, kmInicial, horimetroInicial, teste }) {
     // impede dois motoristas com turno ativo no mesmo caminhão ao mesmo tempo
     const turnosAtivos = await DB.getByIndex('turnos', 'status', 'ativo');
     const jaEmUso = turnosAtivos.find(t => t.equipamentoId === equipamentoId && t.motoristaId !== motoristaId);
@@ -45,11 +45,13 @@ const Motorista = {
       horimetroInicial: Number(horimetroInicial) || 0,
       dia: todayKey(),
       status: 'ativo',
+      teste: !!teste,
       iniciadoEm: agoraISO(),
       encerradoEm: null
     };
     await DB.put('turnos', turno);
-    await Equipamentos.atualizarKmHorimetro(equipamentoId, kmInicial, horimetroInicial);
+    // no Modo Teste não mexe no KM/horímetro real
+    if (!teste) await Equipamentos.atualizarKmHorimetro(equipamentoId, kmInicial, horimetroInicial);
     localStorage.setItem(TURNO_ATIVO_CHAVE, turno.id);
     await Sync.enfileirar('turno', turno);
     if (typeof Geo !== 'undefined') Geo.anexarLocal('turnos', turno.id, 'localInicio', 'turno');

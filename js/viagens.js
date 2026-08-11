@@ -7,7 +7,8 @@
 const Viagens = {
   async historicoDoDia(dia = todayKey()) {
     const viagens = await DB.getByIndex('viagens', 'dia', dia);
-    return viagens.sort((a, b) => new Date(b.inicioEm) - new Date(a.inicioEm));
+    // viagens de teste não entram nos relatórios/listas do dia
+    return viagens.filter(v => !v.teste).sort((a, b) => new Date(b.inicioEm) - new Date(a.inicioEm));
   },
 
   async historicoPorMotorista(motoristaId) {
@@ -50,7 +51,7 @@ const Viagens = {
 
   async diasComRegistro() {
     const todas = await DB.getAll('viagens');
-    return [...new Set(todas.map(v => v.dia))].sort().reverse();
+    return [...new Set(todas.filter(v => !v.teste).map(v => v.dia))].sort().reverse();
   }
 };
 

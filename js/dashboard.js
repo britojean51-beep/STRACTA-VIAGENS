@@ -16,12 +16,12 @@ const Dashboard = {
       DB.getByIndex('turnos', 'status', 'ativo')
     ]);
 
-    const deslocamentosDoDia = deslocamentos.filter(d => d.dia === dia);
+    const deslocamentosDoDia = deslocamentos.filter(d => d.dia === dia && !d.teste);
     const tempoDeslocamentoMs = deslocamentosDoDia.reduce((a, d) => a + (d.tempoTotalMs || 0), 0);
     const equipamentosAtivos = equipamentos.filter(e => e.status !== 'manutencao' && e.ativo !== false);
 
     // Tempo parado: para os turnos do dia, tempo total do turno menos tempo em viagem e em deslocamento
-    const turnosDoDia = (await DB.getAll('turnos')).filter(t => t.dia === dia);
+    const turnosDoDia = (await DB.getAll('turnos')).filter(t => t.dia === dia && !t.teste);
     let tempoParadoMs = 0;
     for (const t of turnosDoDia) {
       const fimTurno = t.encerradoEm ? new Date(t.encerradoEm) : new Date();
@@ -33,7 +33,7 @@ const Dashboard = {
       tempoParadoMs += Math.max(0, duracaoTurnoMs - tempoViagensMs - tempoDeslocTurnoMs);
     }
 
-    const paradasDoDia = (await DB.getAll('paradas')).filter(p => p.dia === dia);
+    const paradasDoDia = (await DB.getAll('paradas')).filter(p => p.dia === dia && !p.teste);
     const tempoParadasMs = paradasDoDia.reduce((a, p) => a + (p.tempoTotalMs || 0), 0);
 
     return {

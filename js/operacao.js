@@ -144,7 +144,7 @@ const Operacao = {
 
   // ---------- CICLO DA VIAGEM ----------
   // Cria uma viagem em andamento (cronômetro correndo)
-  async iniciarViagem({ turnoId, motoristaId, motoristaNome, equipamentoId, equipamentoCodigo, rotaId, rotaNome }) {
+  async iniciarViagem({ turnoId, motoristaId, motoristaNome, equipamentoId, equipamentoCodigo, rotaId, rotaNome, teste }) {
     const rota = await DB.get('rotas', rotaId);
     const viagem = {
       id: gerarId('viagem'),
@@ -155,6 +155,7 @@ const Operacao = {
       equipamentoCargaId: rota ? rota.equipamentoCargaId : '',
       equipamentoCargaCodigo: rota ? rota.equipamentoCargaCodigo : '',
       tipo: 'viagem',
+      teste: !!teste,
       dia: todayKey(),
       status: 'em_andamento',       // em_andamento | concluida
       inicioEm: agoraISO(),
@@ -219,13 +220,14 @@ const Operacao = {
 
   // ---------- DESLOCAMENTO (sem carga, ex: deslocamento até a frente de serviço) ----------
   // Não conta como produção — é registrado separadamente das viagens.
-  async iniciarDeslocamento({ turnoId, motoristaId, equipamentoId, origem, destino, motivo }) {
+  async iniciarDeslocamento({ turnoId, motoristaId, equipamentoId, origem, destino, motivo, teste }) {
     const deslocamento = {
       id: gerarId('desloc'),
       turnoId, motoristaId, equipamentoId,
       origem: origem || '', destino: destino || '',
       motivo: motivo || '',
       tipo: 'deslocamento',
+      teste: !!teste,
       inicioEm: agoraISO(),
       fimEm: null,
       tempoTotalMs: null,
@@ -272,7 +274,7 @@ const Operacao = {
 
   // Inicia uma viagem SEM rota pré-escolhida. A origem vem da posição atual
   // (área identificada). O destino é definido ao descarregar.
-  async iniciarViagemAutomatica({ turnoId, motoristaId, motoristaNome, equipamentoId, equipamentoCodigo, posInicio }) {
+  async iniciarViagemAutomatica({ turnoId, motoristaId, motoristaNome, equipamentoId, equipamentoCodigo, posInicio, teste }) {
     const areaInicio = posInicio && posInicio.area ? posInicio.area : null;
     const viagem = {
       id: gerarId('viagem'),
@@ -284,6 +286,7 @@ const Operacao = {
       material: '', equipamentoCargaId: '', equipamentoCargaCodigo: '',
       automatica: true,
       tipo: 'viagem',
+      teste: !!teste,
       dia: todayKey(),
       status: 'em_andamento',
       inicioEm: agoraISO(),
@@ -319,7 +322,7 @@ const Operacao = {
     return viagem;
   },
 
-  async iniciarDeslocamentoAutomatico({ turnoId, motoristaId, equipamentoId, posInicio, motivo, destinoEsperado }) {
+  async iniciarDeslocamentoAutomatico({ turnoId, motoristaId, equipamentoId, posInicio, motivo, destinoEsperado, teste }) {
     const areaInicio = posInicio && posInicio.area ? posInicio.area : null;
     const deslocamento = {
       id: gerarId('desloc'),
@@ -329,6 +332,7 @@ const Operacao = {
       origemArea: areaInicio,
       automatica: true,
       tipo: 'deslocamento',
+      teste: !!teste,
       inicioEm: agoraISO(),
       fimEm: null,
       tempoTotalMs: null,
@@ -367,7 +371,7 @@ const Operacao = {
   },
 
   // ---------- PARADAS (tempo parado categorizado) ----------
-  async iniciarParada({ turnoId, motoristaId, motoristaNome, equipamentoId, equipamentoCodigo, subtipo }) {
+  async iniciarParada({ turnoId, motoristaId, motoristaNome, equipamentoId, equipamentoCodigo, subtipo, teste }) {
     const tipo = (typeof TIPOS_PARADA !== 'undefined' ? TIPOS_PARADA : []).find(t => t.subtipo === subtipo) || { subtipo, nome: subtipo, min: null };
     const parada = {
       id: gerarId('parada'),
@@ -376,6 +380,7 @@ const Operacao = {
       nome: tipo.nome,
       turnoId, motoristaId, motoristaNome,
       equipamentoId, equipamentoCodigo,
+      teste: !!teste,
       tempoPrevistoMin: tipo.min,
       inicioEm: agoraISO(),
       fimEm: null,
@@ -409,7 +414,7 @@ const Operacao = {
 
   async paradasDoDia(dia = todayKey()) {
     const todas = await DB.getAll('paradas');
-    return todas.filter(p => p.dia === dia);
+    return todas.filter(p => p.dia === dia && !p.teste);
   },
 
   // ---------- MELHOR TEMPO (RECORDE) POR TRAJETO ----------
@@ -434,7 +439,7 @@ const Operacao = {
 
   async deslocamentosDoDia(dia = todayKey()) {
     const todos = await DB.getAll('deslocamentos');
-    return todos.filter(d => d.dia === dia).sort((a, b) => new Date(b.inicioEm) - new Date(a.inicioEm));
+    return todos.filter(d => d.dia === dia && !d.teste).sort((a, b) => new Date(b.inicioEm) - new Date(a.inicioEm));
   },
 
   async deslocamentosPorEquipamento(equipamentoId) {
