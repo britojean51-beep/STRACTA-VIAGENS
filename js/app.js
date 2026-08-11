@@ -196,6 +196,7 @@ async function iniciarApp() {
   await Auth.garantirUsuarioPadrao();
   await registrarVersaoInstalada();
   await aplicarTemaSalvo();
+  await aplicarMarca();
   atualizarStatusConexao();
   iniciarEscutaResetRemoto();
   Sync.iniciarMonitoramento();
@@ -257,6 +258,29 @@ async function migrarAreasParaObjetos() {
   } catch (e) {
     console.warn('Falha ao migrar áreas', e);
   }
+}
+
+// ---------- IDENTIDADE DA EMPRESA (white-label) ----------
+// Nome/slogan configuráveis por cliente; a GP2T é a fornecedora (crédito fixo "por GP2T").
+async function aplicarMarca() {
+  const nome = (await DB.getConfig('empresa_nome', 'STRACTA')) || 'STRACTA';
+  const slogan = (await DB.getConfig('empresa_slogan', 'Controle operacional da frota')) || 'Controle operacional da frota';
+  window.MARCA = { nome, slogan };
+  const topo = qs('#brand-topo'); if (topo) topo.textContent = nome;
+  const logo = qs('#login-logo'); if (logo) logo.textContent = nome;
+  const sub = qs('#login-sub'); if (sub) sub.textContent = slogan;
+  document.title = nome;
+}
+
+async function salvarMarcaUI() {
+  if (!Permissoes.podeGerenciarUsuarios()) { showToast('Acesso restrito a Administrador', 'var(--iron)'); return; }
+  const nome = (qs('#cfg-empresa-nome').value || '').trim() || 'STRACTA';
+  const slogan = (qs('#cfg-empresa-slogan').value || '').trim() || 'Controle operacional da frota';
+  await DB.setConfig('empresa_nome', nome);
+  await DB.setConfig('empresa_slogan', slogan);
+  await aplicarMarca();
+  renderConfig();
+  showToast('✅ Identidade da empresa salva!');
 }
 
 // ---------- TEMA CLARO/ESCURO ----------
@@ -2253,7 +2277,7 @@ function _textoPainelMotorista(u, r) {
   const t = r.turno;
   const parcial = r.emAndamento ? ' (parcial)' : '';
   return [
-    'STRACTA VIAGENS — Resumo do turno',
+    `${(window.MARCA && MARCA.nome) || 'STRACTA'} — Resumo do turno`,
     `Motorista: ${u ? u.nome : '—'}`,
     `Equipamento: ${t.equipamentoCodigo || '—'}`,
     `Data: ${fmtDataBR(t.iniciadoEm)}`,
@@ -2537,12 +2561,21 @@ async function renderConfig() {
   const pendentes = await Sync.pendentes();
   const ultima = await DB.getConfig('ultima_sincronizacao', null);
   const tema = await DB.getConfig('tema', 'escuro');
-  qs('#config-versao').textContent = `${APP_BUILD_NOME} — Build ${APP_VERSION}`;
+  const marcaNome = (window.MARCA && MARCA.nome) || 'STRACTA';
+  qs('#config-versao').textContent = `${marcaNome} · v${APP_VERSION} · por GP2T`;
   qs('#config-tema-btn').textContent = tema === 'escuro' ? '🌙 Tema Escuro (tocar para claro)' : '☀️ Tema Claro (tocar para escuro)';
 
   const usuarioAtual = Auth.usuarioAtual();
   qs('#btn-diagnostico').classList.toggle('hidden', !Permissoes.podeVerDiagnostico());
   qs('#btn-usuarios').classList.toggle('hidden', !Permissoes.podeGerenciarUsuarios());
+
+  // Identidade da empresa (white-label) — só Admin/Desenvolvedor
+  const idBox = qs('#config-identidade');
+  if (idBox) {
+    idBox.classList.toggle('hidden', !Permissoes.podeGerenciarUsuarios());
+    qs('#cfg-empresa-nome').value = await DB.getConfig('empresa_nome', 'STRACTA');
+    qs('#cfg-empresa-slogan').value = await DB.getConfig('empresa_slogan', 'Controle operacional da frota');
+  }
 
   let statusLinha;
   if (!estaOnline()) {

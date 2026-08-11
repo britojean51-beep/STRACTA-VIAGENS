@@ -63,7 +63,7 @@ const Relatorio = {
 
     doc.cabecalhoMarca('Relatório de Período');
     doc.texto(`Período: ${fmtDataBR(inicioISO + 'T12:00:00')} a ${fmtDataBR(fimISO + 'T12:00:00')}`, { tamanho: 10 });
-    doc.texto(`Gerado em: ${fmtDataHoraBR(agoraISO())}  •  ${APP_BUILD_NOME} — Build ${APP_VERSION}`, { tamanho: 8 });
+    doc.texto(`Gerado em: ${fmtDataHoraBR(agoraISO())}  •  ${(window.MARCA && MARCA.nome) || 'STRACTA'} — v${APP_VERSION} · por GP2T`, { tamanho: 8 });
     doc.espaco(6);
     doc.linhaHorizontal();
 
@@ -178,7 +178,7 @@ const Relatorio = {
 
     doc.cabecalhoMarca('Relatório Diário de Operação');
     doc.texto(`Data do relatório: ${fmtDataBR(diaKeyParaISO(dia) + 'T12:00:00')}`, { tamanho: 10 });
-    doc.texto(`Gerado em: ${fmtDataHoraBR(agoraISO())}  •  ${APP_BUILD_NOME} — Build ${APP_VERSION}`, { tamanho: 8 });
+    doc.texto(`Gerado em: ${fmtDataHoraBR(agoraISO())}  •  ${(window.MARCA && MARCA.nome) || 'STRACTA'} — v${APP_VERSION} · por GP2T`, { tamanho: 8 });
     doc.espaco(6);
     doc.linhaHorizontal();
 

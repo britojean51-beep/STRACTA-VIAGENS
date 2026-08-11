@@ -85,8 +85,9 @@ class PDFLite {
     this.retanguloPreenchido(0, topoPagina - alturaFaixa, this.pageWidth, 5, laranja);
 
     this.y = topoPagina - 26;
-    this.texto('STRACTA MINERAÇÃO', { tamanho: 19, negrito: true, cor: branco, salto: 20 });
-    this.texto('STRACTA VIAGENS — ' + subtitulo, { tamanho: 10.5, cor: laranja, salto: 16 });
+    const _marca = (typeof window !== 'undefined' && window.MARCA && window.MARCA.nome) ? window.MARCA.nome : 'STRACTA';
+    this.texto(_marca.toUpperCase(), { tamanho: 19, negrito: true, cor: branco, salto: 20 });
+    this.texto(subtitulo + ' — por GP2T', { tamanho: 10.5, cor: laranja, salto: 16 });
 
     this.y = topoPagina - alturaFaixa - 5 - 14;
   }

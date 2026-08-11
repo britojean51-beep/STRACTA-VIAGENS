@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="./css/style.css?v=4.15.5">
+<link rel="stylesheet" href="./css/style.css?v=4.16.0">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -23,15 +23,16 @@
 
   <!-- ═══ BARRA DE STATUS ═══ -->
   <div class="status-bar" id="status-bar">
-    <div class="brand">STRACTA <span class="accent">VIAGENS</span></div>
+    <div class="brand" id="brand-topo">STRACTA</div>
     <div class="conn-pill offline" id="conn-pill"><span class="dot"></span><span class="txt">Offline</span></div>
   </div>
 
   <!-- ═══ LOGIN ═══ -->
   <div class="screen active" id="screen-login">
     <div class="login-card">
-      <div class="login-logo">STRACTA <span>VIAGENS</span></div>
-      <div class="login-sub">Controle operacional da frota — offline first</div>
+      <div class="login-logo" id="login-logo">STRACTA</div>
+      <div class="login-sub" id="login-sub">Controle operacional da frota — offline first</div>
+      <div class="login-credit" id="login-credit" style="color:var(--label);font-size:11px;margin-top:2px">por GP2T</div>
       <div class="field"><label>Usuário</label><input id="login-usuario" placeholder="usuário ou nome" autocomplete="username"></div>
       <div class="field"><label>Senha</label><input id="login-senha" type="password" placeholder="senha" autocomplete="current-password"></div>
       <button class="btn btn-primary mt8" onclick="fazerLogin()">Entrar</button>
@@ -217,6 +218,13 @@
     <button class="btn btn-outline" id="config-tema-btn" onclick="alternarTema()">🌙 Tema Escuro (tocar para claro)</button>
     <button class="btn btn-outline hidden" id="btn-usuarios" onclick="navigate('usuarios')">👥 Gerenciar Usuários</button>
     <button class="btn btn-outline hidden" id="btn-diagnostico" onclick="navigate('diagnostico')">🧪 Diagnóstico</button>
+
+    <div class="card mt16 hidden" id="config-identidade">
+      <div class="card-title">🏢 Identidade da empresa</div>
+      <div class="field"><label>Nome da empresa</label><input id="cfg-empresa-nome" placeholder="Ex: STRACTA"></div>
+      <div class="field"><label>Slogan / subtítulo</label><input id="cfg-empresa-slogan" placeholder="Ex: Controle operacional da frota"></div>
+      <button class="btn btn-primary" onclick="salvarMarcaUI()">💾 Salvar identidade</button>
+    </div>
     <div class="field mt16"><label>Endereço da API de sincronização</label>
       <input id="config-api-url" placeholder="https://script.google.com/macros/s/.../exec">
     </div>
