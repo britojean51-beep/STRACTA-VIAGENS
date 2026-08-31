@@ -3,14 +3,26 @@
 Você faz isto **uma única vez** (uns 5 minutos). Depois é automático.
 
 ## Passo 1 — Abrir o editor de script
+
+**No computador (planilha tem o menu Extensões):**
 1. Abra sua planilha no **Google Sheets**.
 2. Menu **Extensões** → **Apps Script**.
-3. Vai abrir uma aba nova com um arquivo `Código.gs` (ou `Code.gs`).
+3. Vai abrir uma aba nova com um arquivo `Código.gs`.
+
+**No celular (a planilha NÃO mostra "Extensões"):**
+1. Abra o navegador e vá em **script.google.com**.
+   *(Se a página aparecer estranha no celular, ative "Versão para computador" / "Desktop site" no menu do navegador.)*
+2. Toque em **Novo projeto**.
+3. Já vem um arquivo `Código.gs` em branco.
 
 ## Passo 2 — Colar o script
-1. Apague tudo que estiver nesse arquivo.
-2. Copie **todo** o conteúdo do arquivo `Codigo.gs` (desta pasta) e cole ali.
-3. Clique no ícone **💾 Salvar** (ou Ctrl+S).
+1. Apague tudo que estiver no arquivo `Código.gs`.
+2. Copie **todo** o conteúdo do arquivo `Codigo.gs` (que recebeu) e cole ali.
+3. **📌 IMPORTANTE (só no caminho do celular / script avulso):** na linha do topo
+   `var PLANILHA_URL = "";` cole o **link da sua planilha** entre as aspas. Ex.:
+   `var PLANILHA_URL = "https://docs.google.com/spreadsheets/d/ABC123.../edit";`
+   *(Se você colou dentro da própria planilha pelo menu Extensões, deixe `""`.)*
+4. Toque em **💾 Salvar**.
 
 ## Passo 3 — Publicar como App da Web
 1. Botão azul **Implantar** (canto superior direito) → **Nova implantação**.

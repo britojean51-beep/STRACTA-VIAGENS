@@ -14,9 +14,24 @@
  * As colunas de fórmula (Horas, L/h, L/Ton) nunca são sobrescritas.
  *******************************************************************/
 
+/* >>> COLE AQUI o link da sua planilha do Google Sheets <<<
+   Necessário quando o script é criado AVULSO em script.google.com
+   (ex.: no celular, onde a planilha não mostra "Extensões").
+   Se você colar este script DENTRO da própria planilha, pode deixar "". */
+var PLANILHA_URL = "";
+
 var HEADER_ROW = 3;   // linha dos cabeçalhos
 var DATA_START = 4;   // primeira linha de dados
 var ID_COL     = "_id";
+
+// Abre a planilha: pelo link (script avulso) ou a planilha atual (dentro dela)
+function getSS() {
+  if (PLANILHA_URL && String(PLANILHA_URL).trim()) {
+    var m = String(PLANILHA_URL).match(/[-\w]{25,}/);   // extrai o ID do link
+    if (m) return SpreadsheetApp.openById(m[0]);
+  }
+  return SpreadsheetApp.getActiveSpreadsheet();
+}
 
 // Configuração por tipo de dado
 var TABS = {
@@ -38,7 +53,7 @@ var TABS = {
 /* ------------------------ Entradas HTTP ------------------------ */
 
 function doGet(e) {
-  var out = { ok: true, planilha: SpreadsheetApp.getActiveSpreadsheet().getName(), linhas: contarLinhas() };
+  var out = { ok: true, planilha: getSS().getName(), linhas: contarLinhas() };
   var cb = e && e.parameter && e.parameter.callback;
   if (cb) return ContentService.createTextOutput(cb + "(" + JSON.stringify(out) + ")")
     .setMimeType(ContentService.MimeType.JAVASCRIPT);
@@ -74,7 +89,7 @@ function processar(body) {
 
 // Abre a aba e monta o mapa de cabeçalhos (criando extras e _id se faltarem)
 function abrir(cfg) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getSS();
   var sh = ss.getSheetByName(cfg.nome) || acharAbaNormalizada(ss, cfg.nome);
   if (!sh) return null;
 
