@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "22/07/2026 · r4 (equipamentos)";
+const VERSION = "31/08/2026 · r5 (planilha nuvem)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -332,6 +332,17 @@ function telaAbastecimento() {
 
       <div class="field-row">
         <div class="field">
+          <label>Produção (toneladas) <span class="mini">opcional</span></label>
+          <input id="fTon" inputmode="decimal" value="${ed?.toneladas ?? ""}" placeholder="ex: 320">
+        </div>
+        <div class="field">
+          <label id="fLtonLabel">L/Ton</label>
+          <input id="fLton" class="computed" readonly value="${ed?.lton ?? ""}">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
           <label>Abasteceu ARLA 32?</label>
           <select id="fArla"><option value="nao" ${!ed?.arla ? "selected" : ""}>Não</option><option value="sim" ${ed?.arla ? "selected" : ""}>Sim</option></select>
         </div>
@@ -407,6 +418,10 @@ function telaAbastecimento() {
     else media = (litros > 0 && kmRod > 0) ? kmRod / litros : 0;
     el.media.value = media > 0 ? fmt(media, 2) + " " + unidade : "";
 
+    const ton = num($("#fTon").value);
+    const lton = (litros > 0 && ton > 0) ? litros / ton : 0;
+    $("#fLton").value = lton > 0 ? fmt(lton, 2) + " L/t" : "";
+
     const al = $("#fMediaAlerta");
     let fora = false, txt = "";
     if (hor && media > 0 && media > db.config.metaLh) {
@@ -433,7 +448,7 @@ function telaAbastecimento() {
 
   $("#fArla").onchange = e => { $("#fArlaLitrosWrap").style.display = e.target.value === "sim" ? "" : "none"; };
   el.equip.onchange = preencherAuto;
-  [el.horiIni, el.horiFim, el.kmIni, el.kmFim, el.litros].forEach(i => i.oninput = recalcular);
+  [el.horiIni, el.horiFim, el.kmIni, el.kmFim, el.litros, $("#fTon")].forEach(i => i.oninput = recalcular);
   if (!editando) preencherAuto(); else { ajustarPorTipo(); recalcular(); renderRecentes(); }
 
   $("#btnSalvar").onclick = () => {
@@ -456,6 +471,8 @@ function telaAbastecimento() {
       ? (horas > 0 ? litros / horas : 0)
       : (kmRod > 0 ? kmRod / litros : 0);
     const unidade = hor ? "L/h" : "km/L";
+    const toneladas = num($("#fTon").value);
+    const lton = (litros > 0 && toneladas > 0) ? litros / toneladas : 0;
 
     const reg = {
       equipamento: equip,
@@ -470,6 +487,8 @@ function telaAbastecimento() {
       combustivel: $("#fComb").value,
       arla: arlaSim,
       litrosArla: litrosArla,
+      toneladas: toneladas || null,
+      lton: lton ? fmt(lton, 2) : "",
       media: fmt(media, 2),
       unidadeMedia: unidade,
       situacao: $("#fSit").value,
@@ -479,11 +498,13 @@ function telaAbastecimento() {
 
     if (editando) {
       DB.atualizarAbastecimento(editando._iso, editando.id, reg);
+      Sync.pushLancamento(editando._iso, reg);
       editando = null;
       toast("✔ Abastecimento atualizado");
       navegar("corrigir");
     } else {
       DB.addAbastecimento(dia, reg);
+      Sync.pushLancamento(dia, reg);
       const foraMeta = hor ? (media > db.config.metaLh) : (media > 0 && media < db.config.metaMedia);
       if (reg.situacao === "Final de expediente") toast(`🌙 ${equip}: final de expediente`);
       else if (foraMeta) toast(`⚠️ ${equip}: consumo fora da meta`, "err");
@@ -743,12 +764,14 @@ function telaManutencao() {
     const serv = $("#mServico").value.trim();
     const eq = selEquip.value;
     if (!serv) { toast("Descreva o serviço", "err"); return; }
-    DB.addManutencao(dia, {
+    const mreg = DB.addManutencao(dia, {
       equipamento: eq, tipo: $("#mTipo").value,
       servico: serv, horKm: $("#mHorKm").value.trim(), observacoes: $("#mObs").value.trim()
     });
     DB.setStatus(eq, $("#mStatus").value);
     DB.setProximaRevisao(eq, $("#mProxRev").value.trim());
+    Sync.pushManutencao(dia, mreg);
+    Sync.pushEquipamento(eq);
     toast("✔ Manutenção registrada");
     $("#mServico").value = ""; $("#mHorKm").value = ""; $("#mObs").value = "";
     renderRevisoes(); renderHoje();
@@ -1007,6 +1030,22 @@ function telaDashboard() {
         <input id="tqSet" inputmode="decimal" placeholder="definir valor total"></div>
       <button class="btn btn-ghost btn-sm" id="btnTqSet">Definir saldo</button>
     </div>
+
+    <div class="card">
+      <h3>☁️ Planilha na nuvem <span id="syncBadge" class="pill pill-gray">desligada</span></h3>
+      <p class="hint">Cole o link do App da Web da sua planilha (Google Sheets). Passo a passo: pasta <b>google-sheets</b> do projeto.</p>
+      <div class="field">
+        <label>Link da planilha (termina em /exec)</label>
+        <input id="cfgSheets" placeholder="https://script.google.com/.../exec" value="${db.config.sheetsUrl || ""}">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" id="btnSheetsSalvar">💾 Salvar</button>
+        <button class="btn btn-ghost btn-sm" id="btnSheetsTestar">🔌 Testar conexão</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn btn-green" id="btnSheetsSync">🔄 Sincronizar tudo</button>
+      <p class="hint" id="sheetsMsg" style="margin-top:8px"></p>
+    </div>
   `;
 
   $$("[data-ficha]").forEach(el => el.onclick = () => abrirFicha(el.dataset.ficha));
@@ -1029,6 +1068,43 @@ function telaDashboard() {
   $("#btnTqSet").onclick = () => {
     const l = num($("#tqSet").value);
     DB.setEstoque($("#tqTipo").value, l); toast("✔ Saldo atualizado"); telaDashboard();
+  };
+
+  // ---- Planilha na nuvem ----
+  Sync._badge();
+  const msg = (t, cor) => { const m = $("#sheetsMsg"); if (m) { m.innerHTML = t; m.style.color = cor || "var(--muted)"; } };
+  $("#btnSheetsSalvar").onclick = () => {
+    DB.setConfig({ sheetsUrl: $("#cfgSheets").value.trim() });
+    Sync._badge();
+    toast("✔ Link salvo");
+    msg(Sync.ativo() ? "Link salvo. Toque em <b>Testar conexão</b>." : "Link vazio — sincronização desligada.");
+  };
+  $("#btnSheetsTestar").onclick = () => {
+    DB.setConfig({ sheetsUrl: $("#cfgSheets").value.trim() });
+    if (!Sync.ativo()) { msg("Cole o link primeiro.", "var(--red)"); return; }
+    msg("Conectando…");
+    Sync.testar(res => {
+      if (res && res.ok) {
+        const l = res.linhas || {};
+        msg(`✅ Conectado a <b>${res.planilha}</b>.<br>Linhas — lançamentos: ${l.lancamento || 0} · equip.: ${l.equipamento || 0} · manut.: ${l.manutencao || 0}`, "var(--green)");
+      } else {
+        msg("❌ " + ((res && res.erro) || "Falha na conexão."), "var(--red)");
+      }
+    });
+  };
+  $("#btnSheetsSync").onclick = () => {
+    DB.setConfig({ sheetsUrl: $("#cfgSheets").value.trim() });
+    if (!Sync.ativo()) { msg("Cole o link primeiro.", "var(--red)"); return; }
+    msg("Enviando toda a base… aguarde.");
+    Sync.syncAll(res => {
+      Sync._badge();
+      if (res && res.ok) {
+        const l = res.linhas || {};
+        msg(`✅ Sincronizado! Na planilha — lançamentos: ${l.lancamento || 0} · equip.: ${l.equipamento || 0} · manut.: ${l.manutencao || 0}`, "var(--green)");
+      } else {
+        msg("⚠️ " + ((res && res.erro) || "Não deu para confirmar. Veja se há internet."), "var(--red)");
+      }
+    });
   };
 }
 
@@ -1100,6 +1176,7 @@ function telaFrota() {
     const horimetro = horiVal === "" ? null : num(horiVal);
     const km = (tipo === "horimetro" || kmVal === "") ? null : num(kmVal);
     DB.setUltimo(v, km, horimetro);
+    Sync.pushEquipamento(v);
     toast("✔ Equipamento adicionado"); telaFrota();
   };
 }
@@ -1184,6 +1261,7 @@ function telaFicha() {
     DB.setStatus(eq, $("#fkStatus").value);
     DB.setTipoEquip(eq, $("#fkTipo").value);
     DB.setProximaRevisao(eq, $("#fkRev").value.trim());
+    Sync.pushEquipamento(eq);
     toast("✔ Situação salva"); telaFicha();
   };
 
@@ -1192,6 +1270,7 @@ function telaFicha() {
       toast("Digite CONFIRMAR para excluir", "err"); return;
     }
     DB.removerEquipamento(eq);
+    Sync.deleteEquipamento(eq);
     toast("✔ Equipamento excluído");
     navegar("frota");
   };
@@ -1260,7 +1339,10 @@ function telaCorrigir() {
     const bindDel = (attr, tipo) => $$(`[data-${attr}]`).forEach(b => b.onclick = async () => {
       const ok = await confirmar("Excluir este registro?");
       if (!ok) return;
-      DB.excluir(iso, tipo, b.dataset[attr.replace(/-([a-z])/g, (_, c) => c.toUpperCase())]);
+      const id = b.dataset[attr.replace(/-([a-z])/g, (_, c) => c.toUpperCase())];
+      DB.excluir(iso, tipo, id);
+      if (tipo === "abastecimentos") Sync.deleteLancamento(id);
+      else if (tipo === "manutencoes") Sync.deleteManutencao(id);
       toast("✔ Registro excluído"); render();
     });
     bindDel("del-ab", "abastecimentos");

@@ -26,8 +26,10 @@ const DB = {
         metaLh: 20,                    // L/h máximo aceito (equipamento de horímetro)
         metaViagens: 140,              // meta de viagens/dia da frota
         estoqueMin: 1000,              // litros: alerta de diesel baixo (cada tanque)
-        estoqueArlaMin: 100            // litros: alerta de ARLA baixo
-      }
+        estoqueArlaMin: 100,           // litros: alerta de ARLA baixo
+        sheetsUrl: ""                  // URL do Web App (Google Sheets) para sincronizar
+      },
+      syncPend: []                     // fila de operações pendentes de envio à planilha
     };
   },
 
