@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "01/09/2026 · r8 (L/Ton viagens)";
+const VERSION = "01/09/2026 · r9 (rotas/peso)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -600,7 +600,7 @@ function telaViagens() {
         const extra = [v.material || null, pt > 0 ? `${fmt(pt)} t` : null].filter(Boolean).join(" · ");
         return `
         <div class="itemrow">
-          <div class="info"><b>${v.equipamento}</b> · O${v.origem} → D${v.destino}
+          <div class="info"><b>${v.equipamento}</b> · Origem ${v.origem} → Destino ${v.destino}
             <div class="sub">${v.motorista} · ${v.quantidade} viagens${extra ? " · " + extra : ""}</div>
           </div>
           <button class="del" data-i="${i}">✕</button>
@@ -625,9 +625,21 @@ function telaViagens() {
     const linhas = Object.entries(porEq).map(([eq, arr]) => {
       const sub = arr.reduce((s, v) => s + Number(v.quantidade), 0); total += sub;
       const peso = arr.reduce((s, v) => s + (Number(v.pesoTotal) || 0), 0); pesoTotalFrota += peso;
-      const mats = [...new Set(arr.map(v => v.material).filter(Boolean))].join(", ");
-      const rotas = arr.map(v => `O${v.origem}→D${v.destino}=${v.quantidade}`).join(" · ");
-      return { eq, sub, peso, mats, rotas };
+      // agrupa por ROTA: mesma origem+destino soma; rotas diferentes ficam separadas
+      const porRota = {};
+      arr.forEach(v => {
+        const k = `${v.origem}→${v.destino}`;
+        const g = (porRota[k] ||= { origem: v.origem, destino: v.destino, qtd: 0, peso: 0, mats: new Set() });
+        g.qtd += Number(v.quantidade);
+        g.peso += Number(v.pesoTotal) || 0;
+        if (v.material) g.mats.add(v.material);
+      });
+      const rotas = Object.values(porRota).map(g =>
+        `Origem ${g.origem} → Destino ${g.destino} = ${g.qtd}` +
+        (g.mats.size ? ` · ${[...g.mats].join(", ")}` : "") +
+        (g.peso > 0 ? ` · ${fmt(g.peso)} t` : "")
+      );
+      return { eq, sub, peso, rotas };
     }).sort((a, b) => b.sub - a.sub);
 
     const meta = DB.load().config.metaViagens || 0;
@@ -639,7 +651,7 @@ function telaViagens() {
 
     box.innerHTML = linhas.map((l, i) =>
       `<div class="itemrow"><div class="info">${i === 0 ? "🥇 " : ""}<b>${l.eq}</b> = ${l.sub} viagens${l.peso > 0 ? ` · ${fmt(l.peso)} t` : ""}
-        <div class="sub">${l.mats ? l.mats + " · " : ""}${l.rotas}</div></div></div>`
+        ${l.rotas.map(r => `<div class="sub">${r}</div>`).join("")}</div></div>`
     ).join("") + `<div class="spacer"></div><p class="tag-total">Total frota: ${total} viagens${pesoTotalFrota > 0 ? ` · ${fmt(pesoTotalFrota)} t` : ""}</p>` + barra;
   }
 
@@ -835,7 +847,7 @@ function gerarRelatorioTexto(iso) {
 
   let totalDiesel = 0, totalS10 = 0, totalS500 = 0, totalArla = 0, totalKm = 0, totalViagens = 0, totalPeso = 0;
   const operando = new Set();
-  const vLine = v => `  O${v.origem} → D${v.destino} = ${v.quantidade}${v.material ? " · " + v.material : ""}${v.pesoTotal ? " · " + fmt(v.pesoTotal) + " t" : ""}\n`;
+  const vLine = v => `  Origem ${v.origem} → Destino ${v.destino} = ${v.quantidade}${v.material ? " · " + v.material : ""}${v.pesoTotal ? " · " + fmt(v.pesoTotal) + " t" : ""}\n`;
 
   d.abastecimentos.forEach(a => {
     operando.add(a.equipamento);
@@ -1494,7 +1506,7 @@ function telaCorrigir() {
 
     html += `<div class="card"><h3>🚚 Viagens</h3>`;
     html += d.viagens.length ? d.viagens.map(v => `
-      <div class="itemrow"><div class="info"><b>${v.equipamento}</b> · O${v.origem}→D${v.destino} = ${v.quantidade}
+      <div class="itemrow"><div class="info"><b>${v.equipamento}</b> · Origem ${v.origem} → Destino ${v.destino} = ${v.quantidade}
         <div class="sub">${v.motorista}</div></div>
         <button class="del" data-del-vi="${v.id}">🗑️</button>
       </div>`).join("") : '<p class="empty">Nenhuma viagem.</p>';
