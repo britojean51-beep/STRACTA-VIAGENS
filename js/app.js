@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "01/09/2026 · r11 (comparar dias / semanal-mensal)";
+const VERSION = "01/09/2026 · r12 (seletor por mês)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -15,8 +15,10 @@ let relatorioDiaPre = null;
 /* Equipamento selecionado ao abrir a Ficha */
 let fichaEquip = null;
 /* Painel: dias selecionados (vazio = dia atual) e janela das tendências (dias) */
-let painelDias = [];
-let painelPeriodo = 7;
+let painelDias = [];        // dias do "Geral do dia" / comparação
+let painelMes = null;       // mês exibido nos chips da comparação
+let trendDias = [];         // dias das Tendências / ranking
+let trendMes = null;        // mês exibido nos chips das Tendências
 /* Relatório: tipo (diario|semanal|mensal) e período escolhido */
 let relatorioTipo = "diario";
 let relatorioPeriodoSel = null;
@@ -1182,6 +1184,53 @@ function gerarPDF(dias, titulo, texto) {
 /* ============================================================
    DASHBOARD
    ============================================================ */
+/* Seletor de dias reutilizável: mês + chips. Usado na Comparação e nas Tendências. */
+function seletorDias(pref, mesSel, selecionados, dica) {
+  const meses = DB.mesesDisponiveis();
+  if (!meses.length) return '<p class="empty">Sem dias registrados.</p>';
+  const mes = meses.find(m => m.chave === mesSel) || meses[0];
+  const diasMes = mes.dias.slice().reverse();           // mais recentes primeiro
+  const fora = selecionados.filter(d => !diasMes.includes(d)).sort();
+  return `
+    <div class="field">
+      <label>Mês</label>
+      <select id="${pref}Mes">${meses.map(m =>
+        `<option value="${m.chave}" ${m.chave === mes.chave ? "selected" : ""}>${m.label}</option>`).join("")}</select>
+    </div>
+    <label class="mini">${dica}</label>
+    <div class="chips-dia">${diasMes.map(d =>
+      `<button class="chip-dia ${selecionados.includes(d) ? "ativo" : ""}" data-${pref}dia="${d}">${DB.fmtBR(d).slice(0, 5)}</button>`).join("")}</div>
+    <div class="btn-row" style="margin-top:6px">
+      <button class="btn btn-ghost btn-sm" data-${pref}todos="1">Todos do mês</button>
+      <button class="btn btn-ghost btn-sm" data-${pref}so="1">Só o último</button>
+    </div>
+    ${fora.length ? `<p class="hint">Também selecionados: ${fora.map(d => DB.fmtBR(d).slice(0, 5)).join(", ")}</p>` : ""}
+  `;
+}
+
+/* Liga os eventos de um seletor de dias (estado com getters/setters) */
+function ligarSeletorDias(pref, estado) {
+  const selMes = $(`#${pref}Mes`);
+  if (selMes) selMes.onchange = e => { estado.setMes(e.target.value); telaDashboard(); };
+  $$(`[data-${pref}dia]`).forEach(el => el.onclick = () => {
+    const d = el.dataset[pref + "dia"];
+    const atual = estado.getDias();
+    if (atual.includes(d)) {
+      if (atual.length === 1) { toast("Deixe ao menos um dia selecionado", "err"); return; }
+      estado.setDias(atual.filter(x => x !== d));
+    } else estado.setDias(atual.concat(d));
+    telaDashboard();
+  });
+  const mesDe = () => {
+    const meses = DB.mesesDisponiveis();
+    return meses.find(m => m.chave === estado.getMes()) || meses[0];
+  };
+  const bTodos = $(`[data-${pref}todos]`);
+  if (bTodos) bTodos.onclick = () => { const m = mesDe(); if (m) estado.setDias(m.dias.slice()); telaDashboard(); };
+  const bSo = $(`[data-${pref}so]`);
+  if (bSo) bSo.onclick = () => { const m = mesDe(); if (m) estado.setDias([m.dias[m.dias.length - 1]]); telaDashboard(); };
+}
+
 /* Detalhe por trás de cada KPI do "Geral do dia" (chave → título + linhas). */
 function detalheKpi(chave, iso) {
   const d = DB.getDia(iso) || { abastecimentos: [], viagens: [], manutencoes: [] };
@@ -1276,8 +1325,19 @@ function telaDashboard() {
   painelDias = sel;
   const comparando = sel.length > 1;
   const dia = sel.slice().sort().reverse()[0];   // mais recente dos selecionados
-  const N = painelPeriodo;
   const r = DB.resumoDia(dia);
+
+  // dias das Tendências/ranking (padrão: últimos 7 dias com registro)
+  let td = trendDias.filter(d => listaDias.includes(d));
+  if (!td.length) td = listaDias.slice(0, 7);
+  trendDias = td;
+  const diasTend = td.slice().sort();            // do mais antigo ao mais novo
+  const N = diasTend.length;
+
+  // mês exibido em cada seletor (padrão: mês do dia mais recente de cada seleção)
+  const mesesDisp = DB.mesesDisponiveis().map(m => m.chave);
+  if (!mesesDisp.includes(painelMes)) painelMes = dia.slice(0, 7);
+  if (!mesesDisp.includes(trendMes)) trendMes = diasTend[diasTend.length - 1].slice(0, 7);
 
   // ---- alertas ----
   const alertas = DB.alertas();
@@ -1287,7 +1347,7 @@ function telaDashboard() {
 
   // ---- séries (janela selecionada) ----
   const lab = x => DB.fmtBR(x.iso).slice(0, 5);
-  const s = DB.serie(N);
+  const s = diasTend.map(iso => Object.assign({ iso }, DB.resumoDia(iso)));
   const gDiesel = grafico(s.map(x => ({ label: lab(x), valor: Math.round(x.diesel), rotulo: fmt(x.diesel) })), { tipo: "barra", cor: "#ff7a1a", titulo: "Diesel" });
   const gProd = grafico(s.map(x => ({ label: lab(x), valor: Math.round(x.toneladas), rotulo: fmt(x.toneladas) })), { tipo: "barra", cor: "#a855f7", titulo: "Produção" });
   const gLton = grafico(s.map(x => ({ label: lab(x), valor: x.lton, rotulo: fmt(x.lton, 2) })), { tipo: "linha", cor: "#f59e0b", titulo: "L/Ton" });
@@ -1306,9 +1366,10 @@ function telaDashboard() {
     t.media = t.diesel > 0 ? t.km / t.diesel : 0;
     return t;
   };
-  const s2 = DB.serie(N * 2);
-  const atual = totaisPeriodo(s2.slice(-N));
-  const anterior = totaisPeriodo(s2.slice(0, Math.max(0, s2.length - N)));
+  const idxIni = listaDias.indexOf(diasTend[0]);          // listaDias vem do mais novo ao mais antigo
+  const diasAnteriores = idxIni >= 0 ? listaDias.slice(idxIni + 1, idxIni + 1 + N) : [];
+  const atual = totaisPeriodo(s);
+  const anterior = totaisPeriodo(diasAnteriores.map(iso => DB.resumoDia(iso)));
   const comparaHtml = [
     ["⛽ Diesel", "diesel", " L", 0], ["⏱️ Horas", "horas", " h", 1],
     ["🏭 Produção", "toneladas", " t", 1], ["🚚 Viagens", "viagens", "", 0],
@@ -1328,11 +1389,6 @@ function telaDashboard() {
       <div class="k-value">${fmt(a, dec)}<span class="k-unit">${un}</span></div>
       <div class="mini" style="color:${cor}">antes ${fmt(b, dec)}${un}${varTxt}</div></div>`;
   }).join("");
-
-  // ---- chips de dia (seleção múltipla) ----
-  const chipsHtml = listaDias.slice(0, 14).map(d =>
-    `<button class="chip-dia ${sel.includes(d) ? "ativo" : ""}" data-dia="${d}">${DB.fmtBR(d).slice(0, 5)}${d === diaAtual ? " •" : ""}</button>`
-  ).join("");
 
   // ---- tabela de comparação (2+ dias) ----
   let comparaDiasHtml = "";
@@ -1406,7 +1462,7 @@ function telaDashboard() {
     horas:     { lbl: "⏱️ Horas",          un: " h",    dec: 1, cor: "#eab308" }
   };
   const met = METRICAS[painelMetrica] || METRICAS.diesel;
-  const rank = DB.rankingEquipamentos(N)
+  const rank = DB.totaisPorEquipamento(diasTend)
     .filter(x => x[painelMetrica] > 0)
     .sort((a, b) => b[painelMetrica] - a[painelMetrica]);
   const gRank = rank.length
@@ -1439,8 +1495,7 @@ function telaDashboard() {
   app.innerHTML = `
     <div class="card">
       <h3>${comparando ? `🔀 Comparação de ${sel.length} dias` : "📅 Geral do dia"}</h3>
-      <label class="mini">Escolha os dias (toque em mais de um para comparar)</label>
-      <div class="chips-dia">${chipsHtml}</div>
+      ${seletorDias("pn", painelMes, sel, "Escolha os dias (toque em mais de um para comparar)")}
       ${comparando ? comparaDiasHtml : `
       <p class="hint">Toque num cartão para ver os dados por trás dele.</p>
       <div class="kpi-grid">
@@ -1475,14 +1530,7 @@ function telaDashboard() {
 
     <div class="card">
       <h3>📈 Tendências</h3>
-      <div class="field">
-        <label>Período</label>
-        <select id="pnPeriodo">
-          <option value="2" ${N === 2 ? "selected" : ""}>Últimos 2 dias</option>
-          <option value="3" ${N === 3 ? "selected" : ""}>Últimos 3 dias</option>
-          <option value="7" ${N === 7 ? "selected" : ""}>Semana (7 dias)</option>
-        </select>
-      </div>
+      ${seletorDias("tr", trendMes, diasTend, "Dias do gráfico (toque para incluir ou tirar)")}
       <p class="chart-title">⛽ Diesel (L)</p>${gDiesel}
       <p class="chart-title">🏭 Produção (t)</p>${gProd}
       <p class="chart-title">🏭 L/Ton (litros por tonelada)</p>${gLton}
@@ -1493,7 +1541,7 @@ function telaDashboard() {
 
     <div class="card">
       <h3>🔀 Comparativo <span class="mini">janela atual × anterior</span></h3>
-      <p class="hint">Últimos ${N} dias comparados com os ${N} dias anteriores.</p>
+      <p class="hint">${N} dia(s) selecionado(s) nas Tendências, comparados com os ${N} dias anteriores.</p>
       <div class="kpi-grid">${comparaHtml}</div>
     </div>
 
@@ -1505,7 +1553,7 @@ function telaDashboard() {
           ${Object.entries(METRICAS).map(([k, m]) => `<option value="${k}" ${k === painelMetrica ? "selected" : ""}>${m.lbl}</option>`).join("")}
         </select>
       </div>
-      <p class="hint">Últimos ${N} dias · do maior para o menor${(painelMetrica === "lh" || painelMetrica === "lton") ? " — aqui o primeiro é o que <b>mais consome</b>" : ""}.</p>
+      <p class="hint">${N} dia(s) selecionado(s) · do maior para o menor${(painelMetrica === "lh" || painelMetrica === "lton") ? " — aqui o primeiro é o que <b>mais consome</b>" : ""}.</p>
       ${gRank}
       <div class="itemlist">${rankLista}</div>
     </div>
@@ -1566,18 +1614,14 @@ function telaDashboard() {
 
   $$("[data-ficha]").forEach(el => el.onclick = () => abrirFicha(el.dataset.ficha));
 
-  // chips de dia: alterna a seleção (nunca deixa ficar sem nenhum dia)
-  $$("[data-dia]").forEach(el => el.onclick = () => {
-    const d = el.dataset.dia;
-    if (painelDias.includes(d)) {
-      if (painelDias.length === 1) { toast("Deixe ao menos um dia selecionado", "err"); return; }
-      painelDias = painelDias.filter(x => x !== d);
-    } else {
-      painelDias = painelDias.concat(d);
-    }
-    telaDashboard();
+  ligarSeletorDias("pn", {
+    getMes: () => painelMes, setMes: v => { painelMes = v; },
+    getDias: () => painelDias, setDias: v => { painelDias = v; }
   });
-  $("#pnPeriodo").onchange = e => { painelPeriodo = parseInt(e.target.value, 10) || 7; telaDashboard(); };
+  ligarSeletorDias("tr", {
+    getMes: () => trendMes, setMes: v => { trendMes = v; },
+    getDias: () => trendDias, setDias: v => { trendDias = v; }
+  });
   $("#pnMetrica").onchange = e => { painelMetrica = e.target.value; telaDashboard(); };
 
   // KPIs do "Geral do dia" abrem o detalhe (tocar de novo fecha)
