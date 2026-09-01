@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "01/09/2026 · r10 (ranking/detalhes)";
+const VERSION = "01/09/2026 · r11 (comparar dias / semanal-mensal)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -14,9 +14,12 @@ let editando = null;
 let relatorioDiaPre = null;
 /* Equipamento selecionado ao abrir a Ficha */
 let fichaEquip = null;
-/* Painel: dia selecionado (null = dia atual) e janela das tendências (dias) */
-let painelDia = null;
+/* Painel: dias selecionados (vazio = dia atual) e janela das tendências (dias) */
+let painelDias = [];
 let painelPeriodo = 7;
+/* Relatório: tipo (diario|semanal|mensal) e período escolhido */
+let relatorioTipo = "diario";
+let relatorioPeriodoSel = null;
 /* Painel: KPI aberto no "Geral do dia" e métrica do ranking por equipamento */
 let painelKpi = null;
 let painelMetrica = "diesel";
@@ -920,6 +923,74 @@ function gerarRelatorioTexto(iso) {
   return txt;
 }
 
+/* Relatório consolidado de um período (semana, mês ou qualquer lista de dias) */
+function gerarRelatorioPeriodo(dias, titulo) {
+  if (!dias || !dias.length) return "Sem dados para este período.";
+  const ordem = dias.slice().sort();
+  const res = ordem.map(iso => ({ iso, r: DB.resumoDia(iso) }));
+  const soma = c => res.reduce((s, x) => s + x.r[c], 0);
+  const diesel = soma("diesel"), s10 = soma("dieselS10"), s500 = soma("dieselS500");
+  const arla = soma("arla"), horas = soma("horas"), ton = soma("toneladas");
+  const km = soma("km"), viagens = soma("viagens");
+  const lh = horas > 0 ? diesel / horas : 0;
+  const lton = ton > 0 ? diesel / ton : 0;
+  const media = diesel > 0 ? km / diesel : 0;
+
+  const equips = new Set(), operadores = new Set(), manut = [];
+  let pesoTransp = 0;
+  ordem.forEach(iso => {
+    const d = DB.getDia(iso) || { abastecimentos: [], viagens: [], manutencoes: [] };
+    (d.abastecimentos || []).forEach(a => { equips.add(a.equipamento); if (a.motorista) operadores.add(a.motorista); });
+    (d.viagens || []).forEach(v => { equips.add(v.equipamento); if (v.motorista) operadores.add(v.motorista); pesoTransp += num(v.pesoTotal); });
+    (d.manutencoes || []).forEach(m => manut.push({ iso, ...m }));
+  });
+  const diasOperando = res.filter(x => x.r.diesel > 0 || x.r.viagens > 0).length;
+
+  let txt = `📋 ${titulo}\n\nPERÍODO: ${DB.fmtBR(ordem[0])} a ${DB.fmtBR(ordem[ordem.length - 1])}\n`;
+  txt += `━━━━━━━━━━━━━━━━━━━━\n\n📊 RESUMO DO PERÍODO\n\n`;
+  txt += `Diesel S-10: ${fmt(s10)} L\n`;
+  txt += `Diesel S-500: ${fmt(s500)} L\n`;
+  txt += `Total Diesel: ${fmt(diesel)} L\n`;
+  txt += `ARLA 32: ${fmt(arla)} L\n`;
+  txt += `Horas Trabalhadas: ${fmt(horas, 1)} h\n`;
+  txt += `L/h: ${fmt(lh, 2)}\n`;
+  txt += `Produção: ${fmt(ton)} t\n`;
+  txt += `L/Ton: ${fmt(lton, 2)}\n`;
+  txt += `Total KM: ${fmt(km)} km\n`;
+  txt += `Média Frota: ${fmt(media, 2)} km/L\n`;
+  txt += `Total Viagens: ${viagens}\n`;
+  if (pesoTransp > 0) txt += `Peso Transportado: ${fmt(pesoTransp)} t\n`;
+  txt += `Dias com operação: ${diasOperando} de ${ordem.length}\n`;
+  txt += `Equipamentos: ${String(equips.size).padStart(2, "0")}\n`;
+  txt += `Operadores: ${String(operadores.size).padStart(2, "0")}\n`;
+  txt += `Manutenções: ${String(manut.length).padStart(2, "0")}\n`;
+
+  txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n📅 POR DIA\n\n`;
+  res.forEach(x => {
+    txt += `${DB.fmtBR(x.iso)} · ${fmt(x.r.diesel)} L · ${fmt(x.r.horas, 1)} h`;
+    if (x.r.toneladas > 0) txt += ` · ${fmt(x.r.toneladas)} t`;
+    if (x.r.lton > 0) txt += ` · ${fmt(x.r.lton, 2)} L/t`;
+    txt += ` · ${x.r.viagens} viagens\n`;
+  });
+
+  txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n🚛 POR EQUIPAMENTO\n\n`;
+  DB.totaisPorEquipamento(ordem)
+    .sort((a, b) => b.diesel - a.diesel)
+    .forEach(e => {
+      txt += `${e.eq}\n`;
+      txt += `  Diesel: ${fmt(e.diesel)} L · Horas: ${fmt(e.horas, 1)} h · L/h: ${fmt(e.lh, 2)}\n`;
+      if (e.toneladas > 0) txt += `  Produção: ${fmt(e.toneladas)} t · L/Ton: ${fmt(e.lton, 2)}\n`;
+      if (e.km > 0) txt += `  KM: ${fmt(e.km)} km · Média: ${fmt(e.media, 2)} km/L\n`;
+      if (e.viagens > 0) txt += `  Viagens: ${e.viagens}\n`;
+    });
+
+  if (manut.length) {
+    txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n🔧 MANUTENÇÕES\n\n`;
+    manut.forEach(m => { txt += `${DB.fmtBR(m.iso)} · ${m.equipamento} · ${m.tipo}: ${m.servico || "—"}\n`; });
+  }
+  return txt;
+}
+
 function telaRelatorio() {
   $("#headerTitle").textContent = "📋 Relatório Diário";
   $("#headerSub").textContent = "GERADO AUTOMÁTICO";
@@ -929,12 +1000,33 @@ function telaRelatorio() {
             : (dias.includes(atual) ? atual : (dias[0] || atual));
   relatorioDiaPre = null;
 
+  const semanas = DB.semanasDisponiveis();
+  const meses = DB.mesesDisponiveis();
+  // período selecionado dentro do tipo atual
+  const opcoes = relatorioTipo === "semanal" ? semanas : relatorioTipo === "mensal" ? meses : null;
+  let selPeriodo = null;
+  if (opcoes) {
+    selPeriodo = opcoes.find(o => o.chave === relatorioPeriodoSel) || opcoes[0];
+    relatorioPeriodoSel = selPeriodo ? selPeriodo.chave : null;
+  }
+
+  const seletor = relatorioTipo === "diario"
+    ? `<label>Selecione o dia</label>
+       <select id="rDia">${dias.map(d => `<option value="${d}" ${d === sel ? "selected" : ""}>${DB.fmtBR(d)}</option>`).join("")}</select>`
+    : `<label>Selecione ${relatorioTipo === "semanal" ? "a semana" : "o mês"}</label>
+       <select id="rPeriodo">${(opcoes || []).map(o => `<option value="${o.chave}" ${o.chave === relatorioPeriodoSel ? "selected" : ""}>${o.label}</option>`).join("")}</select>`;
+
   app.innerHTML = `
     <div class="card">
       <div class="field">
-        <label>Selecione o dia</label>
-        <select id="rDia">${dias.map(d => `<option value="${d}" ${d === sel ? "selected" : ""}>${DB.fmtBR(d)}</option>`).join("")}</select>
+        <label>Tipo de relatório</label>
+        <select id="rTipo">
+          <option value="diario" ${relatorioTipo === "diario" ? "selected" : ""}>📅 Diário</option>
+          <option value="semanal" ${relatorioTipo === "semanal" ? "selected" : ""}>🗓️ Semanal</option>
+          <option value="mensal" ${relatorioTipo === "mensal" ? "selected" : ""}>📆 Mensal</option>
+        </select>
       </div>
+      <div class="field">${seletor}</div>
       <div class="btn-row">
         <button class="btn btn-green btn-sm" id="btnWhats">📲 WhatsApp</button>
         <button class="btn btn-blue btn-sm" id="btnCopiar">📋 Copiar</button>
@@ -946,10 +1038,31 @@ function telaRelatorio() {
     <div class="report"><pre id="rTexto"></pre></div>
   `;
 
-  function render() {
-    $("#rTexto").textContent = gerarRelatorioTexto($("#rDia").value);
+  // dias e título do relatório conforme o tipo escolhido
+  function alvo() {
+    if (relatorioTipo === "diario") {
+      const d = $("#rDia") ? $("#rDia").value : sel;
+      return { dias: [d], titulo: `RELATÓRIO DIÁRIO`, diario: true };
+    }
+    const o = (opcoes || []).find(x => x.chave === ($("#rPeriodo") ? $("#rPeriodo").value : relatorioPeriodoSel));
+    if (!o) return { dias: [], titulo: "RELATÓRIO", diario: false };
+    return {
+      dias: o.dias,
+      titulo: relatorioTipo === "semanal" ? `RELATÓRIO SEMANAL · ${o.label}` : `RELATÓRIO MENSAL · ${o.label}`,
+      diario: false
+    };
   }
-  $("#rDia").onchange = render;
+  function render() {
+    const a = alvo();
+    $("#rTexto").textContent = a.diario
+      ? gerarRelatorioTexto(a.dias[0])
+      : gerarRelatorioPeriodo(a.dias, a.titulo);
+  }
+
+  $("#rTipo").onchange = e => { relatorioTipo = e.target.value; relatorioPeriodoSel = null; telaRelatorio(); };
+  if ($("#rDia")) $("#rDia").onchange = render;
+  if ($("#rPeriodo")) $("#rPeriodo").onchange = e => { relatorioPeriodoSel = e.target.value; render(); };
+
   $("#btnCopiar").onclick = async () => {
     try { await navigator.clipboard.writeText($("#rTexto").textContent); toast("✔ Relatório copiado"); }
     catch { toast("Não foi possível copiar", "err"); }
@@ -958,53 +1071,65 @@ function telaRelatorio() {
     const url = "https://wa.me/?text=" + encodeURIComponent($("#rTexto").textContent);
     window.open(url, "_blank");
   };
-  $("#btnPdf").onclick = () => gerarPDF($("#rDia").value);
-  $("#btnExcel").onclick = () => exportarExcel($("#rDia").value);
+  $("#btnPdf").onclick = () => { const a = alvo(); gerarPDF(a.dias, a.titulo, $("#rTexto").textContent); };
+  $("#btnExcel").onclick = () => { const a = alvo(); exportarExcel(a.dias, `STRACTA · ${a.titulo}`); };
   render();
 }
 
 /* Monta o CSV do dia (abre no Excel e no Google Sheets).
    Separador ; e decimais com vírgula (padrão pt-BR). */
-function montarCSV(iso) {
-  const d = DB.getDia(iso) || { abastecimentos: [], viagens: [], manutencoes: [] };
+function montarCSV(dias, titulo) {
+  const lista = (Array.isArray(dias) ? dias : [dias]).slice().sort();
   const esc = v => { const s = String(v == null ? "" : v); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const linha = arr => arr.map(esc).join(";");
   const L = [];
-  L.push(linha([`STRACTA · Relatório ${DB.fmtBR(iso)}`]));
+  L.push(linha([titulo || `STRACTA · Relatório ${DB.fmtBR(lista[0])}`]));
   L.push("");
   // Abastecimentos / Lançamentos
   L.push(linha(["ABASTECIMENTOS / OPERAÇÃO"]));
-  L.push(linha(["Equipamento", "Operador", "Horím. Ini", "Horím. Fim", "Horas", "Litros", "Combustível", "ARLA (L)", "KM", "Média", "Unid.", "Toneladas", "L/Ton", "Situação"]));
-  d.abastecimentos.forEach(a => L.push(linha([
-    a.equipamento, a.motorista, a.horimetroInicial, a.horimetroFinal, a.horasTrabalhadas,
-    fmt(a.litros), a.combustivel || "S-10", a.litrosArla || "", a.kmRodado || "",
-    a.media, a.unidadeMedia || "km/L", a.toneladas ?? "", a.lton || "", a.situacao || ""
-  ])));
+  L.push(linha(["Data", "Equipamento", "Operador", "Horím. Ini", "Horím. Fim", "Horas", "Litros", "Combustível", "ARLA (L)", "KM", "Média", "Unid.", "Toneladas", "L/Ton", "Situação"]));
+  lista.forEach(iso => {
+    const d = DB.getDia(iso) || { abastecimentos: [] };
+    (d.abastecimentos || []).forEach(a => L.push(linha([
+      DB.fmtBR(iso), a.equipamento, a.motorista, a.horimetroInicial, a.horimetroFinal, a.horasTrabalhadas,
+      fmt(a.litros), a.combustivel || "S-10", a.litrosArla || "", a.kmRodado || "",
+      a.media, a.unidadeMedia || "km/L", a.toneladas ?? "", a.lton || "", a.situacao || ""
+    ])));
+  });
   L.push("");
   // Viagens
   L.push(linha(["VIAGENS"]));
-  L.push(linha(["Equipamento", "Operador", "Origem", "Destino", "Qtd viagens", "Material", "Peso/viagem (t)", "Peso total (t)"]));
-  d.viagens.forEach(v => L.push(linha([
-    v.equipamento, v.motorista || "", v.origem, v.destino, v.quantidade,
-    v.material || "", v.pesoViagem != null ? fmt(v.pesoViagem) : "", v.pesoTotal != null ? fmt(v.pesoTotal) : ""
-  ])));
+  L.push(linha(["Data", "Equipamento", "Operador", "Origem", "Destino", "Qtd viagens", "Material", "Peso/viagem (t)", "Peso total (t)"]));
+  lista.forEach(iso => {
+    const d = DB.getDia(iso) || { viagens: [] };
+    (d.viagens || []).forEach(v => L.push(linha([
+      DB.fmtBR(iso), v.equipamento, v.motorista || "", v.origem, v.destino, v.quantidade,
+      v.material || "", v.pesoViagem != null ? fmt(v.pesoViagem) : "", v.pesoTotal != null ? fmt(v.pesoTotal) : ""
+    ])));
+  });
   L.push("");
   // Manutenções
   L.push(linha(["MANUTENÇÕES"]));
-  L.push(linha(["Equipamento", "Tipo", "Serviço", "Horímetro/KM", "Observação"]));
-  d.manutencoes.forEach(m => L.push(linha([m.equipamento, m.tipo, m.servico || "", m.horKm || "", m.observacoes || ""])));
+  L.push(linha(["Data", "Equipamento", "Tipo", "Serviço", "Horímetro/KM", "Observação"]));
+  lista.forEach(iso => {
+    const d = DB.getDia(iso) || { manutencoes: [] };
+    (d.manutencoes || []).forEach(m => L.push(linha([DB.fmtBR(iso), m.equipamento, m.tipo, m.servico || "", m.horKm || "", m.observacoes || ""])));
+  });
   return L.join("\n");
 }
 
 /* Gera a planilha e oferece compartilhar (WhatsApp, e-mail, Drive) ou baixar. */
-function exportarExcel(iso) {
-  const csv = "﻿" + montarCSV(iso);
-  const nome = `STRACTA_${iso}.csv`;
+function exportarExcel(dias, titulo) {
+  const lista = (Array.isArray(dias) ? dias : [dias]).slice().sort();
+  const csv = "﻿" + montarCSV(lista, titulo);
+  const nome = lista.length > 1
+    ? `STRACTA_${lista[0]}_a_${lista[lista.length - 1]}.csv`
+    : `STRACTA_${lista[0]}.csv`;
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   try {
     const file = new File([blob], nome, { type: "text/csv" });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      navigator.share({ files: [file], title: "Relatório STRACTA " + DB.fmtBR(iso) })
+      navigator.share({ files: [file], title: titulo || "Relatório STRACTA " + DB.fmtBR(lista[0]) })
         .then(() => toast("📊 Planilha enviada"))
         .catch(() => {/* usuário cancelou */});
       return;
@@ -1019,26 +1144,35 @@ function exportarExcel(iso) {
 
 /* Gera PDF via impressão do navegador (Imprimir → Salvar como PDF).
    Funciona offline e no celular, sem bibliotecas externas. */
-function gerarPDF(iso) {
-  const r = DB.resumoDia(iso);
-  const texto = gerarRelatorioTexto(iso);
+function gerarPDF(dias, titulo, texto) {
+  const lista = (Array.isArray(dias) ? dias : [dias]).slice().sort();
+  const varios = lista.length > 1;
+  // agrega os indicadores do período (um dia = igual a antes)
+  const res = lista.map(iso => DB.resumoDia(iso));
+  const soma = c => res.reduce((s, x) => s + x[c], 0);
+  const diesel = soma("diesel"), km = soma("km"), viagens = soma("viagens"), ton = soma("toneladas");
+  const media = diesel > 0 ? km / diesel : 0;
+  const equips = new Set(), manuts = new Set();
+  lista.forEach((iso, i) => { res[i].operando.forEach(e => equips.add(e)); res[i].manutencao.forEach(e => manuts.add(e)); });
+  const corpo = texto || (varios ? gerarRelatorioPeriodo(lista, titulo || "Relatório") : gerarRelatorioTexto(lista[0]));
+
   let area = document.getElementById("printArea");
   if (!area) { area = document.createElement("div"); area.id = "printArea"; document.body.appendChild(area); }
   area.innerHTML = `
     <div class="pdf-head">
       <div class="pdf-logo">🚛 STRACTA MINERAÇÃO</div>
-      <div class="pdf-sub">Controle de Frota · Relatório Diário</div>
+      <div class="pdf-sub">Controle de Frota · ${titulo || "Relatório Diário"}</div>
     </div>
-    <h2 class="pdf-date">Data: ${DB.fmtBR(iso)}</h2>
+    <h2 class="pdf-date">${varios ? `Período: ${DB.fmtBR(lista[0])} a ${DB.fmtBR(lista[lista.length - 1])}` : `Data: ${DB.fmtBR(lista[0])}`}</h2>
     <div class="pdf-kpis">
-      <div><b>${fmt(r.diesel)}</b><span>Diesel (L)</span></div>
-      <div><b>${fmt(r.media, 2)}</b><span>Média km/L</span></div>
-      <div><b>${r.viagens}</b><span>Viagens</span></div>
-      <div><b>${fmt(r.km)}</b><span>KM rodado</span></div>
-      <div><b>${String(r.operando.length).padStart(2, "0")}</b><span>Operando</span></div>
-      <div><b>${String(r.manutencao.length).padStart(2, "0")}</b><span>Manutenção</span></div>
+      <div><b>${fmt(diesel)}</b><span>Diesel (L)</span></div>
+      <div><b>${fmt(media, 2)}</b><span>Média km/L</span></div>
+      <div><b>${viagens}</b><span>Viagens</span></div>
+      <div><b>${fmt(km)}</b><span>KM rodado</span></div>
+      <div><b>${fmt(ton)}</b><span>Produção (t)</span></div>
+      <div><b>${String(equips.size).padStart(2, "0")}</b><span>Equipamentos</span></div>
     </div>
-    <pre class="pdf-body">${texto.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]))}</pre>
+    <pre class="pdf-body">${corpo.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]))}</pre>
     <div class="pdf-foot">Gerado pelo Sistema STRACTA · ${DB.fmtBR(DB.hojeISO())}</div>
   `;
   toast("Abrindo impressão · escolha \"Salvar como PDF\"");
@@ -1136,8 +1270,12 @@ function telaDashboard() {
   const db = DB.load();
   const diaAtual = DB.garantirDiaAtual();
   const listaDias = DB.listaDias();
-  // dia do "geral" (selecionável) e janela das tendências
-  const dia = (painelDia && listaDias.includes(painelDia)) ? painelDia : diaAtual;
+  // dias selecionados (1 = geral do dia; 2+ = comparação); mantém só os que existem
+  let sel = painelDias.filter(d => listaDias.includes(d));
+  if (!sel.length) sel = [listaDias.includes(diaAtual) ? diaAtual : (listaDias[0] || diaAtual)];
+  painelDias = sel;
+  const comparando = sel.length > 1;
+  const dia = sel.slice().sort().reverse()[0];   // mais recente dos selecionados
   const N = painelPeriodo;
   const r = DB.resumoDia(dia);
 
@@ -1191,9 +1329,58 @@ function telaDashboard() {
       <div class="mini" style="color:${cor}">antes ${fmt(b, dec)}${un}${varTxt}</div></div>`;
   }).join("");
 
+  // ---- chips de dia (seleção múltipla) ----
+  const chipsHtml = listaDias.slice(0, 14).map(d =>
+    `<button class="chip-dia ${sel.includes(d) ? "ativo" : ""}" data-dia="${d}">${DB.fmtBR(d).slice(0, 5)}${d === diaAtual ? " •" : ""}</button>`
+  ).join("");
+
+  // ---- tabela de comparação (2+ dias) ----
+  let comparaDiasHtml = "";
+  if (comparando) {
+    const ordem = sel.slice().sort();                  // do mais antigo ao mais novo
+    const res = ordem.map(d => ({ d, r: DB.resumoDia(d) }));
+    const soma = campo => res.reduce((s, x) => s + x.r[campo], 0);
+    const tot = {
+      diesel: soma("diesel"), horas: soma("horas"), toneladas: soma("toneladas"),
+      km: soma("km"), viagens: soma("viagens"), arla: soma("arla")
+    };
+    // razões recalculadas a partir dos totais (nunca média de médias)
+    tot.lh = tot.horas > 0 ? tot.diesel / tot.horas : 0;
+    tot.lton = tot.toneladas > 0 ? tot.diesel / tot.toneladas : 0;
+    tot.media = tot.diesel > 0 ? tot.km / tot.diesel : 0;
+
+    const LINHAS = [
+      ["Equip.", x => String(x.operando.length).padStart(2, "0"), () => "—"],
+      ["Operad.", x => String(x.operadores.length).padStart(2, "0"), () => "—"],
+      ["Diesel L", x => fmt(x.diesel), () => fmt(tot.diesel)],
+      ["Horas", x => fmt(x.horas, 1), () => fmt(tot.horas, 1)],
+      ["L/h", x => fmt(x.lh, 2), () => fmt(tot.lh, 2)],
+      ["Prod. t", x => fmt(x.toneladas), () => fmt(tot.toneladas)],
+      ["L/Ton", x => fmt(x.lton, 2), () => fmt(tot.lton, 2)],
+      ["km/L", x => fmt(x.media, 2), () => fmt(tot.media, 2)],
+      ["Viagens", x => x.viagens, () => tot.viagens],
+      ["KM", x => fmt(x.km), () => fmt(tot.km)],
+      ["ARLA L", x => fmt(x.arla), () => fmt(tot.arla)],
+      ["Manut.", x => String(x.manutencao.length).padStart(2, "0"), () => "—"]
+    ];
+    comparaDiasHtml = `
+      <div class="cmp-wrap">
+        <table class="cmp-table">
+          <thead><tr><th>Indicador</th>
+            ${res.map(x => `<th>${DB.fmtBR(x.d).slice(0, 5)}</th>`).join("")}
+            <th>Total</th></tr></thead>
+          <tbody>
+            ${LINHAS.map(([lbl, fn, ftot]) => `<tr><th>${lbl}</th>
+              ${res.map(x => `<td>${fn(x.r)}</td>`).join("")}
+              <td class="tot">${ftot()}</td></tr>`).join("")}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
   // ---- detalhe do KPI aberto (Geral do dia) ----
   let detalheHtml = "";
-  if (painelKpi) {
+  if (painelKpi && !comparando) {
     const det = detalheKpi(painelKpi, dia);
     const corpo = det.linhas.length
       ? `<div class="itemlist">${det.linhas.map(l =>
@@ -1251,11 +1438,10 @@ function telaDashboard() {
 
   app.innerHTML = `
     <div class="card">
-      <h3>📅 Geral do dia</h3>
-      <div class="field">
-        <label>Ver o dia</label>
-        <select id="pnDia">${listaDias.map(d => `<option value="${d}" ${d === dia ? "selected" : ""}>${DB.fmtBR(d)}${d === diaAtual ? " (hoje)" : ""}</option>`).join("")}</select>
-      </div>
+      <h3>${comparando ? `🔀 Comparação de ${sel.length} dias` : "📅 Geral do dia"}</h3>
+      <label class="mini">Escolha os dias (toque em mais de um para comparar)</label>
+      <div class="chips-dia">${chipsHtml}</div>
+      ${comparando ? comparaDiasHtml : `
       <p class="hint">Toque num cartão para ver os dados por trás dele.</p>
       <div class="kpi-grid">
         <div class="kpi k-green ${painelKpi === "equipamentos" ? "kpi-ativo" : ""}" data-kpi="equipamentos"><div class="k-label">🚛 Equipamentos</div><div class="k-value">${String(r.operando.length).padStart(2, "0")}</div></div>
@@ -1271,7 +1457,7 @@ function telaDashboard() {
         <div class="kpi ${painelKpi === "arla" ? "kpi-ativo" : ""}" data-kpi="arla"><div class="k-label">💧 ARLA</div><div class="k-value">${fmt(r.arla)}<span class="k-unit"> L</span></div></div>
         <div class="kpi k-red ${painelKpi === "manutencao" ? "kpi-ativo" : ""}" data-kpi="manutencao"><div class="k-label">🔧 Manutenção</div><div class="k-value">${String(r.manutencao.length).padStart(2, "0")}</div></div>
       </div>
-      ${detalheHtml}
+      ${detalheHtml}`}
     </div>
 
     <p class="section-title" style="margin-top:16px">Estoques dos tanques</p>
@@ -1325,7 +1511,7 @@ function telaDashboard() {
     </div>
 
     <div class="card">
-      <h3>🚛 Status da frota</h3>
+      <h3>🚛 Status da frota <span class="mini">${DB.fmtBR(dia)}</span></h3>
       <div class="itemlist">${statusHtml}</div>
     </div>
 
@@ -1380,7 +1566,17 @@ function telaDashboard() {
 
   $$("[data-ficha]").forEach(el => el.onclick = () => abrirFicha(el.dataset.ficha));
 
-  $("#pnDia").onchange = e => { painelDia = e.target.value; telaDashboard(); };
+  // chips de dia: alterna a seleção (nunca deixa ficar sem nenhum dia)
+  $$("[data-dia]").forEach(el => el.onclick = () => {
+    const d = el.dataset.dia;
+    if (painelDias.includes(d)) {
+      if (painelDias.length === 1) { toast("Deixe ao menos um dia selecionado", "err"); return; }
+      painelDias = painelDias.filter(x => x !== d);
+    } else {
+      painelDias = painelDias.concat(d);
+    }
+    telaDashboard();
+  });
   $("#pnPeriodo").onchange = e => { painelPeriodo = parseInt(e.target.value, 10) || 7; telaDashboard(); };
   $("#pnMetrica").onchange = e => { painelMetrica = e.target.value; telaDashboard(); };
 

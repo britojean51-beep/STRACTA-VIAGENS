@@ -302,9 +302,40 @@ const DB = {
     return dias.map(iso => Object.assign({ iso }, this.resumoDia(iso)));
   },
 
-  /* ---- Ranking por equipamento nos últimos N dias (comparação no Painel) ---- */
-  rankingEquipamentos(n = 7) {
-    const dias = this.listaDias().slice(0, n);
+  /* ---- Agrupamento por semana e por mês (Relatório) ---- */
+  addDias(iso, n) {
+    const [y, m, d] = iso.split("-").map(Number);
+    const dt = new Date(y, m - 1, d + n);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  },
+  /* segunda-feira da semana do dia informado */
+  inicioSemana(iso) {
+    const [y, m, d] = iso.split("-").map(Number);
+    const dow = (new Date(y, m - 1, d).getDay() + 6) % 7; // 0 = segunda
+    return this.addDias(iso, -dow);
+  },
+  semanasDisponiveis() {
+    const grupos = {};
+    this.listaDias().forEach(iso => { (grupos[this.inicioSemana(iso)] ||= []).push(iso); });
+    return Object.keys(grupos).sort().reverse().map(ini => ({
+      chave: ini,
+      label: `${this.fmtBR(ini).slice(0, 5)} a ${this.fmtBR(this.addDias(ini, 6)).slice(0, 5)}`,
+      dias: grupos[ini].sort()
+    }));
+  },
+  mesesDisponiveis() {
+    const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+                   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    const grupos = {};
+    this.listaDias().forEach(iso => { (grupos[iso.slice(0, 7)] ||= []).push(iso); });
+    return Object.keys(grupos).sort().reverse().map(k => {
+      const [y, m] = k.split("-").map(Number);
+      return { chave: k, label: `${MESES[m - 1]}/${y}`, dias: grupos[k].sort() };
+    });
+  },
+
+  /* ---- Totais por equipamento para uma lista qualquer de dias ---- */
+  totaisPorEquipamento(dias) {
     const mapa = {};
     const pega = eq => (mapa[eq] ||= { eq, diesel: 0, horas: 0, km: 0, viagens: 0, toneladas: 0 });
     dias.forEach(iso => {
@@ -329,6 +360,11 @@ const DB = {
       lton: m.toneladas > 0 ? m.diesel / m.toneladas : 0,
       media: m.diesel > 0 ? m.km / m.diesel : 0
     }));
+  },
+
+  /* Ranking dos últimos N dias (Painel) — usa o helper acima */
+  rankingEquipamentos(n = 7) {
+    return this.totaisPorEquipamento(this.listaDias().slice(0, n));
   },
 
   /* ---- Ficha completa de um equipamento (todos os dias) ---- */
