@@ -85,12 +85,30 @@ na linha da pessoa → **Redefinir senha** (ou apague e crie de novo com a senha
 | Depois de tocar em **"Sair"** | Sim — sair apaga o acesso salvo de propósito |
 | Depois de **limpar os dados** do app | Sim |
 
-> ⚠️ **Cuidado com "Limpar dados/armazenamento"** nas configurações do celular:
-> isso apaga o acesso salvo **e também os lançamentos que ainda não subiram**
-> para a planilha. "Limpar **cache**" é seguro; "limpar **dados**" não é.
+### O botão "Sair" fica escondido
 
-**Dica:** oriente a equipe a **não tocar em "Sair"** no fim do turno. É só fechar
-o app. O "Sair" serve para quando o celular vai passar para outra pessoa.
+A equipe **não vê** nenhum botão de sair — assim ninguém se tranca fora do app
+por engano. Para trocar de usuário num celular (só você precisa saber):
+
+> Na tela **Início**, toque **5 vezes seguidas** em "versão ..." lá embaixo.
+> Abre a **Área do desenvolvedor** com o botão "Trocar usuário (sair)".
+> Ele pede confirmação e avisa que será preciso internet para entrar de novo.
+
+Sair **nunca apaga os lançamentos** — só encerra o acesso salvo naquele aparelho.
+
+### ⚠️ O que ainda pode apagar os dados
+
+"**Limpar dados/armazenamento**" nas configurações do **celular** (não é do app —
+é do Android/iPhone) apaga tudo que o app guardou: o acesso salvo **e os
+lançamentos que ainda não subiram** para a planilha. Isso está fora do alcance do
+app — nenhum aplicativo consegue bloquear essa opção do sistema.
+
+Como se proteger:
+- Mantenha a **sincronização com a planilha ligada**: o que já subiu está seguro
+  na nuvem, mesmo que o celular seja limpo ou perdido.
+- Oriente a equipe: "limpar **cache**" é seguro; "limpar **dados**" nunca.
+- Se quiser, dá para eu criar um **backup manual** (botão que gera um arquivo com
+  tudo) — é só pedir.
 
 **Segurança:** a configuração do Passo 4 é pública por natureza — todo site que
 usa Firebase mostra esses dados. Quem protege de verdade são a **senha de cada um**
