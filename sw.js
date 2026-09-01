@@ -1,11 +1,13 @@
 /* STRACTA · Service Worker
    Estratégia "rede primeiro, sem cache HTTP": quando há internet, sempre
    baixa a versão mais nova do servidor; offline usa a última cópia salva. */
-const CACHE = "stracta-v11";
+const CACHE = "gp2t-v12";
 const ASSETS = [
   "./",
   "./index.html",
   "./css/style.css",
+  "./js/firebase-config.js",
+  "./js/auth.js",
   "./js/storage.js",
   "./js/sync.js",
   "./js/app.js",
@@ -26,6 +28,8 @@ self.addEventListener("activate", e => {
 
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
+  // deixa passar o que é de fora (SDK do Firebase, planilha): não interceptamos
+  if (new URL(e.request.url).origin !== self.location.origin) return;
   e.respondWith(
     // busca sempre no servidor, ignorando o cache HTTP do navegador
     fetch(e.request, { cache: "no-store" })

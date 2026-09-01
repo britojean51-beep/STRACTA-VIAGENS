@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "01/09/2026 · r12 (seletor por mês)";
+const VERSION = "02/09/2026 · r13 (login GP2T)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -108,12 +108,22 @@ const rotas = {
   dashboard:     telaDashboard,
   frota:         telaFrota,
   ficha:         telaFicha,
-  corrigir:      telaCorrigir
+  corrigir:      telaCorrigir,
+  usuarios:      telaUsuarios
 };
+
+/* O operador só lança; o resto é do gestor. */
+const ROTAS_OPERADOR = ["home", "abastecimento", "viagens"];
+function podeVer(rota) {
+  if (typeof Auth === "undefined" || !Auth.configurado()) return true;   // modo local: tudo liberado
+  if (Auth.ehGestor()) return true;
+  return ROTAS_OPERADOR.includes(rota);
+}
 
 function abrirFicha(eq) { fichaEquip = eq; navegar("ficha"); }
 
 function navegar(rota) {
+  if (!podeVer(rota)) { toast("Seu perfil não tem acesso a essa tela", "err"); rota = "home"; }
   const fn = rotas[rota] || telaHome;
   window.scrollTo(0, 0);
   app.innerHTML = "";
@@ -128,6 +138,8 @@ function navegar(rota) {
 function atualizarCabecalho() {
   const dia = DB.garantirDiaAtual();
   $("#headerDay").textContent = DB.fmtBR(dia);
+  // esconde as abas que o perfil não pode abrir
+  $$(".tab").forEach(t => { t.style.display = podeVer(t.dataset.nav) ? "" : "none"; });
 }
 
 /* ============================================================
@@ -137,13 +149,21 @@ function telaHome() {
   $("#headerTitle").textContent = "🚛 STRACTA MINERAÇÃO";
   $("#headerSub").textContent = "CONTROLE DE FROTA";
 
+  const gestor = (typeof Auth === "undefined") || Auth.ehGestor();
+  const logado = (typeof Auth !== "undefined" && Auth.configurado() && Auth.usuario) ? Auth.usuario : null;
+
   app.innerHTML = `
+    ${logado ? `<div class="card user-card">
+      <div><b>👤 ${logado.nome}</b> <span class="pill ${logado.perfil === "gestor" ? "pill-green" : "pill-blue"}">${logado.perfil === "gestor" ? "Gestor" : "Operador"}</span>
+      <div class="sub">${logado.email}</div></div>
+      <button class="btn btn-ghost btn-sm" id="btnSair">Sair</button>
+    </div><div class="spacer"></div>` : ""}
     <div class="menu-grid">
-      <button class="menu-card accent wide" data-go="novodia">
+      ${gestor ? `<button class="menu-card accent wide" data-go="novodia">
         <span class="ico">🟢</span>
         <span class="lbl">NOVO DIA</span>
         <span class="desc">Fecha o dia e abre o próximo copiando KM e horímetro finais</span>
-      </button>
+      </button>` : ""}
       <button class="menu-card" data-go="abastecimento">
         <span class="ico">⛽</span><span class="lbl">Abastecimento</span>
         <span class="desc">Diesel, KM e horímetro</span>
@@ -152,7 +172,7 @@ function telaHome() {
         <span class="ico">🚚</span><span class="lbl">Viagens</span>
         <span class="desc">Origem, destino e ciclos</span>
       </button>
-      <button class="menu-card" data-go="manutencao">
+      ${gestor ? `<button class="menu-card" data-go="manutencao">
         <span class="ico">🔧</span><span class="lbl">Manutenção</span>
         <span class="desc">Preventiva e corretiva</span>
       </button>
@@ -172,12 +192,85 @@ function telaHome() {
         <span class="ico">📊</span><span class="lbl">Painel</span>
         <span class="desc">Alertas, gráficos e tendências</span>
       </button>
+      ${(logado && Auth.ehGestor()) ? `<button class="menu-card" data-go="usuarios">
+        <span class="ico">👥</span><span class="lbl">Usuários</span>
+        <span class="desc">Quem pode entrar no app</span>
+      </button>` : ""}` : ""}
     </div>
     <div class="spacer"></div>
     <p class="hint" style="text-align:center">STRACTA · Gestão de Frota · funciona no celular, tablet e computador</p>
     <p class="hint" style="text-align:center">versão ${VERSION}</p>
   `;
   $$("[data-go]").forEach(b => b.onclick = () => navegar(b.dataset.go));
+  const bs = $("#btnSair");
+  if (bs) bs.onclick = async () => { await Auth.sair(); };
+}
+
+/* ============================================================
+   USUÁRIOS (só gestor)
+   ============================================================ */
+async function telaUsuarios() {
+  $("#headerTitle").textContent = "👥 Usuários";
+  $("#headerSub").textContent = "QUEM PODE ENTRAR NO APP";
+
+  app.innerHTML = `
+    <div class="card">
+      <h3>➕ Liberar acesso</h3>
+      <p class="hint">Primeiro crie a senha da pessoa no Firebase (Authentication → Users). Depois libere o e-mail aqui.</p>
+      <div class="field"><label>E-mail</label><input id="uEmail" placeholder="pessoa@email.com" autocomplete="off"></div>
+      <div class="field"><label>Nome</label><input id="uNome" placeholder="Nome da pessoa"></div>
+      <div class="field"><label>Perfil</label>
+        <select id="uPerfil">
+          <option value="operador">👷 Operador — só lança abastecimento e viagens</option>
+          <option value="gestor">🧑‍💼 Gestor — acesso total</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="btnAddUser">Liberar acesso</button>
+    </div>
+    <div class="card">
+      <h3>👥 Liberados</h3>
+      <div id="uLista"><p class="empty">Carregando…</p></div>
+    </div>
+  `;
+
+  async function render() {
+    const lista = await Auth.listarUsuarios();
+    const box = $("#uLista");
+    if (!lista.length) { box.innerHTML = '<p class="empty">Ninguém liberado ainda.</p>'; return; }
+    box.innerHTML = lista.map(u => `
+      <div class="itemrow"><div class="info"><b>${u.nome || u.email}</b>
+        <span class="pill ${u.perfil === "gestor" ? "pill-green" : "pill-blue"}">${u.perfil === "gestor" ? "Gestor" : "Operador"}</span>
+        ${u.ativo === false ? '<span class="pill pill-red">Bloqueado</span>' : ""}
+        <div class="sub">${u.email}</div></div>
+        <button class="btn btn-ghost btn-sm" data-troca="${u.email}" data-perfil="${u.perfil}">Trocar perfil</button>
+        <button class="del" data-bloq="${u.email}" data-ativo="${u.ativo === false ? "0" : "1"}">${u.ativo === false ? "✓" : "✕"}</button>
+      </div>`).join("");
+
+    $$("[data-troca]").forEach(b => b.onclick = async () => {
+      const novo = b.dataset.perfil === "gestor" ? "operador" : "gestor";
+      const r = await Auth.salvarUsuario(b.dataset.troca, { perfil: novo });
+      toast(r.ok ? "✔ Perfil alterado" : r.erro, r.ok ? "ok" : "err");
+      render();
+    });
+    $$("[data-bloq]").forEach(b => b.onclick = async () => {
+      const ativar = b.dataset.ativo === "0";
+      const r = await Auth.salvarUsuario(b.dataset.bloq, { ativo: ativar });
+      toast(r.ok ? (ativar ? "✔ Acesso liberado" : "✔ Acesso bloqueado") : r.erro, r.ok ? "ok" : "err");
+      render();
+    });
+  }
+
+  $("#btnAddUser").onclick = async () => {
+    const email = $("#uEmail").value.trim().toLowerCase();
+    const nome = $("#uNome").value.trim();
+    if (!email.includes("@")) { toast("Informe um e-mail válido", "err"); return; }
+    const r = await Auth.salvarUsuario(email, { nome: nome || email.split("@")[0], perfil: $("#uPerfil").value, ativo: true });
+    if (!r.ok) { toast(r.erro, "err"); return; }
+    toast("✔ Acesso liberado");
+    $("#uEmail").value = ""; $("#uNome").value = "";
+    render();
+  };
+  render();
 }
 
 /* ============================================================
@@ -1939,14 +2032,65 @@ function telaCorrigir() {
 }
 
 /* ============================================================
+   TELA DE LOGIN
+   ============================================================ */
+function mostrarLogin(aviso) {
+  document.body.classList.add("sem-login");
+  app.innerHTML = `
+    <div class="login-box">
+      <div class="login-logo">🚛</div>
+      <h2>GP2T · Gestão de Frota</h2>
+      <p class="hint">Entre com seu e-mail e senha para continuar.</p>
+      ${aviso ? `<p class="hint" style="color:var(--red)">${aviso}</p>` : ""}
+      <div class="field"><label>E-mail</label><input id="loginEmail" type="email" autocomplete="username" placeholder="seu@email.com"></div>
+      <div class="field"><label>Senha</label><input id="loginSenha" type="password" autocomplete="current-password" placeholder="••••••"></div>
+      <button class="btn btn-primary" id="btnEntrar">Entrar</button>
+      <div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm" id="btnEsqueci">Esqueci minha senha</button>
+      <p class="hint" id="loginMsg" style="margin-top:10px"></p>
+    </div>`;
+
+  const msg = (t, cor) => { const m = $("#loginMsg"); m.innerHTML = t; m.style.color = cor || "var(--muted)"; };
+
+  $("#btnEntrar").onclick = async () => {
+    const email = $("#loginEmail").value.trim(), senha = $("#loginSenha").value;
+    if (!email || !senha) { msg("Preencha e-mail e senha.", "var(--red)"); return; }
+    msg("Entrando…");
+    const r = await Auth.entrar(email, senha);
+    if (r.ok) iniciarApp(); else msg("❌ " + r.erro, "var(--red)");
+  };
+  $("#loginSenha").onkeydown = e => { if (e.key === "Enter") $("#btnEntrar").click(); };
+  $("#btnEsqueci").onclick = async () => {
+    const email = $("#loginEmail").value.trim();
+    if (!email) { msg("Digite seu e-mail primeiro.", "var(--red)"); return; }
+    const r = await Auth.recuperarSenha(email);
+    msg(r.ok ? "✔ Enviamos um e-mail para redefinir sua senha." : "❌ " + r.erro, r.ok ? "var(--green)" : "var(--red)");
+  };
+}
+
+/* ============================================================
    INICIALIZAÇÃO
    ============================================================ */
 $("#btnBack").onclick = () => navegar("home");
 $$(".tab").forEach(t => t.onclick = () => { viagensBuffer = []; editando = null; navegar(t.dataset.nav); });
 
-DB.garantirDiaAtual();
-const rotaInicial = (location.hash || "#home").slice(1);
-navegar(rotas[rotaInicial] ? rotaInicial : "home");
+function iniciarApp() {
+  document.body.classList.remove("sem-login");
+  DB.garantirDiaAtual();
+  const rotaInicial = (location.hash || "#home").slice(1);
+  navegar(rotas[rotaInicial] && podeVer(rotaInicial) ? rotaInicial : "home");
+}
+
+(async () => {
+  let r = { modo: "local" };
+  try { r = await Auth.iniciar(); } catch (e) { r = { modo: "local" }; }
+  if (r.modo === "login") mostrarLogin(r.erro);
+  else if (r.modo === "sem-conexao") mostrarLogin("Conecte-se à internet para entrar pela primeira vez.");
+  else {
+    iniciarApp();
+    if (r.modo === "offline") toast("📴 Sem internet — usando seu último acesso");
+  }
+})();
 
 /* Service worker (offline / instalável) */
 if ("serviceWorker" in navigator) {

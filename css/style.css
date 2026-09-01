@@ -311,3 +311,18 @@ main { padding: 16px; max-width: 640px; margin: 0 auto; animation: fade .25s eas
   .chip:hover { border-color: var(--brand); }
   .tab:hover { color: var(--brand-2); }
 }
+
+/* ===== Login ===== */
+body.sem-login .app-header,
+body.sem-login .tabbar { display: none; }
+.login-box {
+  max-width: 380px; margin: 8vh auto 0; padding: 22px 18px;
+  background: #101a30; border: 1px solid #26344f; border-radius: 18px; text-align: center;
+}
+.login-logo { font-size: 44px; line-height: 1; }
+.login-box h2 { margin: 8px 0 4px; font-size: 20px; color: #e8eefc; }
+.login-box .field { text-align: left; margin-top: 12px; }
+
+/* ===== Cartão do usuário logado (Início) ===== */
+.user-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.user-card .sub { color: #93a2c4; font-size: 12px; margin-top: 2px; }

@@ -1,7 +1,7 @@
 {
-  "name": "STRACTA · Controle de Frota",
-  "short_name": "STRACTA",
-  "description": "Sistema de controle de frota da STRACTA Mineração — 100% no celular.",
+  "name": "GP2T · Gestão de Frota",
+  "short_name": "GP2T",
+  "description": "GP2T · Gestão de Frota — controle de abastecimento, viagens e manutenção no celular.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
