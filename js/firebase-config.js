@@ -1,24 +1,28 @@
 /* ============================================================
    GP2T · Configuração do Firebase
    ------------------------------------------------------------
-   Cole aqui o bloco que o Firebase mostra em:
-   Configurações do projeto → Seus apps → App da Web → Configuração
+   Projeto: gp2t-gestaodefrota
 
-   ENQUANTO ESTIVER VAZIO, o app funciona SEM login (como antes).
-   Assim nada para de funcionar enquanto o projeto é criado.
+   ⚠️ O LOGIN AINDA ESTÁ DESLIGADO (última linha = null).
+   Motivo: as regras do Firestore só deixam um GESTOR criar usuários,
+   e o primeiro gestor precisa ser criado à mão no painel do Firebase
+   (Authentication → Users + coleção "usuarios" no Firestore).
+   Ligar o login antes disso trancaria todo mundo para fora.
 
-   Exemplo de como fica preenchido:
-   const FIREBASE_CONFIG = {
-     apiKey: "AIza...",
-     authDomain: "gp2t-gestaodefrota.firebaseapp.com",
-     projectId: "gp2t-gestaodefrota",
-     storageBucket: "gp2t-gestaodefrota.appspot.com",
-     messagingSenderId: "123456789",
-     appId: "1:123456789:web:abc123"
-   };
+   PARA LIGAR quando o primeiro gestor existir, troque a última linha por:
+       const FIREBASE_CONFIG = CONFIG_GP2T;
 
-   Observação: esses dados são públicos por natureza (todo site que usa
-   Firebase os expõe). Quem protege os dados são as REGRAS do Firestore
-   e o login — por isso as regras em firebase/regras-firestore.txt.
+   Estes dados são públicos por natureza (todo site que usa Firebase os
+   expõe). Quem protege são as REGRAS do Firestore e a senha de cada um.
    ============================================================ */
+const CONFIG_GP2T = {
+  apiKey: "AIzaSyCppDcUQSkDCOBZIs1BHA1WMEWoBeboFyc",
+  authDomain: "gp2t-gestaodefrota.firebaseapp.com",
+  projectId: "gp2t-gestaodefrota",
+  storageBucket: "gp2t-gestaodefrota.firebasestorage.app",
+  messagingSenderId: "694947636114",
+  appId: "1:694947636114:web:fb3ad18214afdb22f3174b"
+};
+
+/* Troque para CONFIG_GP2T quando o primeiro gestor estiver criado. */
 const FIREBASE_CONFIG = null;
