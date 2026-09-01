@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "02/09/2026 · r18 (login ligado)";
+const VERSION = "02/09/2026 · r19 (planilha embutida)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -1714,7 +1714,7 @@ function telaDashboard() {
 
     <div class="card">
       <h3>☁️ Planilha na nuvem <span id="syncBadge" class="pill pill-gray">desligada</span></h3>
-      <p class="hint">Cole o link do App da Web da sua planilha (Google Sheets). Passo a passo: pasta <b>google-sheets</b> do projeto.</p>
+      <p class="hint">A planilha já vem conectada de fábrica — não precisa colar nada em cada celular. Só mexa aqui se for trocar de planilha.</p>
       <div class="field">
         <label>Link da planilha (termina em /exec)</label>
         <input id="cfgSheets" placeholder="https://script.google.com/.../exec" value="${db.config.sheetsUrl || ""}">

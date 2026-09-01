@@ -4,6 +4,11 @@
    ============================================================ */
 const DB_KEY = "stracta_frota_v1";
 
+/* Link do App da Web da planilha (Google Sheets) já embutido:
+   assim todo celular novo abre o app com a sincronização pronta,
+   sem ninguém precisar colar o link. Pode ser trocado no Painel. */
+const SHEETS_URL_PADRAO = "https://script.google.com/macros/s/AKfycbzUF4TumqnMtrZbu5WHrj3_RHA3zEEW6rGsG8cBEzZoKSzn9_zATgWBRzvlA_ZujRK2/exec";
+
 const DB = {
   /* ---- Estado padrão ---- */
   _default() {
@@ -27,7 +32,7 @@ const DB = {
         metaViagens: 140,              // meta de viagens/dia da frota
         estoqueMin: 1000,              // litros: alerta de diesel baixo (cada tanque)
         estoqueArlaMin: 100,           // litros: alerta de ARLA baixo
-        sheetsUrl: ""                  // URL do Web App (Google Sheets) para sincronizar
+        sheetsUrl: SHEETS_URL_PADRAO   // URL do Web App (Google Sheets) para sincronizar
       },
       syncPend: []                     // fila de operações pendentes de envio à planilha
     };
@@ -48,6 +53,8 @@ const DB = {
     const base = this._default();
     this._cache = Object.assign(base, data);
     this._cache.config = Object.assign(base.config, data.config || {});
+    // aparelho que já usava o app sem link configurado também recebe o padrão
+    if (!this._cache.config.sheetsUrl) this._cache.config.sheetsUrl = SHEETS_URL_PADRAO;
     this._cache.status = data.status || {};
     this._cache.proximaRevisao = data.proximaRevisao || {};
     this._cache.tipoEquip = data.tipoEquip || {};
