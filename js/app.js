@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "01/09/2026 · r7 (viagens/excel)";
+const VERSION = "01/09/2026 · r8 (L/Ton viagens)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -335,7 +335,7 @@ function telaAbastecimento() {
 
       <div class="field-row">
         <div class="field">
-          <label>Produção (toneladas) <span class="mini">opcional</span></label>
+          <label>Produção (toneladas) <span class="mini">pá/carreg.</span></label>
           <input id="fTon" inputmode="decimal" value="${ed?.toneladas ?? ""}" placeholder="ex: 320">
         </div>
         <div class="field">
@@ -343,6 +343,7 @@ function telaAbastecimento() {
           <input id="fLton" class="computed" readonly value="${ed?.lton ?? ""}">
         </div>
       </div>
+      <p class="hint">🚚 Para <b>caminhões</b>, deixe em branco: o L/Ton usa o <b>peso lançado nas Viagens</b> (aparece no Painel e no Relatório).</p>
 
       <div class="field-row">
         <div class="field">
@@ -852,6 +853,11 @@ function gerarRelatorioTexto(iso) {
     txt += `Combustível: ${a.combustivel || "S-10"} · ${fmt(a.litros)} L\n`;
     if (a.litrosArla) txt += `ARLA 32: ${fmt(a.litrosArla)} L\n`;
     txt += `Média: ${a.media} ${und}\n`;
+    const tonEq = DB.tonEquipDia(a.equipamento, iso);
+    if (tonEq > 0) {
+      txt += `Produção: ${fmt(tonEq)} t\n`;
+      txt += `L/Ton: ${fmt(DB.ltonEquipDia(a.equipamento, iso), 2)} L/t\n`;
+    }
     if (a.situacao) txt += `Situação: ${a.situacao}\n`;
     const vs = viagPorEq[a.equipamento];
     if (vs && vs.length) {
@@ -892,6 +898,8 @@ function gerarRelatorioTexto(iso) {
   txt += `Média Frota: ${fmt(mediaFrota, 2)} km/L\n`;
   txt += `Total Viagens: ${totalViagens}\n`;
   if (totalPeso > 0) txt += `Peso Transportado: ${fmt(totalPeso)} t\n`;
+  const totalTon = [...operando].reduce((s, eq) => s + DB.tonEquipDia(eq, iso), 0);
+  if (totalTon > 0) txt += `L/Ton Frota: ${fmt(totalDiesel / totalTon, 2)} L/t\n`;
   txt += `Equipamentos Operando: ${String(operando.size).padStart(2, "0")}\n`;
   txt += `Equipamentos Manutenção: ${String(emManut.size).padStart(2, "0")}\n`;
   return txt;
@@ -1095,8 +1103,9 @@ function telaDashboard() {
     const ultAb = ab.length ? ab[ab.length - 1] : null;
     const md = ultAb ? `${ultAb.media} ${ultAb.unidadeMedia || "km/L"}` : "—";
     const viag = (f.viagens || []).filter(v => v.equipamento === eq).reduce((x, v) => x + num(v.quantidade), 0);
+    const lt = DB.ltonEquipDia(eq, dia);
     return `<div class="itemrow" data-ficha="${eq}"><div class="info"><b>${eq}</b> ${pillStatus(st)}
-      <div class="sub">${fmt(litros)} L · ${md} · ${viag} viagens</div></div><span class="mini">ficha ›</span></div>`;
+      <div class="sub">${fmt(litros)} L · ${md} · ${viag} viagens${lt > 0 ? ` · ${fmt(lt, 2)} L/t` : ""}</div></div><span class="mini">ficha ›</span></div>`;
   }).join("");
 
   app.innerHTML = `
@@ -1389,6 +1398,8 @@ function telaFicha() {
       <div class="kpi k-blue"><div class="k-label">🚚 Viagens</div><div class="k-value">${fmt(f.totViag)}</div></div>
       <div class="kpi"><div class="k-label">🛣️ KM total</div><div class="k-value">${fmt(f.totKm)}<span class="k-unit"> km</span></div></div>
       <div class="kpi k-yellow"><div class="k-label">⏱️ Horas</div><div class="k-value">${fmt(f.totHoras, 1)}<span class="k-unit"> h</span></div></div>
+      <div class="kpi k-blue"><div class="k-label">🏭 Produção</div><div class="k-value">${fmt(f.totToneladas)}<span class="k-unit"> t</span></div></div>
+      <div class="kpi k-yellow"><div class="k-label">🏭 L/Ton</div><div class="k-value">${fmt(f.lton, 2)}<span class="k-unit"> L/t</span></div></div>
       <div class="kpi"><div class="k-label">📍 Horím. atual</div><div class="k-value">${f.ultimo.horimetroFinal ?? "—"}</div></div>
     </div>
 

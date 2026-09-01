@@ -125,6 +125,25 @@ const DB = {
     return { anterior: atual, novo: proximo };
   },
 
+  /* Tonelagem do equipamento no dia — prioriza o peso das VIAGENS;
+     se não houver viagem, usa o campo "toneladas" do abastecimento (pá/carregadeira). */
+  tonEquipDia(eq, iso) {
+    const d = this.getDia(iso) || { abastecimentos: [], viagens: [] };
+    const pesoViagens = (d.viagens || []).filter(v => v.equipamento === eq)
+      .reduce((s, v) => s + this.toN(v.pesoTotal), 0);
+    if (pesoViagens > 0) return pesoViagens;
+    return (d.abastecimentos || []).filter(a => a.equipamento === eq)
+      .reduce((s, a) => s + this.toN(a.toneladas), 0);
+  },
+  /* L/Ton do equipamento no dia = litros abastecidos ÷ tonelagem do dia */
+  ltonEquipDia(eq, iso) {
+    const d = this.getDia(iso) || { abastecimentos: [] };
+    const litros = (d.abastecimentos || []).filter(a => a.equipamento === eq)
+      .reduce((s, a) => s + this.toN(a.litros), 0);
+    const ton = this.tonEquipDia(eq, iso);
+    return ton > 0 ? litros / ton : 0;
+  },
+
   /* Resumo consolidado de um dia (reutilizado no Novo Dia, painel, etc.) */
   resumoDia(iso) {
     const d = this.getDia(iso) || { abastecimentos: [], viagens: [], manutencoes: [] };
@@ -137,11 +156,13 @@ const DB = {
       diesel += l;
       if (a.combustivel === "S-500") dieselS500 += l; else dieselS10 += l;
       arla += toN(a.litrosArla);
-      km += toN(a.kmRodado); horas += toN(a.horasTrabalhadas); toneladas += toN(a.toneladas);
+      km += toN(a.kmRodado); horas += toN(a.horasTrabalhadas);
       operando.add(a.equipamento);
       if (a.motorista) operadores.add(a.motorista);
     });
     d.viagens.forEach(v => { viagens += toN(v.quantidade); operando.add(v.equipamento); if (v.motorista) operadores.add(v.motorista); });
+    // tonelagem do dia: soma por equipamento (viagens têm prioridade sobre o campo do abastecimento)
+    toneladas = [...operando].reduce((s, eq) => s + this.tonEquipDia(eq, iso), 0);
     const manutencao = [...new Set(d.manutencoes.map(m => m.equipamento))];
     return {
       diesel, dieselS10, dieselS500, arla, km, viagens, horas, toneladas,
@@ -296,10 +317,13 @@ const DB = {
     const totKm = abast.reduce((s, a) => s + this.toN(a.kmRodado), 0);
     const totHoras = abast.reduce((s, a) => s + this.toN(a.horasTrabalhadas), 0);
     const totViag = viag.reduce((s, v) => s + this.toN(v.quantidade), 0);
+    // tonelagem total (por dia, viagens têm prioridade) e L/Ton geral
+    const totToneladas = dias.reduce((s, iso) => s + this.tonEquipDia(eq, iso), 0);
     const tipo = this.getTipoEquip(eq);
     return {
       equip: eq, abast, viag, manut,
-      totDiesel, totKm, totHoras, totViag,
+      totDiesel, totKm, totHoras, totViag, totToneladas,
+      lton: totToneladas > 0 ? totDiesel / totToneladas : 0,
       tipo,
       unidadeMedia: tipo === "horimetro" ? "L/h" : "km/L",
       media: tipo === "horimetro"
