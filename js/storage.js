@@ -302,6 +302,35 @@ const DB = {
     return dias.map(iso => Object.assign({ iso }, this.resumoDia(iso)));
   },
 
+  /* ---- Ranking por equipamento nos últimos N dias (comparação no Painel) ---- */
+  rankingEquipamentos(n = 7) {
+    const dias = this.listaDias().slice(0, n);
+    const mapa = {};
+    const pega = eq => (mapa[eq] ||= { eq, diesel: 0, horas: 0, km: 0, viagens: 0, toneladas: 0 });
+    dias.forEach(iso => {
+      const d = this.getDia(iso) || { abastecimentos: [], viagens: [] };
+      (d.abastecimentos || []).forEach(a => {
+        const m = pega(a.equipamento);
+        m.diesel += this.toN(a.litros);
+        m.horas += this.toN(a.horasTrabalhadas);
+        m.km += this.toN(a.kmRodado);
+      });
+      (d.viagens || []).forEach(v => { pega(v.equipamento).viagens += this.toN(v.quantidade); });
+      // tonelagem por equipamento no dia (viagens têm prioridade)
+      const equipsDoDia = new Set([
+        ...(d.abastecimentos || []).map(a => a.equipamento),
+        ...(d.viagens || []).map(v => v.equipamento)
+      ]);
+      equipsDoDia.forEach(eq => { pega(eq).toneladas += this.tonEquipDia(eq, iso); });
+    });
+    return Object.values(mapa).map(m => ({
+      eq: m.eq, diesel: m.diesel, horas: m.horas, km: m.km, viagens: m.viagens, toneladas: m.toneladas,
+      lh: m.horas > 0 ? m.diesel / m.horas : 0,
+      lton: m.toneladas > 0 ? m.diesel / m.toneladas : 0,
+      media: m.diesel > 0 ? m.km / m.diesel : 0
+    }));
+  },
+
   /* ---- Ficha completa de um equipamento (todos os dias) ---- */
   fichaEquipamento(eq) {
     const db = this.load();

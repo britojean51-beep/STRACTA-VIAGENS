@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "01/09/2026 · r9 (rotas/peso)";
+const VERSION = "01/09/2026 · r10 (ranking/detalhes)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -17,6 +17,9 @@ let fichaEquip = null;
 /* Painel: dia selecionado (null = dia atual) e janela das tendências (dias) */
 let painelDia = null;
 let painelPeriodo = 7;
+/* Painel: KPI aberto no "Geral do dia" e métrica do ranking por equipamento */
+let painelKpi = null;
+let painelMetrica = "diesel";
 
 /* ---------- Utilidades numéricas ---------- */
 const num = v => { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; };
@@ -1045,6 +1048,88 @@ function gerarPDF(iso) {
 /* ============================================================
    DASHBOARD
    ============================================================ */
+/* Detalhe por trás de cada KPI do "Geral do dia" (chave → título + linhas). */
+function detalheKpi(chave, iso) {
+  const d = DB.getDia(iso) || { abastecimentos: [], viagens: [], manutencoes: [] };
+  const abast = d.abastecimentos || [], viags = d.viagens || [], manut = d.manutencoes || [];
+  const equips = [...new Set([...abast.map(a => a.equipamento), ...viags.map(v => v.equipamento)])];
+  const somaAb = (eq, campo) => abast.filter(a => a.equipamento === eq).reduce((s, a) => s + num(a[campo]), 0);
+  const linha = (t, s) => ({ titulo: t, sub: s });
+
+  const porEquip = (titulo, fn, filtrar = true) => ({
+    titulo,
+    linhas: equips.map(eq => ({ eq, txt: fn(eq) }))
+      .filter(x => !filtrar || x.txt)
+      .map(x => linha(x.eq, x.txt))
+  });
+
+  switch (chave) {
+    case "equipamentos":
+      return porEquip("🚛 Equipamentos do dia", eq => {
+        const l = somaAb(eq, "litros"), h = somaAb(eq, "horasTrabalhadas");
+        const vi = viags.filter(v => v.equipamento === eq).reduce((s, v) => s + num(v.quantidade), 0);
+        return `${fmt(l)} L · ${fmt(h, 1)} h${vi ? ` · ${vi} viagens` : ""}`;
+      }, false);
+    case "operadores": {
+      const mapa = {};
+      abast.forEach(a => { if (a.motorista) (mapa[a.motorista] ||= new Set()).add(a.equipamento); });
+      viags.forEach(v => { if (v.motorista) (mapa[v.motorista] ||= new Set()).add(v.equipamento); });
+      return {
+        titulo: "👷 Operadores do dia",
+        linhas: Object.entries(mapa).map(([nome, eqs]) => linha(nome, [...eqs].join(", ")))
+      };
+    }
+    case "diesel":
+      return porEquip("⛽ Consumo de diesel", eq => {
+        const arr = abast.filter(a => a.equipamento === eq);
+        if (!arr.length) return "";
+        const s10 = arr.filter(a => a.combustivel !== "S-500").reduce((s, a) => s + num(a.litros), 0);
+        const s500 = arr.filter(a => a.combustivel === "S-500").reduce((s, a) => s + num(a.litros), 0);
+        const tot = s10 + s500;
+        const det = [s10 ? `S-10: ${fmt(s10)} L` : null, s500 ? `S-500: ${fmt(s500)} L` : null].filter(Boolean).join(" · ");
+        return `${fmt(tot)} L${det ? ` (${det})` : ""}`;
+      });
+    case "horas":
+      return porEquip("⏱️ Horas trabalhadas", eq => { const h = somaAb(eq, "horasTrabalhadas"); return h ? `${fmt(h, 1)} h` : ""; });
+    case "lh":
+      return porEquip("📊 L/h por equipamento", eq => {
+        const l = somaAb(eq, "litros"), h = somaAb(eq, "horasTrabalhadas");
+        return h > 0 && l > 0 ? `${fmt(l / h, 2)} L/h · ${fmt(l)} L em ${fmt(h, 1)} h` : "";
+      });
+    case "toneladas":
+      return porEquip("🏭 Produção", eq => { const t = DB.tonEquipDia(eq, iso); return t > 0 ? `${fmt(t)} t` : ""; });
+    case "lton":
+      return porEquip("🏭 L/Ton por equipamento", eq => {
+        const lt = DB.ltonEquipDia(eq, iso), t = DB.tonEquipDia(eq, iso);
+        return lt > 0 ? `${fmt(lt, 2)} L/t · ${fmt(somaAb(eq, "litros"))} L em ${fmt(t)} t` : "";
+      });
+    case "media":
+      return porEquip("📈 Média km/L", eq => {
+        const l = somaAb(eq, "litros"), k = somaAb(eq, "kmRodado");
+        return l > 0 && k > 0 ? `${fmt(k / l, 2)} km/L · ${fmt(k)} km` : "";
+      });
+    case "viagens":
+      return porEquip("🚚 Viagens", eq => {
+        const arr = viags.filter(v => v.equipamento === eq);
+        if (!arr.length) return "";
+        const q = arr.reduce((s, v) => s + num(v.quantidade), 0);
+        const rotas = arr.map(v => `Origem ${v.origem} → Destino ${v.destino} = ${v.quantidade}`).join(" | ");
+        return `${q} viagens · ${rotas}`;
+      });
+    case "km":
+      return porEquip("🛣️ KM rodado", eq => { const k = somaAb(eq, "kmRodado"); return k ? `${fmt(k)} km` : ""; });
+    case "arla":
+      return porEquip("💧 ARLA 32", eq => { const a = somaAb(eq, "litrosArla"); return a ? `${fmt(a)} L` : ""; });
+    case "manutencao":
+      return {
+        titulo: "🔧 Manutenções do dia",
+        linhas: manut.map(m => linha(`${m.equipamento} · ${m.tipo}`, m.servico || "—"))
+      };
+    default:
+      return { titulo: "Detalhe", linhas: [] };
+  }
+}
+
 function telaDashboard() {
   $("#headerTitle").textContent = "📊 Painel";
   $("#headerSub").textContent = "ALERTAS · GRÁFICOS · METAS";
@@ -1106,6 +1191,45 @@ function telaDashboard() {
       <div class="mini" style="color:${cor}">antes ${fmt(b, dec)}${un}${varTxt}</div></div>`;
   }).join("");
 
+  // ---- detalhe do KPI aberto (Geral do dia) ----
+  let detalheHtml = "";
+  if (painelKpi) {
+    const det = detalheKpi(painelKpi, dia);
+    const corpo = det.linhas.length
+      ? `<div class="itemlist">${det.linhas.map(l =>
+          `<div class="itemrow"><div class="info"><b>${l.titulo}</b><div class="sub">${l.sub}</div></div></div>`).join("")}</div>`
+      : '<p class="empty">Sem dados neste dia.</p>';
+    detalheHtml = `
+      <div class="spacer"></div>
+      <div class="card" style="background:rgba(255,122,26,.06)">
+        <div class="list-head"><h3 style="margin:0">${det.titulo}</h3>
+          <button class="btn btn-ghost btn-sm" id="btnFecharKpi">Fechar</button></div>
+        ${corpo}
+      </div>`;
+  }
+
+  // ---- ranking por equipamento (comparação) ----
+  const METRICAS = {
+    diesel:    { lbl: "⛽ Diesel (L)",     un: " L",    dec: 0, cor: "#ff7a1a" },
+    lton:      { lbl: "🏭 L/Ton",          un: " L/t",  dec: 2, cor: "#f59e0b" },
+    lh:        { lbl: "📊 L/h",            un: " L/h",  dec: 2, cor: "#ef4444" },
+    toneladas: { lbl: "🏭 Produção (t)",   un: " t",    dec: 0, cor: "#a855f7" },
+    viagens:   { lbl: "🚚 Viagens",        un: "",      dec: 0, cor: "#3b82f6" },
+    media:     { lbl: "📈 Média km/L",     un: " km/L", dec: 2, cor: "#22c55e" },
+    horas:     { lbl: "⏱️ Horas",          un: " h",    dec: 1, cor: "#eab308" }
+  };
+  const met = METRICAS[painelMetrica] || METRICAS.diesel;
+  const rank = DB.rankingEquipamentos(N)
+    .filter(x => x[painelMetrica] > 0)
+    .sort((a, b) => b[painelMetrica] - a[painelMetrica]);
+  const gRank = rank.length
+    ? grafico(rank.map(x => ({ label: x.eq, valor: x[painelMetrica], rotulo: fmt(x[painelMetrica], met.dec) })),
+              { tipo: "barra", cor: met.cor, titulo: met.lbl })
+    : '<p class="empty">Sem dados no período.</p>';
+  const rankLista = rank.map((x, i) =>
+    `<div class="itemrow"><div class="info">${i === 0 ? "🥇 " : ""}<b>${x.eq}</b>
+      <div class="sub">${fmt(x[painelMetrica], met.dec)}${met.un}</div></div></div>`).join("");
+
   // ---- status da frota ----
   const statusHtml = db.equipamentos.map(eq => {
     const st = DB.getStatus(eq);
@@ -1116,8 +1240,13 @@ function telaDashboard() {
     const md = ultAb ? `${ultAb.media} ${ultAb.unidadeMedia || "km/L"}` : "—";
     const viag = (f.viagens || []).filter(v => v.equipamento === eq).reduce((x, v) => x + num(v.quantidade), 0);
     const lt = DB.ltonEquipDia(eq, dia);
+    // motorista(s) que estavam no equipamento no dia selecionado
+    const mots = [...new Set([
+      ...ab.map(a => a.motorista),
+      ...(f.viagens || []).filter(v => v.equipamento === eq).map(v => v.motorista)
+    ].filter(Boolean))].join(", ");
     return `<div class="itemrow" data-ficha="${eq}"><div class="info"><b>${eq}</b> ${pillStatus(st)}
-      <div class="sub">${fmt(litros)} L · ${md} · ${viag} viagens${lt > 0 ? ` · ${fmt(lt, 2)} L/t` : ""}</div></div><span class="mini">ficha ›</span></div>`;
+      <div class="sub">${mots ? `👷 ${mots}<br>` : ""}${fmt(litros)} L · ${md} · ${viag} viagens${lt > 0 ? ` · ${fmt(lt, 2)} L/t` : ""}</div></div><span class="mini">ficha ›</span></div>`;
   }).join("");
 
   app.innerHTML = `
@@ -1127,21 +1256,22 @@ function telaDashboard() {
         <label>Ver o dia</label>
         <select id="pnDia">${listaDias.map(d => `<option value="${d}" ${d === dia ? "selected" : ""}>${DB.fmtBR(d)}${d === diaAtual ? " (hoje)" : ""}</option>`).join("")}</select>
       </div>
+      <p class="hint">Toque num cartão para ver os dados por trás dele.</p>
       <div class="kpi-grid">
-        <div class="kpi k-green"><div class="k-label">🚛 Equipamentos</div><div class="k-value">${String(r.operando.length).padStart(2, "0")}</div></div>
-        <div class="kpi k-blue"><div class="k-label">👷 Operadores</div><div class="k-value">${String(r.operadores.length).padStart(2, "0")}</div></div>
-        <div class="kpi"><div class="k-label">⛽ Consumo diesel</div><div class="k-value">${fmt(r.diesel)}<span class="k-unit"> L</span></div></div>
-        <div class="kpi k-yellow"><div class="k-label">⏱️ Horas totais</div><div class="k-value">${fmt(r.horas, 1)}<span class="k-unit"> h</span></div></div>
-        <div class="kpi"><div class="k-label">📊 L/h</div><div class="k-value">${fmt(r.lh, 2)}<span class="k-unit"> L/h</span></div></div>
-        <div class="kpi k-blue"><div class="k-label">🏭 Produção</div><div class="k-value">${fmt(r.toneladas)}<span class="k-unit"> t</span></div></div>
-        <div class="kpi k-yellow"><div class="k-label">🏭 L/Ton</div><div class="k-value">${fmt(r.lton, 2)}<span class="k-unit"> L/t</span></div></div>
-        <div class="kpi k-green"><div class="k-label">📈 Média km/L</div><div class="k-value">${fmt(r.media, 2)}<span class="k-unit"> km/L</span></div></div>
-        <div class="kpi k-blue"><div class="k-label">🚚 Viagens</div><div class="k-value">${r.viagens}</div></div>
-        <div class="kpi"><div class="k-label">🛣️ KM rodado</div><div class="k-value">${fmt(r.km)}<span class="k-unit"> km</span></div></div>
-        <div class="kpi"><div class="k-label">💧 ARLA</div><div class="k-value">${fmt(r.arla)}<span class="k-unit"> L</span></div></div>
-        <div class="kpi k-red"><div class="k-label">🔧 Manutenção</div><div class="k-value">${String(r.manutencao.length).padStart(2, "0")}</div></div>
+        <div class="kpi k-green ${painelKpi === "equipamentos" ? "kpi-ativo" : ""}" data-kpi="equipamentos"><div class="k-label">🚛 Equipamentos</div><div class="k-value">${String(r.operando.length).padStart(2, "0")}</div></div>
+        <div class="kpi k-blue ${painelKpi === "operadores" ? "kpi-ativo" : ""}" data-kpi="operadores"><div class="k-label">👷 Operadores</div><div class="k-value">${String(r.operadores.length).padStart(2, "0")}</div></div>
+        <div class="kpi ${painelKpi === "diesel" ? "kpi-ativo" : ""}" data-kpi="diesel"><div class="k-label">⛽ Consumo diesel</div><div class="k-value">${fmt(r.diesel)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi k-yellow ${painelKpi === "horas" ? "kpi-ativo" : ""}" data-kpi="horas"><div class="k-label">⏱️ Horas totais</div><div class="k-value">${fmt(r.horas, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi ${painelKpi === "lh" ? "kpi-ativo" : ""}" data-kpi="lh"><div class="k-label">📊 L/h</div><div class="k-value">${fmt(r.lh, 2)}<span class="k-unit"> L/h</span></div></div>
+        <div class="kpi k-blue ${painelKpi === "toneladas" ? "kpi-ativo" : ""}" data-kpi="toneladas"><div class="k-label">🏭 Produção</div><div class="k-value">${fmt(r.toneladas)}<span class="k-unit"> t</span></div></div>
+        <div class="kpi k-yellow ${painelKpi === "lton" ? "kpi-ativo" : ""}" data-kpi="lton"><div class="k-label">🏭 L/Ton</div><div class="k-value">${fmt(r.lton, 2)}<span class="k-unit"> L/t</span></div></div>
+        <div class="kpi k-green ${painelKpi === "media" ? "kpi-ativo" : ""}" data-kpi="media"><div class="k-label">📈 Média km/L</div><div class="k-value">${fmt(r.media, 2)}<span class="k-unit"> km/L</span></div></div>
+        <div class="kpi k-blue ${painelKpi === "viagens" ? "kpi-ativo" : ""}" data-kpi="viagens"><div class="k-label">🚚 Viagens</div><div class="k-value">${r.viagens}</div></div>
+        <div class="kpi ${painelKpi === "km" ? "kpi-ativo" : ""}" data-kpi="km"><div class="k-label">🛣️ KM rodado</div><div class="k-value">${fmt(r.km)}<span class="k-unit"> km</span></div></div>
+        <div class="kpi ${painelKpi === "arla" ? "kpi-ativo" : ""}" data-kpi="arla"><div class="k-label">💧 ARLA</div><div class="k-value">${fmt(r.arla)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi k-red ${painelKpi === "manutencao" ? "kpi-ativo" : ""}" data-kpi="manutencao"><div class="k-label">🔧 Manutenção</div><div class="k-value">${String(r.manutencao.length).padStart(2, "0")}</div></div>
       </div>
-      <p class="hint" style="margin-top:8px">👷 Operadores do dia: ${r.operadores.length ? r.operadores.join(", ") : "—"}</p>
+      ${detalheHtml}
     </div>
 
     <p class="section-title" style="margin-top:16px">Estoques dos tanques</p>
@@ -1179,6 +1309,19 @@ function telaDashboard() {
       <h3>🔀 Comparativo <span class="mini">janela atual × anterior</span></h3>
       <p class="hint">Últimos ${N} dias comparados com os ${N} dias anteriores.</p>
       <div class="kpi-grid">${comparaHtml}</div>
+    </div>
+
+    <div class="card">
+      <h3>🏆 Comparação por equipamento</h3>
+      <div class="field">
+        <label>Indicador</label>
+        <select id="pnMetrica">
+          ${Object.entries(METRICAS).map(([k, m]) => `<option value="${k}" ${k === painelMetrica ? "selected" : ""}>${m.lbl}</option>`).join("")}
+        </select>
+      </div>
+      <p class="hint">Últimos ${N} dias · do maior para o menor${(painelMetrica === "lh" || painelMetrica === "lton") ? " — aqui o primeiro é o que <b>mais consome</b>" : ""}.</p>
+      ${gRank}
+      <div class="itemlist">${rankLista}</div>
     </div>
 
     <div class="card">
@@ -1239,6 +1382,15 @@ function telaDashboard() {
 
   $("#pnDia").onchange = e => { painelDia = e.target.value; telaDashboard(); };
   $("#pnPeriodo").onchange = e => { painelPeriodo = parseInt(e.target.value, 10) || 7; telaDashboard(); };
+  $("#pnMetrica").onchange = e => { painelMetrica = e.target.value; telaDashboard(); };
+
+  // KPIs do "Geral do dia" abrem o detalhe (tocar de novo fecha)
+  $$("[data-kpi]").forEach(el => el.onclick = () => {
+    painelKpi = (painelKpi === el.dataset.kpi) ? null : el.dataset.kpi;
+    telaDashboard();
+  });
+  const btnFechar = $("#btnFecharKpi");
+  if (btnFechar) btnFechar.onclick = () => { painelKpi = null; telaDashboard(); };
 
   $("#btnCfg").onclick = () => {
     DB.setConfig({
@@ -1426,7 +1578,7 @@ function telaFicha() {
       <div class="itemlist">${f.abast.slice().reverse().slice(0, 15).map(a => {
         const und = a.unidadeMedia || "km/L";
         const extra = und === "L/h" ? `${a.horasTrabalhadas} h` : `${fmt(a.kmRodado)} km`;
-        return `<div class="itemrow"><div class="info"><b>${DB.fmtBR(a.iso)}</b>
+        return `<div class="itemrow"><div class="info"><b>${DB.fmtBR(a.iso)}</b>${a.motorista ? ` <span class="mini">👷 ${a.motorista}</span>` : ""}
           <div class="sub">${fmt(a.litros)} L ${a.combustivel || "S-10"} · ${extra} · ${a.media} ${und}${a.litrosArla ? " · ARLA " + fmt(a.litrosArla) + " L" : ""}</div></div></div>`;
       }).join("") || '<p class="empty">Nenhum.</p>'}</div>
     </div>

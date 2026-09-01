@@ -163,6 +163,11 @@ main { padding: 16px; max-width: 640px; margin: 0 auto; animation: fade .25s eas
 .pill-blue  { background: rgba(59,130,246,.15); color: #93c5fd; border: 1px solid rgba(59,130,246,.3); }
 .pill-gray  { background: rgba(148,162,196,.15); color: #c3cee3; border: 1px solid rgba(148,162,196,.3); }
 
+/* Cartão de KPI clicável (Geral do dia) */
+.kpi[data-kpi] { cursor: pointer; }
+.kpi[data-kpi]:active { transform: scale(.98); }
+.kpi.kpi-ativo { outline: 2px solid var(--orange, #ff7a1a); outline-offset: -2px; }
+
 /* ===== TABBAR ===== */
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
