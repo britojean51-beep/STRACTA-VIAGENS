@@ -1,7 +1,7 @@
 /* STRACTA · Service Worker
    Estratégia "rede primeiro, sem cache HTTP": quando há internet, sempre
    baixa a versão mais nova do servidor; offline usa a última cópia salva. */
-const CACHE = "stracta-v4";
+const CACHE = "stracta-v5";
 const ASSETS = [
   "./",
   "./index.html",

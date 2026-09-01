@@ -129,22 +129,26 @@ const DB = {
   resumoDia(iso) {
     const d = this.getDia(iso) || { abastecimentos: [], viagens: [], manutencoes: [] };
     const toN = v => { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; };
-    let diesel = 0, dieselS10 = 0, dieselS500 = 0, arla = 0, km = 0, viagens = 0, horas = 0;
+    let diesel = 0, dieselS10 = 0, dieselS500 = 0, arla = 0, km = 0, viagens = 0, horas = 0, toneladas = 0;
     const operando = new Set();
+    const operadores = new Set();
     d.abastecimentos.forEach(a => {
       const l = toN(a.litros);
       diesel += l;
       if (a.combustivel === "S-500") dieselS500 += l; else dieselS10 += l;
       arla += toN(a.litrosArla);
-      km += toN(a.kmRodado); horas += toN(a.horasTrabalhadas);
+      km += toN(a.kmRodado); horas += toN(a.horasTrabalhadas); toneladas += toN(a.toneladas);
       operando.add(a.equipamento);
+      if (a.motorista) operadores.add(a.motorista);
     });
-    d.viagens.forEach(v => { viagens += toN(v.quantidade); operando.add(v.equipamento); });
+    d.viagens.forEach(v => { viagens += toN(v.quantidade); operando.add(v.equipamento); if (v.motorista) operadores.add(v.motorista); });
     const manutencao = [...new Set(d.manutencoes.map(m => m.equipamento))];
     return {
-      diesel, dieselS10, dieselS500, arla, km, viagens, horas,
+      diesel, dieselS10, dieselS500, arla, km, viagens, horas, toneladas,
       media: diesel > 0 ? km / diesel : 0,
-      operando: [...operando], manutencao
+      lh: horas > 0 ? diesel / horas : 0,
+      lton: toneladas > 0 ? diesel / toneladas : 0,
+      operando: [...operando], operadores: [...operadores], manutencao
     };
   },
 

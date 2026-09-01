@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "31/08/2026 · r5 (planilha nuvem)";
+const VERSION = "01/09/2026 · r6 (painel/tendências)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -14,6 +14,9 @@ let editando = null;
 let relatorioDiaPre = null;
 /* Equipamento selecionado ao abrir a Ficha */
 let fichaEquip = null;
+/* Painel: dia selecionado (null = dia atual) e janela das tendências (dias) */
+let painelDia = null;
+let painelPeriodo = 7;
 
 /* ---------- Utilidades numéricas ---------- */
 const num = v => { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; };
@@ -933,7 +936,11 @@ function telaDashboard() {
   $("#headerTitle").textContent = "📊 Painel";
   $("#headerSub").textContent = "ALERTAS · GRÁFICOS · METAS";
   const db = DB.load();
-  const dia = DB.garantirDiaAtual();
+  const diaAtual = DB.garantirDiaAtual();
+  const listaDias = DB.listaDias();
+  // dia do "geral" (selecionável) e janela das tendências
+  const dia = (painelDia && listaDias.includes(painelDia)) ? painelDia : diaAtual;
+  const N = painelPeriodo;
   const r = DB.resumoDia(dia);
 
   // ---- alertas ----
@@ -942,11 +949,49 @@ function telaDashboard() {
     ? alertas.map(a => `<div class="alert-item alert-${a.nivel}"><span class="ai">${a.icone}</span><span>${a.msg}</span></div>`).join("")
     : '<p class="empty" style="padding:8px 0">✅ Nenhum alerta. Frota sob controle.</p>';
 
-  // ---- séries (últimos 7 dias) ----
-  const s = DB.serie(7);
-  const gDiesel = grafico(s.map(x => ({ label: DB.fmtBR(x.iso).slice(0, 5), valor: Math.round(x.diesel), rotulo: fmt(x.diesel) })), { tipo: "barra", cor: "#ff7a1a", titulo: "Diesel" });
-  const gMedia = grafico(s.map(x => ({ label: DB.fmtBR(x.iso).slice(0, 5), valor: x.media, rotulo: fmt(x.media, 2) })), { tipo: "linha", cor: "#22c55e", titulo: "Média km/L" });
-  const gViagens = grafico(s.map(x => ({ label: DB.fmtBR(x.iso).slice(0, 5), valor: x.viagens, rotulo: x.viagens })), { tipo: "barra", cor: "#3b82f6", titulo: "Viagens" });
+  // ---- séries (janela selecionada) ----
+  const lab = x => DB.fmtBR(x.iso).slice(0, 5);
+  const s = DB.serie(N);
+  const gDiesel = grafico(s.map(x => ({ label: lab(x), valor: Math.round(x.diesel), rotulo: fmt(x.diesel) })), { tipo: "barra", cor: "#ff7a1a", titulo: "Diesel" });
+  const gProd = grafico(s.map(x => ({ label: lab(x), valor: Math.round(x.toneladas), rotulo: fmt(x.toneladas) })), { tipo: "barra", cor: "#a855f7", titulo: "Produção" });
+  const gLton = grafico(s.map(x => ({ label: lab(x), valor: x.lton, rotulo: fmt(x.lton, 2) })), { tipo: "linha", cor: "#f59e0b", titulo: "L/Ton" });
+  const gLh = grafico(s.map(x => ({ label: lab(x), valor: x.lh, rotulo: fmt(x.lh, 2) })), { tipo: "linha", cor: "#ef4444", titulo: "L/h" });
+  const gMedia = grafico(s.map(x => ({ label: lab(x), valor: x.media, rotulo: fmt(x.media, 2) })), { tipo: "linha", cor: "#22c55e", titulo: "Média km/L" });
+  const gViagens = grafico(s.map(x => ({ label: lab(x), valor: x.viagens, rotulo: x.viagens })), { tipo: "barra", cor: "#3b82f6", titulo: "Viagens" });
+
+  // ---- comparativo: janela atual x janela anterior (mesmo tamanho) ----
+  const totaisPeriodo = lista => {
+    const t = lista.reduce((a, x) => {
+      a.diesel += x.diesel; a.horas += x.horas; a.toneladas += x.toneladas;
+      a.viagens += x.viagens; a.km += x.km; return a;
+    }, { diesel: 0, horas: 0, toneladas: 0, viagens: 0, km: 0 });
+    t.lh = t.horas > 0 ? t.diesel / t.horas : 0;
+    t.lton = t.toneladas > 0 ? t.diesel / t.toneladas : 0;
+    t.media = t.diesel > 0 ? t.km / t.diesel : 0;
+    return t;
+  };
+  const s2 = DB.serie(N * 2);
+  const atual = totaisPeriodo(s2.slice(-N));
+  const anterior = totaisPeriodo(s2.slice(0, Math.max(0, s2.length - N)));
+  const comparaHtml = [
+    ["⛽ Diesel", "diesel", " L", 0], ["⏱️ Horas", "horas", " h", 1],
+    ["🏭 Produção", "toneladas", " t", 1], ["🚚 Viagens", "viagens", "", 0],
+    ["📊 L/h", "lh", " L/h", 2], ["🏭 L/Ton", "lton", " L/t", 2]
+  ].map(([lbl, k, un, dec]) => {
+    const a = atual[k], b = anterior[k];
+    const menorMelhor = (k === "lh" || k === "lton");
+    let seta = "→", cor = "var(--muted)";
+    if (b > 0 && a !== b) {
+      const sobe = a > b;
+      const bom = menorMelhor ? !sobe : sobe;
+      seta = sobe ? "▲" : "▼";
+      cor = bom ? "var(--green)" : "var(--red)";
+    }
+    const varTxt = b > 0 ? ` ${seta} ${fmt(Math.abs((a - b) / b) * 100, 0)}%` : "";
+    return `<div class="kpi"><div class="k-label">${lbl}</div>
+      <div class="k-value">${fmt(a, dec)}<span class="k-unit">${un}</span></div>
+      <div class="mini" style="color:${cor}">antes ${fmt(b, dec)}${un}${varTxt}</div></div>`;
+  }).join("");
 
   // ---- status da frota ----
   const statusHtml = db.equipamentos.map(eq => {
@@ -962,16 +1007,27 @@ function telaDashboard() {
   }).join("");
 
   app.innerHTML = `
-    <p class="section-title">Dia ${DB.fmtBR(dia)}</p>
-    <div class="kpi-grid">
-      <div class="kpi"><div class="k-label">⛽ Diesel S10</div><div class="k-value">${fmt(r.diesel)}<span class="k-unit"> L</span></div></div>
-      <div class="kpi k-green"><div class="k-label">📈 Média Frota</div><div class="k-value">${fmt(r.media, 2)}<span class="k-unit"> km/L</span></div></div>
-      <div class="kpi k-blue"><div class="k-label">🚚 Total Viagens</div><div class="k-value">${r.viagens}</div></div>
-      <div class="kpi"><div class="k-label">🛣️ Total KM</div><div class="k-value">${fmt(r.km)}<span class="k-unit"> km</span></div></div>
-      <div class="kpi k-green"><div class="k-label">🟢 Operando</div><div class="k-value">${String(r.operando.length).padStart(2, "0")}</div></div>
-      <div class="kpi k-red"><div class="k-label">🔧 Manutenção</div><div class="k-value">${String(r.manutencao.length).padStart(2, "0")}</div></div>
-      <div class="kpi"><div class="k-label">💧 ARLA (dia)</div><div class="k-value">${fmt(r.arla)}<span class="k-unit"> L</span></div></div>
-      <div class="kpi k-blue"><div class="k-label">🚛 Frota Total</div><div class="k-value">${String(db.equipamentos.length).padStart(2, "0")}</div></div>
+    <div class="card">
+      <h3>📅 Geral do dia</h3>
+      <div class="field">
+        <label>Ver o dia</label>
+        <select id="pnDia">${listaDias.map(d => `<option value="${d}" ${d === dia ? "selected" : ""}>${DB.fmtBR(d)}${d === diaAtual ? " (hoje)" : ""}</option>`).join("")}</select>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi k-green"><div class="k-label">🚛 Equipamentos</div><div class="k-value">${String(r.operando.length).padStart(2, "0")}</div></div>
+        <div class="kpi k-blue"><div class="k-label">👷 Operadores</div><div class="k-value">${String(r.operadores.length).padStart(2, "0")}</div></div>
+        <div class="kpi"><div class="k-label">⛽ Consumo diesel</div><div class="k-value">${fmt(r.diesel)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi k-yellow"><div class="k-label">⏱️ Horas totais</div><div class="k-value">${fmt(r.horas, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi"><div class="k-label">📊 L/h</div><div class="k-value">${fmt(r.lh, 2)}<span class="k-unit"> L/h</span></div></div>
+        <div class="kpi k-blue"><div class="k-label">🏭 Produção</div><div class="k-value">${fmt(r.toneladas)}<span class="k-unit"> t</span></div></div>
+        <div class="kpi k-yellow"><div class="k-label">🏭 L/Ton</div><div class="k-value">${fmt(r.lton, 2)}<span class="k-unit"> L/t</span></div></div>
+        <div class="kpi k-green"><div class="k-label">📈 Média km/L</div><div class="k-value">${fmt(r.media, 2)}<span class="k-unit"> km/L</span></div></div>
+        <div class="kpi k-blue"><div class="k-label">🚚 Viagens</div><div class="k-value">${r.viagens}</div></div>
+        <div class="kpi"><div class="k-label">🛣️ KM rodado</div><div class="k-value">${fmt(r.km)}<span class="k-unit"> km</span></div></div>
+        <div class="kpi"><div class="k-label">💧 ARLA</div><div class="k-value">${fmt(r.arla)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi k-red"><div class="k-label">🔧 Manutenção</div><div class="k-value">${String(r.manutencao.length).padStart(2, "0")}</div></div>
+      </div>
+      <p class="hint" style="margin-top:8px">👷 Operadores do dia: ${r.operadores.length ? r.operadores.join(", ") : "—"}</p>
     </div>
 
     <p class="section-title" style="margin-top:16px">Estoques dos tanques</p>
@@ -988,10 +1044,27 @@ function telaDashboard() {
     </div>
 
     <div class="card">
-      <h3>📈 Tendências · últimos 7 dias</h3>
+      <h3>📈 Tendências</h3>
+      <div class="field">
+        <label>Período</label>
+        <select id="pnPeriodo">
+          <option value="2" ${N === 2 ? "selected" : ""}>Últimos 2 dias</option>
+          <option value="3" ${N === 3 ? "selected" : ""}>Últimos 3 dias</option>
+          <option value="7" ${N === 7 ? "selected" : ""}>Semana (7 dias)</option>
+        </select>
+      </div>
       <p class="chart-title">⛽ Diesel (L)</p>${gDiesel}
+      <p class="chart-title">🏭 Produção (t)</p>${gProd}
+      <p class="chart-title">🏭 L/Ton (litros por tonelada)</p>${gLton}
+      <p class="chart-title">📊 L/h (litros por hora)</p>${gLh}
       <p class="chart-title">📈 Média da frota (km/L)</p>${gMedia}
       <p class="chart-title">🚚 Viagens</p>${gViagens}
+    </div>
+
+    <div class="card">
+      <h3>🔀 Comparativo <span class="mini">janela atual × anterior</span></h3>
+      <p class="hint">Últimos ${N} dias comparados com os ${N} dias anteriores.</p>
+      <div class="kpi-grid">${comparaHtml}</div>
     </div>
 
     <div class="card">
@@ -1049,6 +1122,9 @@ function telaDashboard() {
   `;
 
   $$("[data-ficha]").forEach(el => el.onclick = () => abrirFicha(el.dataset.ficha));
+
+  $("#pnDia").onchange = e => { painelDia = e.target.value; telaDashboard(); };
+  $("#pnPeriodo").onchange = e => { painelPeriodo = parseInt(e.target.value, 10) || 7; telaDashboard(); };
 
   $("#btnCfg").onclick = () => {
     DB.setConfig({
