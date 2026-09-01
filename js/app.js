@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "02/09/2026 · r19 (planilha embutida)";
+const VERSION = "02/09/2026 · r20 (aba Configurações)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -111,7 +111,8 @@ const rotas = {
   frota:         telaFrota,
   ficha:         telaFicha,
   corrigir:      telaCorrigir,
-  usuarios:      telaUsuarios
+  usuarios:      telaUsuarios,
+  configuracoes: telaConfiguracoes
 };
 
 /* O operador só lança; o resto é do gestor. */
@@ -196,7 +197,11 @@ function telaHome() {
       ${(logado && Auth.ehGestor()) ? `<button class="menu-card" data-go="usuarios">
         <span class="ico">👥</span><span class="lbl">Usuários</span>
         <span class="desc">Quem pode entrar no app</span>
-      </button>` : ""}` : ""}
+      </button>` : ""}
+      <button class="menu-card" data-go="configuracoes">
+        <span class="ico">⚙️</span><span class="lbl">Configurações</span>
+        <span class="desc">Planilha na nuvem e integrações</span>
+      </button>` : ""}
     </div>
     <div class="spacer"></div>
     <p class="hint" style="text-align:center">STRACTA · Gestão de Frota · funciona no celular, tablet e computador</p>
@@ -226,6 +231,69 @@ function telaHome() {
   if (bs) bs.onclick = async () => {
     const ok = await confirmar("Sair da conta neste celular?\n\nOs lançamentos NÃO serão apagados, mas será preciso internet para entrar de novo.");
     if (ok) await Auth.sair();
+  };
+}
+
+/* ============================================================
+   CONFIGURAÇÕES (só gestor)
+   ============================================================ */
+function telaConfiguracoes() {
+  $("#headerTitle").textContent = "⚙️ Configurações";
+  $("#headerSub").textContent = "PLANILHA · INTEGRAÇÕES";
+  const db = DB.load();
+
+  app.innerHTML = `
+    <div class="card">
+      <h3>☁️ Planilha na nuvem <span id="syncBadge" class="pill pill-gray">desligada</span></h3>
+      <p class="hint">A planilha já vem conectada de fábrica — não precisa colar nada em cada celular. Só mexa aqui se for trocar de planilha.</p>
+      <div class="field">
+        <label>Link da planilha (termina em /exec)</label>
+        <input id="cfgSheets" placeholder="https://script.google.com/.../exec" value="${db.config.sheetsUrl || ""}">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" id="btnSheetsSalvar">💾 Salvar</button>
+        <button class="btn btn-ghost btn-sm" id="btnSheetsTestar">🔌 Testar conexão</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn btn-green" id="btnSheetsSync">🔄 Sincronizar tudo</button>
+      <p class="hint" id="sheetsMsg" style="margin-top:8px"></p>
+    </div>
+  `;
+
+  Sync._badge();
+  const msg = (t, cor) => { const m = $("#sheetsMsg"); if (m) { m.innerHTML = t; m.style.color = cor || "var(--muted)"; } };
+  $("#btnSheetsSalvar").onclick = () => {
+    DB.setConfig({ sheetsUrl: $("#cfgSheets").value.trim() });
+    Sync._badge();
+    toast("✔ Link salvo");
+    msg(Sync.ativo() ? "Link salvo. Toque em <b>Testar conexão</b>." : "Link vazio — sincronização desligada.");
+  };
+  $("#btnSheetsTestar").onclick = () => {
+    DB.setConfig({ sheetsUrl: $("#cfgSheets").value.trim() });
+    if (!Sync.ativo()) { msg("Cole o link primeiro.", "var(--red)"); return; }
+    msg("Conectando…");
+    Sync.testar(res => {
+      if (res && res.ok) {
+        const l = res.linhas || {};
+        msg(`✅ Conectado a <b>${res.planilha}</b>.<br>Linhas — lançamentos: ${l.lancamento || 0} · equip.: ${l.equipamento || 0} · manut.: ${l.manutencao || 0}`, "var(--green)");
+      } else {
+        msg("❌ " + ((res && res.erro) || "Falha na conexão."), "var(--red)");
+      }
+    });
+  };
+  $("#btnSheetsSync").onclick = () => {
+    DB.setConfig({ sheetsUrl: $("#cfgSheets").value.trim() });
+    if (!Sync.ativo()) { msg("Cole o link primeiro.", "var(--red)"); return; }
+    msg("Enviando toda a base… aguarde.");
+    Sync.syncAll(res => {
+      Sync._badge();
+      if (res && res.ok) {
+        const l = res.linhas || {};
+        msg(`✅ Sincronizado! Na planilha — lançamentos: ${l.lancamento || 0} · equip.: ${l.equipamento || 0} · manut.: ${l.manutencao || 0}`, "var(--green)");
+      } else {
+        msg("⚠️ " + ((res && res.erro) || "Não deu para confirmar. Veja se há internet."), "var(--red)");
+      }
+    });
   };
 }
 
@@ -1712,21 +1780,6 @@ function telaDashboard() {
       <button class="btn btn-ghost btn-sm" id="btnTqSet">Definir saldo</button>
     </div>
 
-    <div class="card">
-      <h3>☁️ Planilha na nuvem <span id="syncBadge" class="pill pill-gray">desligada</span></h3>
-      <p class="hint">A planilha já vem conectada de fábrica — não precisa colar nada em cada celular. Só mexa aqui se for trocar de planilha.</p>
-      <div class="field">
-        <label>Link da planilha (termina em /exec)</label>
-        <input id="cfgSheets" placeholder="https://script.google.com/.../exec" value="${db.config.sheetsUrl || ""}">
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-primary btn-sm" id="btnSheetsSalvar">💾 Salvar</button>
-        <button class="btn btn-ghost btn-sm" id="btnSheetsTestar">🔌 Testar conexão</button>
-      </div>
-      <div class="spacer"></div>
-      <button class="btn btn-green" id="btnSheetsSync">🔄 Sincronizar tudo</button>
-      <p class="hint" id="sheetsMsg" style="margin-top:8px"></p>
-    </div>
   `;
 
   $$("[data-ficha]").forEach(el => el.onclick = () => abrirFicha(el.dataset.ficha));
@@ -1769,42 +1822,6 @@ function telaDashboard() {
     DB.setEstoque($("#tqTipo").value, l); toast("✔ Saldo atualizado"); telaDashboard();
   };
 
-  // ---- Planilha na nuvem ----
-  Sync._badge();
-  const msg = (t, cor) => { const m = $("#sheetsMsg"); if (m) { m.innerHTML = t; m.style.color = cor || "var(--muted)"; } };
-  $("#btnSheetsSalvar").onclick = () => {
-    DB.setConfig({ sheetsUrl: $("#cfgSheets").value.trim() });
-    Sync._badge();
-    toast("✔ Link salvo");
-    msg(Sync.ativo() ? "Link salvo. Toque em <b>Testar conexão</b>." : "Link vazio — sincronização desligada.");
-  };
-  $("#btnSheetsTestar").onclick = () => {
-    DB.setConfig({ sheetsUrl: $("#cfgSheets").value.trim() });
-    if (!Sync.ativo()) { msg("Cole o link primeiro.", "var(--red)"); return; }
-    msg("Conectando…");
-    Sync.testar(res => {
-      if (res && res.ok) {
-        const l = res.linhas || {};
-        msg(`✅ Conectado a <b>${res.planilha}</b>.<br>Linhas — lançamentos: ${l.lancamento || 0} · equip.: ${l.equipamento || 0} · manut.: ${l.manutencao || 0}`, "var(--green)");
-      } else {
-        msg("❌ " + ((res && res.erro) || "Falha na conexão."), "var(--red)");
-      }
-    });
-  };
-  $("#btnSheetsSync").onclick = () => {
-    DB.setConfig({ sheetsUrl: $("#cfgSheets").value.trim() });
-    if (!Sync.ativo()) { msg("Cole o link primeiro.", "var(--red)"); return; }
-    msg("Enviando toda a base… aguarde.");
-    Sync.syncAll(res => {
-      Sync._badge();
-      if (res && res.ok) {
-        const l = res.linhas || {};
-        msg(`✅ Sincronizado! Na planilha — lançamentos: ${l.lancamento || 0} · equip.: ${l.equipamento || 0} · manut.: ${l.manutencao || 0}`, "var(--green)");
-      } else {
-        msg("⚠️ " + ((res && res.erro) || "Não deu para confirmar. Veja se há internet."), "var(--red)");
-      }
-    });
-  };
 }
 
 /* ============================================================
