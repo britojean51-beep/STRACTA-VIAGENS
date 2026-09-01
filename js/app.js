@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "01/09/2026 · r6 (painel/tendências)";
+const VERSION = "01/09/2026 · r7 (viagens/excel)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -556,6 +556,21 @@ function telaViagens() {
         <label>Quantidade de viagens</label>
         <input id="vQtd" inputmode="numeric" placeholder="10">
       </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Tipo de material</label>
+          <input id="vMat" list="materiais" placeholder="ex: Minério">
+          <datalist id="materiais">
+            <option>Minério</option><option>Estéril</option><option>Rejeito</option>
+            <option>Brita</option><option>Terra</option><option>Areia</option>
+          </datalist>
+        </div>
+        <div class="field">
+          <label>Peso por viagem (t) <span class="mini">opcional</span></label>
+          <input id="vPeso" inputmode="decimal" placeholder="ex: 30">
+        </div>
+      </div>
+      <p class="hint" id="vPesoTotal" style="display:none"></p>
       <button class="btn btn-blue" id="btnAdd">➕ ADICIONAR ROTA</button>
     </div>
 
@@ -579,13 +594,17 @@ function telaViagens() {
     if (!viagensBuffer.length) {
       box.innerHTML = '<p class="empty">Nenhuma rota adicionada.</p>';
     } else {
-      box.innerHTML = viagensBuffer.map((v, i) => `
+      box.innerHTML = viagensBuffer.map((v, i) => {
+        const pt = (Number(v.pesoViagem) || 0) * Number(v.quantidade);
+        const extra = [v.material || null, pt > 0 ? `${fmt(pt)} t` : null].filter(Boolean).join(" · ");
+        return `
         <div class="itemrow">
           <div class="info"><b>${v.equipamento}</b> · O${v.origem} → D${v.destino}
-            <div class="sub">${v.motorista} · ${v.quantidade} viagens</div>
+            <div class="sub">${v.motorista} · ${v.quantidade} viagens${extra ? " · " + extra : ""}</div>
           </div>
           <button class="del" data-i="${i}">✕</button>
-        </div>`).join("");
+        </div>`;
+      }).join("");
       $$("#bufferList .del").forEach(b => b.onclick = () => { viagensBuffer.splice(+b.dataset.i, 1); renderBuffer(); });
     }
     const soma = viagensBuffer.reduce((s, v) => s + Number(v.quantidade), 0);
@@ -600,12 +619,14 @@ function telaViagens() {
     // agrupa por equipamento
     const porEq = {};
     vs.forEach(v => { (porEq[v.equipamento] ||= []).push(v); });
-    let total = 0;
+    let total = 0, pesoTotalFrota = 0;
     // ranking: equipamentos ordenados por total de viagens
     const linhas = Object.entries(porEq).map(([eq, arr]) => {
       const sub = arr.reduce((s, v) => s + Number(v.quantidade), 0); total += sub;
+      const peso = arr.reduce((s, v) => s + (Number(v.pesoTotal) || 0), 0); pesoTotalFrota += peso;
+      const mats = [...new Set(arr.map(v => v.material).filter(Boolean))].join(", ");
       const rotas = arr.map(v => `O${v.origem}→D${v.destino}=${v.quantidade}`).join(" · ");
-      return { eq, sub, rotas };
+      return { eq, sub, peso, mats, rotas };
     }).sort((a, b) => b.sub - a.sub);
 
     const meta = DB.load().config.metaViagens || 0;
@@ -616,20 +637,33 @@ function telaViagens() {
       <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>` : "";
 
     box.innerHTML = linhas.map((l, i) =>
-      `<div class="itemrow"><div class="info">${i === 0 ? "🥇 " : ""}<b>${l.eq}</b> = ${l.sub} viagens
-        <div class="sub">${l.rotas}</div></div></div>`
-    ).join("") + `<div class="spacer"></div><p class="tag-total">Total frota: ${total} viagens</p>` + barra;
+      `<div class="itemrow"><div class="info">${i === 0 ? "🥇 " : ""}<b>${l.eq}</b> = ${l.sub} viagens${l.peso > 0 ? ` · ${fmt(l.peso)} t` : ""}
+        <div class="sub">${l.mats ? l.mats + " · " : ""}${l.rotas}</div></div></div>`
+    ).join("") + `<div class="spacer"></div><p class="tag-total">Total frota: ${total} viagens${pesoTotalFrota > 0 ? ` · ${fmt(pesoTotalFrota)} t` : ""}</p>` + barra;
   }
+
+  const previewPeso = () => {
+    const pt = num($("#vPeso").value) * num($("#vQtd").value);
+    const el = $("#vPesoTotal");
+    if (pt > 0) { el.style.display = "block"; el.innerHTML = `⚖️ Peso total desta rota: <b>${fmt(pt)} t</b>`; }
+    else el.style.display = "none";
+  };
+  $("#vQtd").oninput = previewPeso;
+  $("#vPeso").oninput = previewPeso;
 
   $("#btnAdd").onclick = () => {
     const orig = $("#vOrig").value.trim(), dest = $("#vDest").value.trim(), qtd = num($("#vQtd").value);
     if (!orig || !dest) { toast("Informe origem e destino", "err"); return; }
     if (!qtd) { toast("Informe a quantidade", "err"); return; }
+    const pesoViagem = num($("#vPeso").value);
     viagensBuffer.push({
       equipamento: $("#vEquip").value, motorista: $("#vMot").value,
-      origem: orig.padStart(2, "0"), destino: dest.padStart(2, "0"), quantidade: qtd
+      origem: orig.padStart(2, "0"), destino: dest.padStart(2, "0"), quantidade: qtd,
+      material: $("#vMat").value.trim(), pesoViagem: pesoViagem || null,
+      pesoTotal: pesoViagem ? pesoViagem * qtd : null
     });
-    $("#vOrig").value = ""; $("#vDest").value = ""; $("#vQtd").value = "";
+    $("#vOrig").value = ""; $("#vDest").value = ""; $("#vQtd").value = ""; $("#vPeso").value = "";
+    $("#vPesoTotal").style.display = "none";
     renderBuffer();
     toast("➕ Rota adicionada");
   };
@@ -798,8 +832,9 @@ function gerarRelatorioTexto(iso) {
   const viagPorEq = {};
   d.viagens.forEach(v => { (viagPorEq[v.equipamento] ||= []).push(v); });
 
-  let totalDiesel = 0, totalS10 = 0, totalS500 = 0, totalArla = 0, totalKm = 0, totalViagens = 0;
+  let totalDiesel = 0, totalS10 = 0, totalS500 = 0, totalArla = 0, totalKm = 0, totalViagens = 0, totalPeso = 0;
   const operando = new Set();
+  const vLine = v => `  O${v.origem} → D${v.destino} = ${v.quantidade}${v.material ? " · " + v.material : ""}${v.pesoTotal ? " · " + fmt(v.pesoTotal) + " t" : ""}\n`;
 
   d.abastecimentos.forEach(a => {
     operando.add(a.equipamento);
@@ -820,11 +855,11 @@ function gerarRelatorioTexto(iso) {
     if (a.situacao) txt += `Situação: ${a.situacao}\n`;
     const vs = viagPorEq[a.equipamento];
     if (vs && vs.length) {
-      let sub = 0;
+      let sub = 0, subP = 0;
       txt += `Viagens:\n`;
-      vs.forEach(v => { sub += Number(v.quantidade); txt += `  O${v.origem} → D${v.destino} = ${v.quantidade}\n`; });
-      txt += `Total: ${sub} viagens\n`;
-      totalViagens += sub;
+      vs.forEach(v => { sub += Number(v.quantidade); subP += Number(v.pesoTotal) || 0; txt += vLine(v); });
+      txt += `Total: ${sub} viagens${subP > 0 ? ` · ${fmt(subP)} t` : ""}\n`;
+      totalViagens += sub; totalPeso += subP;
     }
     txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
   });
@@ -833,11 +868,11 @@ function gerarRelatorioTexto(iso) {
   Object.entries(viagPorEq).forEach(([eq, vs]) => {
     if (operando.has(eq)) return;
     operando.add(eq);
-    let sub = 0;
+    let sub = 0, subP = 0;
     txt += `🚛 ${eq}\nViagens:\n`;
-    vs.forEach(v => { sub += Number(v.quantidade); txt += `  O${v.origem} → D${v.destino} = ${v.quantidade}\n`; });
-    txt += `Total: ${sub} viagens\n\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-    totalViagens += sub;
+    vs.forEach(v => { sub += Number(v.quantidade); subP += Number(v.pesoTotal) || 0; txt += vLine(v); });
+    txt += `Total: ${sub} viagens${subP > 0 ? ` · ${fmt(subP)} t` : ""}\n\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+    totalViagens += sub; totalPeso += subP;
   });
 
   // manutenções
@@ -856,6 +891,7 @@ function gerarRelatorioTexto(iso) {
   txt += `Total KM: ${fmt(totalKm)} km\n`;
   txt += `Média Frota: ${fmt(mediaFrota, 2)} km/L\n`;
   txt += `Total Viagens: ${totalViagens}\n`;
+  if (totalPeso > 0) txt += `Peso Transportado: ${fmt(totalPeso)} t\n`;
   txt += `Equipamentos Operando: ${String(operando.size).padStart(2, "0")}\n`;
   txt += `Equipamentos Manutenção: ${String(emManut.size).padStart(2, "0")}\n`;
   return txt;
@@ -881,6 +917,8 @@ function telaRelatorio() {
         <button class="btn btn-blue btn-sm" id="btnCopiar">📋 Copiar</button>
         <button class="btn btn-primary btn-sm" id="btnPdf">📄 PDF</button>
       </div>
+      <div class="spacer"></div>
+      <button class="btn btn-green" id="btnExcel">📊 Enviar planilha (Excel)</button>
     </div>
     <div class="report"><pre id="rTexto"></pre></div>
   `;
@@ -898,7 +936,62 @@ function telaRelatorio() {
     window.open(url, "_blank");
   };
   $("#btnPdf").onclick = () => gerarPDF($("#rDia").value);
+  $("#btnExcel").onclick = () => exportarExcel($("#rDia").value);
   render();
+}
+
+/* Monta o CSV do dia (abre no Excel e no Google Sheets).
+   Separador ; e decimais com vírgula (padrão pt-BR). */
+function montarCSV(iso) {
+  const d = DB.getDia(iso) || { abastecimentos: [], viagens: [], manutencoes: [] };
+  const esc = v => { const s = String(v == null ? "" : v); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const linha = arr => arr.map(esc).join(";");
+  const L = [];
+  L.push(linha([`STRACTA · Relatório ${DB.fmtBR(iso)}`]));
+  L.push("");
+  // Abastecimentos / Lançamentos
+  L.push(linha(["ABASTECIMENTOS / OPERAÇÃO"]));
+  L.push(linha(["Equipamento", "Operador", "Horím. Ini", "Horím. Fim", "Horas", "Litros", "Combustível", "ARLA (L)", "KM", "Média", "Unid.", "Toneladas", "L/Ton", "Situação"]));
+  d.abastecimentos.forEach(a => L.push(linha([
+    a.equipamento, a.motorista, a.horimetroInicial, a.horimetroFinal, a.horasTrabalhadas,
+    fmt(a.litros), a.combustivel || "S-10", a.litrosArla || "", a.kmRodado || "",
+    a.media, a.unidadeMedia || "km/L", a.toneladas ?? "", a.lton || "", a.situacao || ""
+  ])));
+  L.push("");
+  // Viagens
+  L.push(linha(["VIAGENS"]));
+  L.push(linha(["Equipamento", "Operador", "Origem", "Destino", "Qtd viagens", "Material", "Peso/viagem (t)", "Peso total (t)"]));
+  d.viagens.forEach(v => L.push(linha([
+    v.equipamento, v.motorista || "", v.origem, v.destino, v.quantidade,
+    v.material || "", v.pesoViagem != null ? fmt(v.pesoViagem) : "", v.pesoTotal != null ? fmt(v.pesoTotal) : ""
+  ])));
+  L.push("");
+  // Manutenções
+  L.push(linha(["MANUTENÇÕES"]));
+  L.push(linha(["Equipamento", "Tipo", "Serviço", "Horímetro/KM", "Observação"]));
+  d.manutencoes.forEach(m => L.push(linha([m.equipamento, m.tipo, m.servico || "", m.horKm || "", m.observacoes || ""])));
+  return L.join("\n");
+}
+
+/* Gera a planilha e oferece compartilhar (WhatsApp, e-mail, Drive) ou baixar. */
+function exportarExcel(iso) {
+  const csv = "﻿" + montarCSV(iso);
+  const nome = `STRACTA_${iso}.csv`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  try {
+    const file = new File([blob], nome, { type: "text/csv" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: "Relatório STRACTA " + DB.fmtBR(iso) })
+        .then(() => toast("📊 Planilha enviada"))
+        .catch(() => {/* usuário cancelou */});
+      return;
+    }
+  } catch (e) { /* segue para download */ }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = nome; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1200);
+  toast("📊 Planilha baixada");
 }
 
 /* Gera PDF via impressão do navegador (Imprimir → Salvar como PDF).
