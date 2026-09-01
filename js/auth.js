@@ -80,14 +80,20 @@ const Auth = {
         firebase.auth().onAuthStateChanged(async user => {
           clearTimeout(timer);
           if (!user) { this.usuario = null; return responder({ modo: "login" }); }
-          const dados = await this._buscarUsuario(user.email);
-          if (!dados) {
-            await this.sair(true);
-            return responder({ modo: "login", erro: "Acesso não liberado. Fale com o gestor." });
+          const r = await this._buscarUsuario(user.email);
+          if (r.status === "ok") {
+            this.usuario = r.dados;
+            this._salvarSessao(r.dados);
+            return responder({ modo: "ok" });
           }
-          this.usuario = dados;
-          this._salvarSessao(dados);
-          responder({ modo: "ok" });
+          if (r.status === "erro-rede") {
+            // não deu para conferir: segue com a sessão salva, sem derrubar ninguém
+            const s = this._lerSessao();
+            if (s) { this.usuario = s; this._offline = true; return responder({ modo: "offline" }); }
+            return responder({ modo: "login", erro: "Não deu para confirmar seu acesso. Tente de novo com internet." });
+          }
+          await this.sair(true);
+          responder({ modo: "login", erro: "Acesso não liberado. Fale com o gestor." });
         });
       } catch (e) { clearTimeout(timer); responder({ modo: "login" }); }
     });
@@ -98,17 +104,18 @@ const Auth = {
     const id = String(email || "").trim().toLowerCase();
     try {
       const doc = await firebase.firestore().collection("usuarios").doc(id).get();
-      if (!doc.exists) return null;
+      if (!doc.exists) return { status: "nao-liberado" };
       const d = doc.data() || {};
-      if (d.ativo === false) return null;
-      return {
+      if (d.ativo === false) return { status: "nao-liberado" };
+      return { status: "ok", dados: {
         email: id,
         usuario: usuarioDe(id),
         nome: d.nome || usuarioDe(id),
         perfil: d.perfil === "gestor" ? "gestor" : "operador"
-      };
+      } };
     } catch (e) {
-      return null;
+      // sinal ruim/servidor fora: NÃO é o mesmo que "sem permissão"
+      return { status: "erro-rede" };
     }
   },
 
@@ -118,10 +125,15 @@ const Auth = {
     if (!id) return { ok: false, erro: "Informe seu usuário." };
     try {
       const cred = await firebase.auth().signInWithEmailAndPassword(id, senha);
-      const dados = await this._buscarUsuario(cred.user.email);
-      if (!dados) { await this.sair(true); return { ok: false, erro: "Acesso não liberado. Fale com o gestor." }; }
-      this.usuario = dados; this._salvarSessao(dados);
-      return { ok: true };
+      const r = await this._buscarUsuario(cred.user.email);
+      if (r.status === "ok") { this.usuario = r.dados; this._salvarSessao(r.dados); return { ok: true }; }
+      if (r.status === "erro-rede") {
+        const s = this._lerSessao();
+        if (s && s.email === id) { this.usuario = s; this._offline = true; return { ok: true }; }
+        return { ok: false, erro: "Não deu para confirmar seu acesso. Tente de novo com internet." };
+      }
+      await this.sair(true);
+      return { ok: false, erro: "Acesso não liberado. Fale com o gestor." };
     } catch (e) {
       return { ok: false, erro: this._msgErro(e) };
     }

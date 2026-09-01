@@ -74,8 +74,23 @@ libera as outras pessoas direto pelo app, em **Início → Usuários**.
 e-mail de verdade): Firebase → **Authentication → Users** → os três pontinhos **⋮**
 na linha da pessoa → **Redefinir senha** (ou apague e crie de novo com a senha nova).
 
-**Sem internet no campo:** quem já entrou uma vez continua usando normalmente
-(o app guarda o acesso no aparelho). O primeiro login de cada pessoa precisa de internet.
+## Quando o app precisa de internet?
+
+| Situação | Precisa de internet? |
+|---|---|
+| **Primeiro login** de cada pessoa em cada celular | **Sim**, uma única vez |
+| Usar o app no dia a dia (lançar, ver relatório) | Não |
+| **Celular desligou / reiniciou** | **Não** — a sessão fica gravada no aparelho |
+| Celular reiniciou com **sinal fraco** | Não — o app entra com o acesso salvo |
+| Depois de tocar em **"Sair"** | Sim — sair apaga o acesso salvo de propósito |
+| Depois de **limpar os dados** do app | Sim |
+
+> ⚠️ **Cuidado com "Limpar dados/armazenamento"** nas configurações do celular:
+> isso apaga o acesso salvo **e também os lançamentos que ainda não subiram**
+> para a planilha. "Limpar **cache**" é seguro; "limpar **dados**" não é.
+
+**Dica:** oriente a equipe a **não tocar em "Sair"** no fim do turno. É só fechar
+o app. O "Sair" serve para quando o celular vai passar para outra pessoa.
 
 **Segurança:** a configuração do Passo 4 é pública por natureza — todo site que
 usa Firebase mostra esses dados. Quem protege de verdade são a **senha de cada um**
