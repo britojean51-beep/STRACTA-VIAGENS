@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "02/09/2026 · r17 (login ativo)";
+const VERSION = "02/09/2026 · r18 (login ligado)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -2064,7 +2064,7 @@ function mostrarLogin(aviso) {
     <div class="login-box">
       <div class="login-logo">🚛</div>
       <h2>GP2T · Gestão de Frota</h2>
-      <p class="hint">Entre com seu e-mail e senha para continuar.</p>
+      <p class="hint">Entre com seu usuário e senha para continuar.</p>
       ${aviso ? `<p class="hint" style="color:var(--red)">${aviso}</p>` : ""}
       <div class="field"><label>Usuário</label><input id="loginEmail" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="ex: saulo"></div>
       <div class="field"><label>Senha</label><input id="loginSenha" type="password" autocomplete="current-password" placeholder="••••••"></div>
