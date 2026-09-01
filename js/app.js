@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "02/09/2026 · r13 (login GP2T)";
+const VERSION = "02/09/2026 · r14 (login por usuário)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -155,7 +155,7 @@ function telaHome() {
   app.innerHTML = `
     ${logado ? `<div class="card user-card">
       <div><b>👤 ${logado.nome}</b> <span class="pill ${logado.perfil === "gestor" ? "pill-green" : "pill-blue"}">${logado.perfil === "gestor" ? "Gestor" : "Operador"}</span>
-      <div class="sub">${logado.email}</div></div>
+      <div class="sub">usuário: ${logado.usuario || logado.email}</div></div>
       <button class="btn btn-ghost btn-sm" id="btnSair">Sair</button>
     </div><div class="spacer"></div>` : ""}
     <div class="menu-grid">
@@ -216,8 +216,8 @@ async function telaUsuarios() {
   app.innerHTML = `
     <div class="card">
       <h3>➕ Liberar acesso</h3>
-      <p class="hint">Primeiro crie a senha da pessoa no Firebase (Authentication → Users). Depois libere o e-mail aqui.</p>
-      <div class="field"><label>E-mail</label><input id="uEmail" placeholder="pessoa@email.com" autocomplete="off"></div>
+      <p class="hint">Primeiro crie a pessoa no Firebase (Authentication → Users) como <b>nome@gp2t.local</b>. Depois libere o usuário aqui.</p>
+      <div class="field"><label>Usuário (sem e-mail)</label><input id="uEmail" placeholder="ex: saulo" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
       <div class="field"><label>Nome</label><input id="uNome" placeholder="Nome da pessoa"></div>
       <div class="field"><label>Perfil</label>
         <select id="uPerfil">
@@ -238,12 +238,12 @@ async function telaUsuarios() {
     const box = $("#uLista");
     if (!lista.length) { box.innerHTML = '<p class="empty">Ninguém liberado ainda.</p>'; return; }
     box.innerHTML = lista.map(u => `
-      <div class="itemrow"><div class="info"><b>${u.nome || u.email}</b>
+      <div class="itemrow"><div class="info"><b>${u.nome || u.usuario}</b>
         <span class="pill ${u.perfil === "gestor" ? "pill-green" : "pill-blue"}">${u.perfil === "gestor" ? "Gestor" : "Operador"}</span>
         ${u.ativo === false ? '<span class="pill pill-red">Bloqueado</span>' : ""}
-        <div class="sub">${u.email}</div></div>
-        <button class="btn btn-ghost btn-sm" data-troca="${u.email}" data-perfil="${u.perfil}">Trocar perfil</button>
-        <button class="del" data-bloq="${u.email}" data-ativo="${u.ativo === false ? "0" : "1"}">${u.ativo === false ? "✓" : "✕"}</button>
+        <div class="sub">usuário: ${u.usuario}</div></div>
+        <button class="btn btn-ghost btn-sm" data-troca="${u.usuario}" data-perfil="${u.perfil}">Trocar perfil</button>
+        <button class="del" data-bloq="${u.usuario}" data-ativo="${u.ativo === false ? "0" : "1"}">${u.ativo === false ? "✓" : "✕"}</button>
       </div>`).join("");
 
     $$("[data-troca]").forEach(b => b.onclick = async () => {
@@ -261,12 +261,13 @@ async function telaUsuarios() {
   }
 
   $("#btnAddUser").onclick = async () => {
-    const email = $("#uEmail").value.trim().toLowerCase();
+    const entrada = $("#uEmail").value.trim();
     const nome = $("#uNome").value.trim();
-    if (!email.includes("@")) { toast("Informe um e-mail válido", "err"); return; }
-    const r = await Auth.salvarUsuario(email, { nome: nome || email.split("@")[0], perfil: $("#uPerfil").value, ativo: true });
+    const id = emailDe(entrada);
+    if (!id) { toast("Informe o nome de usuário", "err"); return; }
+    const r = await Auth.salvarUsuario(entrada, { nome: nome || usuarioDe(id), perfil: $("#uPerfil").value, ativo: true });
     if (!r.ok) { toast(r.erro, "err"); return; }
-    toast("✔ Acesso liberado");
+    toast(`✔ ${usuarioDe(id)} liberado`);
     $("#uEmail").value = ""; $("#uNome").value = "";
     render();
   };
@@ -2042,30 +2043,23 @@ function mostrarLogin(aviso) {
       <h2>GP2T · Gestão de Frota</h2>
       <p class="hint">Entre com seu e-mail e senha para continuar.</p>
       ${aviso ? `<p class="hint" style="color:var(--red)">${aviso}</p>` : ""}
-      <div class="field"><label>E-mail</label><input id="loginEmail" type="email" autocomplete="username" placeholder="seu@email.com"></div>
+      <div class="field"><label>Usuário</label><input id="loginEmail" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="ex: saulo"></div>
       <div class="field"><label>Senha</label><input id="loginSenha" type="password" autocomplete="current-password" placeholder="••••••"></div>
       <button class="btn btn-primary" id="btnEntrar">Entrar</button>
-      <div class="spacer"></div>
-      <button class="btn btn-ghost btn-sm" id="btnEsqueci">Esqueci minha senha</button>
       <p class="hint" id="loginMsg" style="margin-top:10px"></p>
+      <p class="hint">Esqueceu a senha? Peça ao gestor para redefinir.</p>
     </div>`;
 
   const msg = (t, cor) => { const m = $("#loginMsg"); m.innerHTML = t; m.style.color = cor || "var(--muted)"; };
 
   $("#btnEntrar").onclick = async () => {
     const email = $("#loginEmail").value.trim(), senha = $("#loginSenha").value;
-    if (!email || !senha) { msg("Preencha e-mail e senha.", "var(--red)"); return; }
+    if (!email || !senha) { msg("Preencha usuário e senha.", "var(--red)"); return; }
     msg("Entrando…");
     const r = await Auth.entrar(email, senha);
     if (r.ok) iniciarApp(); else msg("❌ " + r.erro, "var(--red)");
   };
   $("#loginSenha").onkeydown = e => { if (e.key === "Enter") $("#btnEntrar").click(); };
-  $("#btnEsqueci").onclick = async () => {
-    const email = $("#loginEmail").value.trim();
-    if (!email) { msg("Digite seu e-mail primeiro.", "var(--red)"); return; }
-    const r = await Auth.recuperarSenha(email);
-    msg(r.ok ? "✔ Enviamos um e-mail para redefinir sua senha." : "❌ " + r.erro, r.ok ? "var(--green)" : "var(--red)");
-  };
 }
 
 /* ============================================================

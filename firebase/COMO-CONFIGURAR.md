@@ -41,12 +41,17 @@ const firebaseConfig = {
 5. **Copie esse bloco inteiro e me mande** — eu coloco no app.
 
 ## Passo 5 — Criar o seu usuário
-1. Volte em **Authentication → Users → Adicionar usuário**.
-2. Coloque **seu e-mail** e uma **senha** (mínimo 6 caracteres) → Adicionar.
-3. Me avise qual e-mail você usou: eu já deixo ele liberado como **Gestor**.
+> 💡 **Ninguém precisa ter e-mail.** O Firebase só exige um identificador em
+> formato de e-mail — usamos um endereço **interno**, que não existe de verdade:
+> `nome@gp2t.local`. Na tela de login a pessoa digita **só o nome**.
 
-Pronto! Depois disso o app pede login, e você libera as outras pessoas
-direto pelo app, em **Início → Usuários**.
+1. Volte em **Authentication → Users → Adicionar usuário**.
+2. No campo de e-mail digite **`jean@gp2t.local`** (troque "jean" pelo nome que
+   você quiser usar) e crie uma **senha** (mínimo 6 caracteres) → Adicionar.
+3. Me avise qual nome você usou: eu já deixo você liberado como **Gestor**.
+
+Pronto! Depois disso o app pede login (você digita só **jean** + senha), e você
+libera as outras pessoas direto pelo app, em **Início → Usuários**.
 
 ---
 
@@ -56,12 +61,18 @@ direto pelo app, em **Início → Usuários**.
 - 🧑‍💼 **Gestor** — acesso total (Painel, Relatórios, Frota, Manutenção, Usuários).
 - 👷 **Operador** — só **Abastecimento** e **Viagens** (lançar no dia a dia).
 
-**Para liberar alguém novo:**
-1. Firebase → **Authentication → Users → Adicionar usuário** (e-mail + senha).
-2. No app → **Início → Usuários** → digite o mesmo e-mail, escolha o perfil → **Liberar acesso**.
-3. Entregue o e-mail e a senha para a pessoa.
+**Para liberar alguém novo (ex.: o Saulo):**
+1. Firebase → **Authentication → Users → Adicionar usuário** →
+   e-mail: **`saulo@gp2t.local`** + uma senha.
+2. No app → **Início → Usuários** → digite só **`saulo`**, escolha o perfil →
+   **Liberar acesso**.
+3. Entregue para a pessoa apenas: **usuário `saulo`** e a **senha**.
 
 **Para bloquear alguém:** app → **Usuários** → botão **✕** na linha da pessoa.
+
+**Para trocar a senha de alguém** (não existe "esqueci minha senha", porque não há
+e-mail de verdade): Firebase → **Authentication → Users** → os três pontinhos **⋮**
+na linha da pessoa → **Redefinir senha** (ou apague e crie de novo com a senha nova).
 
 **Sem internet no campo:** quem já entrou uma vez continua usando normalmente
 (o app guarda o acesso no aparelho). O primeiro login de cada pessoa precisa de internet.

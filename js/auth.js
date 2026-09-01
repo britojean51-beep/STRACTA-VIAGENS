@@ -8,6 +8,30 @@
      offline, no campo, sem sinal.
    ============================================================ */
 const SESSAO_KEY = "gp2t_sessao";
+/* O Firebase exige um identificador em formato de e-mail, mas ele não precisa
+   existir de verdade. Usamos um domínio interno: quem entra digita só "saulo"
+   e o app completa para "saulo@gp2t.local". Ninguém precisa ter e-mail. */
+const DOMINIO_INTERNO = "gp2t.local";
+
+/* "José Silva" -> "jose.silva" (sem acento, sem espaço, só o que o e-mail aceita) */
+function normalizarUsuario(v) {
+  return String(v || "").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, ".")
+    .replace(/[^a-z0-9._-]/g, "");
+}
+/* Nome curto -> identificador completo. Se já vier com @, respeita. */
+function emailDe(v) {
+  const t = String(v || "").trim().toLowerCase();
+  if (t.includes("@")) return t;
+  const u = normalizarUsuario(t);
+  return u ? u + "@" + DOMINIO_INTERNO : "";
+}
+/* Identificador completo -> nome curto, para mostrar na tela */
+function usuarioDe(email) {
+  const t = String(email || "");
+  return t.endsWith("@" + DOMINIO_INTERNO) ? t.split("@")[0] : t;
+}
 
 const Auth = {
   usuario: null,        // { email, nome, perfil }
@@ -77,16 +101,23 @@ const Auth = {
       if (!doc.exists) return null;
       const d = doc.data() || {};
       if (d.ativo === false) return null;
-      return { email: id, nome: d.nome || id.split("@")[0], perfil: d.perfil === "gestor" ? "gestor" : "operador" };
+      return {
+        email: id,
+        usuario: usuarioDe(id),
+        nome: d.nome || usuarioDe(id),
+        perfil: d.perfil === "gestor" ? "gestor" : "operador"
+      };
     } catch (e) {
       return null;
     }
   },
 
-  async entrar(email, senha) {
+  async entrar(usuario, senha) {
     if (!this.sdkDisponivel()) return { ok: false, erro: "Sem internet. Conecte-se para entrar pela primeira vez." };
+    const id = emailDe(usuario);
+    if (!id) return { ok: false, erro: "Informe seu usuário." };
     try {
-      const cred = await firebase.auth().signInWithEmailAndPassword(String(email).trim(), senha);
+      const cred = await firebase.auth().signInWithEmailAndPassword(id, senha);
       const dados = await this._buscarUsuario(cred.user.email);
       if (!dados) { await this.sair(true); return { ok: false, erro: "Acesso não liberado. Fale com o gestor." }; }
       this.usuario = dados; this._salvarSessao(dados);
@@ -96,10 +127,15 @@ const Auth = {
     }
   },
 
-  async recuperarSenha(email) {
+  /* Só faz sentido para e-mail de verdade; com usuário interno, quem redefine é o gestor. */
+  async recuperarSenha(usuario) {
+    const id = emailDe(usuario);
+    if (id.endsWith("@" + DOMINIO_INTERNO)) {
+      return { ok: false, erro: "Peça ao gestor para redefinir sua senha." };
+    }
     if (!this.sdkDisponivel()) return { ok: false, erro: "Sem internet no momento." };
     try {
-      await firebase.auth().sendPasswordResetEmail(String(email).trim());
+      await firebase.auth().sendPasswordResetEmail(id);
       return { ok: true };
     } catch (e) { return { ok: false, erro: this._msgErro(e) }; }
   },
@@ -125,25 +161,29 @@ const Auth = {
     if (!this.sdkDisponivel()) return [];
     try {
       const snap = await firebase.firestore().collection("usuarios").get();
-      return snap.docs.map(d => Object.assign({ email: d.id }, d.data()));
+      return snap.docs.map(d => Object.assign({ email: d.id, usuario: usuarioDe(d.id) }, d.data()));
     } catch (e) { return []; }
   },
-  async salvarUsuario(email, dados) {
+  async salvarUsuario(usuario, dados) {
     if (!this.sdkDisponivel()) return { ok: false, erro: "Sem internet no momento." };
-    const id = String(email).trim().toLowerCase();
-    if (!id.includes("@")) return { ok: false, erro: "Informe um e-mail válido." };
+    const id = emailDe(usuario);
+    if (!id) return { ok: false, erro: "Informe o nome de usuário." };
     try {
       await firebase.firestore().collection("usuarios").doc(id).set(dados, { merge: true });
       return { ok: true };
     } catch (e) { return { ok: false, erro: "Não foi possível salvar (confira as regras do Firestore)." }; }
   },
-  async removerUsuario(email) {
+  async removerUsuario(usuario) {
     if (!this.sdkDisponivel()) return { ok: false, erro: "Sem internet no momento." };
     try {
-      await firebase.firestore().collection("usuarios").doc(String(email).toLowerCase()).delete();
+      await firebase.firestore().collection("usuarios").doc(emailDe(usuario)).delete();
       return { ok: true };
     } catch (e) { return { ok: false, erro: "Não foi possível remover." }; }
   }
 };
 
-if (typeof window !== "undefined") window.Auth = Auth;
+if (typeof window !== "undefined") {
+  window.Auth = Auth;
+  window.emailDe = emailDe;
+  window.usuarioDe = usuarioDe;
+}
