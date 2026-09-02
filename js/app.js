@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "02/09/2026 · r22 (Resumo por Mês na planilha)";
+const VERSION = "02/09/2026 · r23 (backup dos dados)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -258,6 +258,19 @@ function telaConfiguracoes() {
       <button class="btn btn-green" id="btnSheetsSync">🔄 Sincronizar tudo</button>
       <p class="hint" id="sheetsMsg" style="margin-top:8px"></p>
     </div>
+
+    <div class="card">
+      <h3>💾 Backup dos dados</h3>
+      <p class="hint">Os lançamentos ficam guardados <b>neste celular</b>. Faça um backup antes de trocar
+      de aparelho ou de endereço do app, e guarde o arquivo no Drive ou no WhatsApp.</p>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" id="btnBackup">⬇️ Fazer backup</button>
+        <button class="btn btn-ghost btn-sm" id="btnRestaurar">⬆️ Restaurar backup</button>
+      </div>
+      <input type="file" id="arqBackup" accept="application/json,.json" style="display:none">
+      <p class="hint" id="backupMsg" style="margin-top:8px"></p>
+      <p class="hint" style="margin-top:10px">Endereço deste app: <b>${location.host || "arquivo local"}</b></p>
+    </div>
   `;
 
   Sync._badge();
@@ -294,6 +307,18 @@ function telaConfiguracoes() {
         msg("⚠️ " + ((res && res.erro) || "Não deu para confirmar. Veja se há internet."), "var(--red)");
       }
     });
+  };
+
+  const msgB = (t, cor) => { const m = $("#backupMsg"); if (m) { m.innerHTML = t; m.style.color = cor || "var(--muted)"; } };
+  $("#btnBackup").onclick = () => {
+    exportarBackup();
+    msgB("Guarde o arquivo em lugar seguro (Drive, WhatsApp). Ele tem todos os lançamentos deste celular.");
+  };
+  $("#btnRestaurar").onclick = () => $("#arqBackup").click();
+  $("#arqBackup").onchange = e => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (f) restaurarBackup(f, msgB);
   };
 }
 
@@ -1307,6 +1332,55 @@ function montarCSV(dias, titulo) {
     (d.manutencoes || []).forEach(m => L.push(linha([DB.fmtBR(iso), m.equipamento, m.tipo, m.servico || "", m.horKm || "", m.observacoes || ""])));
   });
   return L.join("\n");
+}
+
+/* Backup: guarda TODA a base deste celular num arquivo .json.
+   Oferece compartilhar (WhatsApp, Drive, e-mail) e, se não der, baixa. */
+function exportarBackup() {
+  const nome = `GP2T-backup-${DB.hojeISO()}.json`;
+  const texto = JSON.stringify(DB.load(), null, 1);
+  const blob = new Blob([texto], { type: "application/json;charset=utf-8;" });
+  try {
+    const file = new File([blob], nome, { type: "application/json" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: "Backup GP2T " + DB.fmtBR(DB.hojeISO()) })
+        .then(() => toast("💾 Backup enviado"))
+        .catch(() => {/* usuário cancelou */});
+      return;
+    }
+  } catch (e) { /* segue para download */ }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = nome; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1200);
+  toast("💾 Backup baixado");
+}
+
+/* Restaura um arquivo de backup por cima dos dados deste celular.
+   Confere o arquivo e mostra o que veio ANTES de substituir qualquer coisa. */
+async function restaurarBackup(file, msg) {
+  let dados = null;
+  try { dados = JSON.parse(await file.text()); } catch (e) { dados = null; }
+  const valido = dados && typeof dados === "object" && dados.dias && typeof dados.dias === "object"
+    && Array.isArray(dados.equipamentos);
+  if (!valido) {
+    toast("Arquivo de backup inválido", "err");
+    msg && msg("❌ Esse arquivo não é um backup do GP2T. <b>Nada foi alterado.</b>", "var(--red)");
+    return;
+  }
+  const dias = Object.keys(dados.dias);
+  const lanc = dias.reduce((s, iso) => {
+    const d = dados.dias[iso] || {};
+    return s + (d.abastecimentos || []).length + (d.viagens || []).length + (d.manutencoes || []).length;
+  }, 0);
+  const ok = await confirmar(
+    `Restaurar ${dias.length} dia(s), ${lanc} lançamento(s) e ${dados.equipamentos.length} equipamento(s)? ` +
+    `O que estiver neste celular agora será substituído.`);
+  if (!ok) { msg && msg("Restauração cancelada. Nada foi alterado."); return; }
+  DB.restaurar(dados);
+  toast("✔ Backup restaurado");
+  msg && msg("✅ Restaurado. Recarregando o app…", "var(--green)");
+  setTimeout(() => location.reload(), 700);
 }
 
 /* Gera a planilha e oferece compartilhar (WhatsApp, e-mail, Drive) ou baixar. */

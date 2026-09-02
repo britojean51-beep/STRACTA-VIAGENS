@@ -180,6 +180,17 @@ const DB = {
     };
   },
 
+  /* Substitui toda a base por um backup (Configurações → Restaurar backup).
+     Passa pelo padrão para um backup antigo ganhar os campos novos. */
+  restaurar(dados) {
+    const base = this._default();
+    const novo = Object.assign(base, dados);
+    novo.config = Object.assign(base.config, dados.config || {});
+    localStorage.setItem(DB_KEY, JSON.stringify(novo));
+    this._cache = null;
+    return this.load();
+  },
+
   /* Soma vários dias num resumo só (Resumo por Mês da planilha).
      As médias são recalculadas pelos totais — nunca média de médias. */
   resumoPeriodo(dias) {
