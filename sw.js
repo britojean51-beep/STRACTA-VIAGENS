@@ -1,7 +1,7 @@
 /* STRACTA · Service Worker
    Estratégia "rede primeiro, sem cache HTTP": quando há internet, sempre
    baixa a versão mais nova do servidor; offline usa a última cópia salva. */
-const CACHE = "gp2t-v22";
+const CACHE = "gp2t-v23";
 const ASSETS = [
   "./",
   "./index.html",
@@ -9,6 +9,7 @@ const ASSETS = [
   "./js/firebase-config.js",
   "./js/auth.js",
   "./js/storage.js",
+  "./js/cloud.js",
   "./js/sync.js",
   "./js/app.js",
   "./manifest.json",

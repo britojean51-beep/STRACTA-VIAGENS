@@ -326,3 +326,11 @@ body.sem-login .tabbar { display: none; }
 /* ===== Cartão do usuário logado (Início) ===== */
 .user-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .user-card .sub { color: #93a2c4; font-size: 12px; margin-top: 2px; }
+
+/* ===== Chavinha (liga/desliga) ===== */
+.switch-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 1px solid #26344f; border-radius: 12px;
+  background: #101a30; font-size: 14px; color: #e8eefc; cursor: pointer;
+}
+.switch-row input[type="checkbox"] { width: 20px; height: 20px; accent-color: #22c55e; flex: none; }

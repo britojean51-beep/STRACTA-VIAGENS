@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "02/09/2026 · r23 (backup dos dados)";
+const VERSION = "02/09/2026 · r24 (dados na nuvem)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -116,7 +116,7 @@ const rotas = {
 };
 
 /* O operador só lança; o resto é do gestor. */
-const ROTAS_OPERADOR = ["home", "abastecimento", "viagens"];
+const ROTAS_OPERADOR = ["home", "abastecimento", "viagens", "corrigir"];
 function podeVer(rota) {
   if (typeof Auth === "undefined" || !Auth.configurado()) return true;   // modo local: tudo liberado
   if (Auth.ehGestor()) return true;
@@ -125,8 +125,14 @@ function podeVer(rota) {
 
 function abrirFicha(eq) { fichaEquip = eq; navegar("ficha"); }
 
+let rotaAtual = "home";
+/* Telas que só mostram dados: podem ser redesenhadas quando a nuvem traz novidade.
+   As de formulário ficam de fora para não apagar o que a pessoa está digitando. */
+const TELAS_LEITURA = ["home", "dashboard", "relatorio", "frota", "ficha", "corrigir"];
+
 function navegar(rota) {
   if (!podeVer(rota)) { toast("Seu perfil não tem acesso a essa tela", "err"); rota = "home"; }
+  rotaAtual = rota;
   const fn = rotas[rota] || telaHome;
   window.scrollTo(0, 0);
   app.innerHTML = "";
@@ -174,6 +180,10 @@ function telaHome() {
         <span class="ico">🚚</span><span class="lbl">Viagens</span>
         <span class="desc">Origem, destino e ciclos</span>
       </button>
+      ${!gestor ? `<button class="menu-card" data-go="corrigir">
+        <span class="ico">✏️</span><span class="lbl">Meus lançamentos</span>
+        <span class="desc">Corrigir o que você lançou hoje</span>
+      </button>` : ""}
       ${gestor ? `<button class="menu-card" data-go="manutencao">
         <span class="ico">🔧</span><span class="lbl">Manutenção</span>
         <span class="desc">Preventiva e corretiva</span>
@@ -260,6 +270,20 @@ function telaConfiguracoes() {
     </div>
 
     <div class="card">
+      <h3>☁️ Dados na nuvem <span id="nuvemBadge" class="pill pill-gray">desligada</span></h3>
+      <p class="hint">Com a nuvem ligada, o que o operador lança aparece aqui na hora, e o horímetro/KM
+      que o app preenche sozinho passa a ser o último de <b>toda a frota</b>. Sem internet o app continua
+      funcionando: o lançamento fica guardado e sobe quando a rede voltar.</p>
+      <label class="switch-row">
+        <input type="checkbox" id="cfgNuvem" ${db.config.nuvem ? "checked" : ""}>
+        <span>Ligar os dados na nuvem neste celular</span>
+      </label>
+      <div class="spacer"></div>
+      <button class="btn btn-green" id="btnNuvemEnviar">⬆️ Enviar os dados deste celular</button>
+      <p class="hint" id="nuvemMsg" style="margin-top:8px"></p>
+    </div>
+
+    <div class="card">
       <h3>💾 Backup dos dados</h3>
       <p class="hint">Os lançamentos ficam guardados <b>neste celular</b>. Faça um backup antes de trocar
       de aparelho ou de endereço do app, e guarde o arquivo no Drive ou no WhatsApp.</p>
@@ -307,6 +331,36 @@ function telaConfiguracoes() {
         msg("⚠️ " + ((res && res.erro) || "Não deu para confirmar. Veja se há internet."), "var(--red)");
       }
     });
+  };
+
+  const msgN = (t, cor) => { const m = $("#nuvemMsg"); if (m) { m.innerHTML = t; m.style.color = cor || "var(--muted)"; } };
+  const badge = () => { const el = $("#nuvemBadge"); if (el && typeof Cloud !== "undefined") pintarBadgeNuvem(el); };
+  badge();
+  $("#cfgNuvem").onchange = async e => {
+    const ligar = e.target.checked;
+    if (ligar && !(typeof Cloud !== "undefined" && Cloud.disponivel())) {
+      e.target.checked = false;
+      msgN("Para usar a nuvem é preciso estar logado e com internet.", "var(--red)");
+      return;
+    }
+    DB.setConfig({ nuvem: ligar });
+    if (ligar) {
+      await Cloud.iniciar();
+      msgN("Nuvem ligada. Faça um <b>backup</b> e depois toque em <b>Enviar os dados deste celular</b> " +
+           "para o histórico subir.", "var(--green)");
+    } else {
+      Cloud.parar();
+      msgN("Nuvem desligada. O app volta a guardar tudo só neste celular.");
+    }
+    badge();
+  };
+  $("#btnNuvemEnviar").onclick = async () => {
+    if (typeof Cloud === "undefined") return;
+    msgN("Enviando… pode levar alguns segundos.");
+    const r = await Cloud.enviarTudo();
+    badge();
+    if (r.ok) msgN(`✅ Enviado: ${r.total} registro(s) na nuvem.`, "var(--green)");
+    else msgN("❌ " + r.erro, "var(--red)");
   };
 
   const msgB = (t, cor) => { const m = $("#backupMsg"); if (m) { m.innerHTML = t; m.style.color = cor || "var(--muted)"; } };
@@ -2076,25 +2130,39 @@ function telaFicha() {
    CORRIGIR / EXCLUIR DADOS
    ============================================================ */
 function telaCorrigir() {
-  $("#headerTitle").textContent = "✏️ Corrigir Dados";
-  $("#headerSub").textContent = "EDITAR · EXCLUIR";
+  // O operador só mexe no que ELE lançou hoje; o gestor mexe em tudo.
+  const gestor = (typeof Auth === "undefined") || Auth.ehGestor();
+  const meuEmail = (typeof Auth !== "undefined" && Auth.usuario) ? Auth.usuario.email : "";
+  $("#headerTitle").textContent = gestor ? "✏️ Corrigir Dados" : "✏️ Meus lançamentos";
+  $("#headerSub").textContent = gestor ? "EDITAR · EXCLUIR" : "SÓ OS SEUS, DE HOJE";
   const dias = DB.listaDias();
   const atual = DB.garantirDiaAtual();
-  const sel = dias.includes(atual) ? atual : (dias[0] || atual);
+  const sel = gestor ? (dias.includes(atual) ? atual : (dias[0] || atual)) : atual;
 
   app.innerHTML = `
-    <div class="card">
+    ${gestor ? `<div class="card">
       <div class="field">
         <label>Selecione o dia</label>
         <select id="cDia">${dias.map(d => `<option value="${d}" ${d === sel ? "selected" : ""}>${DB.fmtBR(d)}</option>`).join("")}</select>
       </div>
-    </div>
+    </div>` : `<div class="card">
+      <h3>📅 Hoje · ${DB.fmtBR(sel)}</h3>
+      <p class="hint">Aqui aparecem só os lançamentos feitos por você hoje. Para corrigir um dia anterior,
+      fale com o gestor.</p>
+      <input type="hidden" id="cDia" value="${sel}">
+    </div>`}
     <div id="cConteudo"></div>
   `;
 
   function render() {
     const iso = $("#cDia").value;
-    const d = DB.getDia(iso) || { abastecimentos: [], viagens: [], manutencoes: [] };
+    const bruto = DB.getDia(iso) || { abastecimentos: [], viagens: [], manutencoes: [] };
+    const meu = r => gestor || r.criadoPor === meuEmail;
+    const d = {
+      abastecimentos: (bruto.abastecimentos || []).filter(meu),
+      viagens: (bruto.viagens || []).filter(meu),
+      manutencoes: gestor ? (bruto.manutencoes || []) : []
+    };
     let html = "";
 
     html += `<div class="card"><h3>⛽ Abastecimentos</h3>`;
@@ -2116,6 +2184,7 @@ function telaCorrigir() {
       </div>`).join("") : '<p class="empty">Nenhuma viagem.</p>';
     html += `</div>`;
 
+    if (gestor) {
     html += `<div class="card"><h3>🔧 Manutenções</h3>`;
     html += d.manutencoes.length ? d.manutencoes.map(m => `
       <div class="itemrow"><div class="info"><b>${m.equipamento}</b> · ${m.tipo}
@@ -2123,6 +2192,7 @@ function telaCorrigir() {
         <button class="del" data-del-ma="${m.id}">🗑️</button>
       </div>`).join("") : '<p class="empty">Nenhuma manutenção.</p>';
     html += `</div>`;
+    }
 
     $("#cConteudo").innerHTML = html;
 
@@ -2148,7 +2218,7 @@ function telaCorrigir() {
     bindDel("del-ma", "manutencoes");
   }
 
-  $("#cDia").onchange = render;
+  if (gestor) $("#cDia").onchange = render;
   render();
 }
 
@@ -2191,6 +2261,7 @@ $$(".tab").forEach(t => t.onclick = () => { viagensBuffer = []; editando = null;
 function iniciarApp() {
   document.body.classList.remove("sem-login");
   DB.garantirDiaAtual();
+  ligarNuvem();
   const rotaInicial = (location.hash || "#home").slice(1);
   navegar(rotas[rotaInicial] && podeVer(rotaInicial) ? rotaInicial : "home");
 }
@@ -2205,6 +2276,24 @@ function iniciarApp() {
     if (r.modo === "offline") toast("📴 Sem internet — usando seu último acesso");
   }
 })();
+
+/* Nuvem: espelha os lançamentos entre os celulares (quando ligada em Configurações). */
+function ligarNuvem() {
+  if (typeof Cloud === "undefined") return;
+  Cloud.onMudanca = () => {
+    const el = document.getElementById("nuvemBadge");
+    if (el) pintarBadgeNuvem(el);
+    if (TELAS_LEITURA.includes(rotaAtual)) navegar(rotaAtual);
+  };
+  Cloud.iniciar();
+}
+
+function pintarBadgeNuvem(el) {
+  const e = Cloud.estado();
+  const cor = { ok: "pill-green", offline: "pill-blue", desligada: "pill-gray" }[e.chave] || "pill-red";
+  el.textContent = e.texto;
+  el.className = "pill " + cor;
+}
 
 /* Service worker (offline / instalável) */
 if ("serviceWorker" in navigator) {

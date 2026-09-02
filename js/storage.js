@@ -225,6 +225,7 @@ const DB = {
     const db = this.load();
     db.estado[equip] = { kmFinal, horimetroFinal };
     this.save();
+    this._nuvem(C => C.patch("operacao", { estado: { [equip]: db.estado[equip] } }));
   },
 
   /* Situação escolhida no abastecimento → status do equipamento */
@@ -238,22 +239,41 @@ const DB = {
     }[sit] || "operando";
   },
 
+  /* ---- Ponte com a nuvem (js/cloud.js). Sem nuvem ligada, não faz nada. ---- */
+  _nuvem(fn) {
+    if (typeof Cloud === "undefined" || !Cloud.ativa()) return;
+    try { fn(Cloud); } catch (e) { /* a nuvem nunca pode derrubar o lançamento */ }
+  },
+  _quem() {
+    return (typeof Auth !== "undefined" && Auth.usuario && Auth.usuario.email) || "";
+  },
+  _novoId() { return Date.now() + "-" + Math.random().toString(36).slice(2, 7); },
+
   /* ---- Abastecimento ---- */
   addAbastecimento(iso, reg) {
     const db = this.load();
     if (!db.dias[iso]) db.dias[iso] = { abastecimentos: [], viagens: [], manutencoes: [] };
-    reg.id = Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+    reg.id = this._novoId();
+    reg.criadoPor = reg.criadoPor || this._quem();
     db.dias[iso].abastecimentos.push(reg);
     // atualiza acumulado (KM pode ser nulo em equipamento de horímetro)
     this.setUltimo(reg.equipamento, reg.kmFinal, reg.horimetroFinal);
     // desconta o tanque de diesel correto
     const tanque = reg.combustivel === "S-500" ? "s500" : "s10";
-    db.estoque[tanque] = Math.max(0, (db.estoque[tanque] || 0) - (Number(reg.litros) || 0));
+    const litros = Number(reg.litros) || 0;
+    db.estoque[tanque] = Math.max(0, (db.estoque[tanque] || 0) - litros);
     // desconta o ARLA 32
-    if (reg.litrosArla) db.estoque.arla = Math.max(0, (db.estoque.arla || 0) - (Number(reg.litrosArla) || 0));
+    const arla = Number(reg.litrosArla) || 0;
+    if (arla) db.estoque.arla = Math.max(0, (db.estoque.arla || 0) - arla);
     // aplica o status conforme a situação
     if (reg.situacao) db.status[reg.equipamento] = this.statusDaSituacao(reg.situacao);
     this.save();
+    this._nuvem(C => {
+      C.push("abastecimentos", iso, reg);
+      if (litros) C.ajustarEstoque(tanque, -litros);
+      if (arla) C.ajustarEstoque("arla", -arla);
+      if (reg.situacao) C.patch("operacao", { status: { [reg.equipamento]: db.status[reg.equipamento] } });
+    });
     return reg;
   },
 
@@ -261,9 +281,11 @@ const DB = {
   addViagem(iso, reg) {
     const db = this.load();
     if (!db.dias[iso]) db.dias[iso] = { abastecimentos: [], viagens: [], manutencoes: [] };
-    reg.id = Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+    reg.id = this._novoId();
+    reg.criadoPor = reg.criadoPor || this._quem();
     db.dias[iso].viagens.push(reg);
     this.save();
+    this._nuvem(C => C.push("viagens", iso, reg));
     return reg;
   },
 
@@ -271,9 +293,11 @@ const DB = {
   addManutencao(iso, reg) {
     const db = this.load();
     if (!db.dias[iso]) db.dias[iso] = { abastecimentos: [], viagens: [], manutencoes: [] };
-    reg.id = Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+    reg.id = this._novoId();
+    reg.criadoPor = reg.criadoPor || this._quem();
     db.dias[iso].manutencoes.push(reg);
     this.save();
+    this._nuvem(C => C.push("manutencoes", iso, reg));
     return reg;
   },
 
@@ -284,6 +308,7 @@ const DB = {
     if (!dia || !dia[tipo]) return;
     dia[tipo] = dia[tipo].filter(r => r.id !== id);
     this.save();
+    this._nuvem(C => C.remover(tipo, id));
   },
 
   /* ---- Editar abastecimento ---- */
@@ -294,9 +319,11 @@ const DB = {
     const idx = dia.abastecimentos.findIndex(r => r.id === id);
     if (idx >= 0) {
       reg.id = id;
+      reg.criadoPor = reg.criadoPor || dia.abastecimentos[idx].criadoPor || this._quem();
       dia.abastecimentos[idx] = reg;
       this.setUltimo(reg.equipamento, reg.kmFinal, reg.horimetroFinal);
       this.save();
+      this._nuvem(C => C.push("abastecimentos", iso, reg));
     }
   },
 
@@ -306,11 +333,14 @@ const DB = {
     const db = this.load();
     db.estoque[tipo] = Number(litros) || 0;
     this.save();
+    this._nuvem(C => C.patch("estoque", { [tipo]: db.estoque[tipo] }));
   },
   addEstoque(tipo, litros) {
     const db = this.load();
-    db.estoque[tipo] = (db.estoque[tipo] || 0) + (Number(litros) || 0);
+    const delta = Number(litros) || 0;
+    db.estoque[tipo] = (db.estoque[tipo] || 0) + delta;
     this.save();
+    this._nuvem(C => C.ajustarEstoque(tipo, delta));
   },
 
   /* ---- Tipo de medição do equipamento ---- */
@@ -323,21 +353,30 @@ const DB = {
     const db = this.load();
     db.tipoEquip[eq] = tipo;
     this.save();
+    this._nuvem(C => C.patch("frota", { tipoEquip: { [eq]: tipo } }));
   },
 
   /* ---- Status e revisão por equipamento ---- */
   getStatus(eq) { return this.load().status[eq] || "operando"; },
-  setStatus(eq, st) { const db = this.load(); db.status[eq] = st; this.save(); },
+  setStatus(eq, st) {
+    const db = this.load(); db.status[eq] = st; this.save();
+    this._nuvem(C => C.patch("operacao", { status: { [eq]: st } }));
+  },
   getProximaRevisao(eq) { const v = this.load().proximaRevisao[eq]; return v == null ? null : v; },
   setProximaRevisao(eq, valor) {
     const db = this.load();
     if (valor === "" || valor == null) delete db.proximaRevisao[eq];
     else db.proximaRevisao[eq] = this.toN(valor);
     this.save();
+    this._nuvem(C => C.patch("frota", { proximaRevisao: db.proximaRevisao }));
   },
 
   /* ---- Metas de gestão ---- */
-  setConfig(patch) { const db = this.load(); Object.assign(db.config, patch); this.save(); },
+  setConfig(patch) {
+    const db = this.load(); Object.assign(db.config, patch); this.save();
+    const compartilhado = Object.assign({}, patch); delete compartilhado.nuvem;  // a chave é de cada aparelho
+    if (Object.keys(compartilhado).length) this._nuvem(C => C.patch("frota", { config: compartilhado }));
+  },
 
   /* ---- Série dos últimos N dias (para gráficos/tendências) ---- */
   serie(n = 7) {
@@ -530,7 +569,11 @@ const DB = {
   addEquipamento(nome) {
     const db = this.load();
     nome = nome.trim().toUpperCase();
-    if (nome && !db.equipamentos.includes(nome)) { db.equipamentos.push(nome); this.save(); }
+    if (nome && !db.equipamentos.includes(nome)) {
+      db.equipamentos.push(nome);
+      this.save();
+      this._nuvem(C => C.patch("frota", { equipamentos: db.equipamentos }));
+    }
   },
   /* Remove o equipamento da frota. Mantém o histórico nos dias/relatórios. */
   removerEquipamento(eq) {
@@ -541,11 +584,19 @@ const DB = {
     delete db.proximaRevisao[eq];
     delete db.estado[eq];
     this.save();
+    this._nuvem(C => {
+      C.patch("frota", { equipamentos: db.equipamentos, tipoEquip: db.tipoEquip, proximaRevisao: db.proximaRevisao });
+      C.patch("operacao", { status: db.status, estado: db.estado });
+    });
   },
   addMotorista(nome) {
     const db = this.load();
     nome = nome.trim();
-    if (nome && !db.motoristas.includes(nome)) { db.motoristas.push(nome); this.save(); }
+    if (nome && !db.motoristas.includes(nome)) {
+      db.motoristas.push(nome);
+      this.save();
+      this._nuvem(C => C.patch("frota", { motoristas: db.motoristas }));
+    }
   },
 
   /* ---- Reset total ---- */
