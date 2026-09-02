@@ -1,8 +1,8 @@
 # Publicar o app em `gestaofrotaapp.web.app`
 
-> O app é publicado em **dois endereços ao mesmo tempo** (é o que está no `firebase.json`):
-> **gestaofrotaapp.web.app** — o oficial — e `gp2t-gestaodefrota.web.app`, mantido no ar para
-> ninguém ficar sem app durante a mudança. Cada envio de código atualiza os dois.
+> O endereço oficial do app é **https://gestaofrotaapp.web.app**. É para lá que cada envio de
+> código publica (está no `firebase.json`). O endereço antigo `gp2t-gestaodefrota.web.app` não
+> recebe mais atualização e pode ser esquecido.
 >
 > Um endereço novo precisa de duas coisas no console, uma vez só:
 > **Hosting → Adicionar outro site** (com o ID `gestaofrotaapp`) e
