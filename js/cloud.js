@@ -49,10 +49,16 @@ const Cloud = {
     if (this._ligado || !this.ativa()) return;
     this._ligado = true;
     this._erro = null;
-    try { await this._fs().enablePersistence({ synchronizeTabs: true }); } catch (e) { /* já ligada ou aba múltipla */ }
-    this._pronta = this._semear();
-    await this._pronta;
-    this._ouvir();
+    try {
+      try { await this._fs().enablePersistence({ synchronizeTabs: true }); } catch (e) { /* já ligada ou aba múltipla */ }
+      this._pronta = this._semear();
+      await this._pronta;
+      this._ouvir();
+    } catch (e) {
+      // a nuvem nunca pode derrubar o app: sem ela, ele volta a funcionar só no aparelho
+      this.parar();
+      this._falha(e, "conectar");
+    }
   },
 
   /* Primeira vez na nuvem: leva os valores atuais deste celular (tanques,
@@ -68,7 +74,11 @@ const Cloud = {
       ["operacao", { estado: db.estado, status: db.status }],
       ["estoque", db.estoque]
     ];
+    const gestor = (typeof Auth === "undefined") || Auth.ehGestor();
     for (const [nome, dados] of inicial) {
+      // cadastro/frota é do gestor pelas regras: o operador nem tenta,
+      // senão levaria "sem permissão" logo ao abrir o app
+      if (nome === "frota" && !gestor) continue;
       try {
         const doc = await this._cad(nome).get();
         if (!doc.exists) await this._cad(nome).set(dados, { merge: true });

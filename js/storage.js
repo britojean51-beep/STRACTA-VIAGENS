@@ -32,7 +32,9 @@ const DB = {
         metaViagens: 140,              // meta de viagens/dia da frota
         estoqueMin: 1000,              // litros: alerta de diesel baixo (cada tanque)
         estoqueArlaMin: 100,           // litros: alerta de ARLA baixo
-        sheetsUrl: SHEETS_URL_PADRAO   // URL do Web App (Google Sheets) para sincronizar
+        sheetsUrl: SHEETS_URL_PADRAO,  // URL do Web App (Google Sheets) para sincronizar
+        nuvem: true,                   // dados na nuvem: vem ligada de fábrica
+        nuvemManual: false             // vira true quando alguém mexe na chavinha
       },
       syncPend: []                     // fila de operações pendentes de envio à planilha
     };
@@ -55,6 +57,9 @@ const DB = {
     this._cache.config = Object.assign(base.config, data.config || {});
     // aparelho que já usava o app sem link configurado também recebe o padrão
     if (!this._cache.config.sheetsUrl) this._cache.config.sheetsUrl = SHEETS_URL_PADRAO;
+    // a nuvem passou a vir ligada: quem nunca mexeu na chavinha é ligado agora;
+    // quem desligou de propósito (nuvemManual) continua como escolheu
+    if (!this._cache.config.nuvemManual) this._cache.config.nuvem = true;
     this._cache.status = data.status || {};
     this._cache.proximaRevisao = data.proximaRevisao || {};
     this._cache.tipoEquip = data.tipoEquip || {};

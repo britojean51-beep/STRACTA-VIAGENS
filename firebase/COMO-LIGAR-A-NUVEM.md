@@ -27,11 +27,17 @@ O que as regras garantem:
 - cadastro de equipamentos, operadores e metas: **só o gestor** altera;
 - último KM/horímetro, status e tanques: qualquer um atualiza (é o que acontece ao lançar).
 
-## Passo 2 — ligar no seu celular
-1. **⚙️ Configurações → 💾 Fazer backup** (segurança, antes de qualquer coisa)
-2. No mesmo lugar, cartão **☁️ Dados na nuvem** → ligue a chavinha
-3. Toque em **⬆️ Enviar os dados deste celular** — sobe todo o histórico
-4. A etiqueta ao lado do título deve ficar **em dia**
+## Passo 2 — nada a fazer: a nuvem já vem ligada
+A partir da versão r29 o app abre com a nuvem ligada em qualquer aparelho. O operador instala, entra
+e já enxerga a frota — não precisa configurar nada.
+
+**A única coisa que ainda é manual:** um celular que já tinha lançamentos guardados só dele precisa
+tocar **uma vez** em **⚙️ Configurações → ⬆️ Enviar os dados deste celular**. A nuvem não sobe
+histórico sozinha de propósito — se subisse, um registro apagado poderia voltar do nada.
+
+A chavinha continua em Configurações como válvula de escape: se algo der errado num aparelho, dá para
+desligar só nele, e ele volta a guardar tudo localmente. Aparelho que desligou de propósito continua
+desligado mesmo depois das próximas atualizações.
 
 ## Passo 3 — conferir (vale a pena, leva 2 minutos)
 - Entre no app em outro aparelho (ou outra aba anônima) com **outro usuário**, ligue a chavinha lá

@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "02/09/2026 · r28 (regras tolerantes)";
+const VERSION = "02/09/2026 · r29 (nuvem ligada)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -271,9 +271,9 @@ function telaConfiguracoes() {
 
     <div class="card">
       <h3>☁️ Dados na nuvem <span id="nuvemBadge" class="pill pill-gray">desligada</span></h3>
-      <p class="hint">Com a nuvem ligada, o que o operador lança aparece aqui na hora, e o horímetro/KM
-      que o app preenche sozinho passa a ser o último de <b>toda a frota</b>. Sem internet o app continua
-      funcionando: o lançamento fica guardado e sobe quando a rede voltar.</p>
+      <p class="hint">A nuvem já vem ligada: o que o operador lança aparece aqui na hora, e o horímetro/KM
+      que o app preenche sozinho é o último de <b>toda a frota</b>. Sem internet o app continua funcionando:
+      o lançamento fica guardado e sobe quando a rede voltar. Só desligue se algo der errado neste aparelho.</p>
       <label class="switch-row">
         <input type="checkbox" id="cfgNuvem" ${db.config.nuvem ? "checked" : ""}>
         <span>Ligar os dados na nuvem neste celular</span>
@@ -349,7 +349,7 @@ function telaConfiguracoes() {
       msgN("Para usar a nuvem é preciso estar logado e com internet.", "var(--red)");
       return;
     }
-    DB.setConfig({ nuvem: ligar });
+    DB.setConfig({ nuvem: ligar, nuvemManual: true });   // registra a escolha do aparelho
     if (ligar) {
       await Cloud.iniciar();
       msgN("Nuvem ligada. Faça um <b>backup</b> e depois toque em <b>Enviar os dados deste celular</b> " +
@@ -2316,7 +2316,7 @@ function ligarNuvem() {
     if (el) pintarBadgeNuvem(el);
     if (TELAS_LEITURA.includes(rotaAtual)) navegar(rotaAtual);
   };
-  Cloud.iniciar();
+  Cloud.iniciar().catch(() => {});
 }
 
 function pintarBadgeNuvem(el) {
