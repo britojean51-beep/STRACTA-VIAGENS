@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "02/09/2026 · r20 (aba Configurações)";
+const VERSION = "02/09/2026 · r21 (planilha espelho do app)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -696,12 +696,14 @@ function telaAbastecimento() {
     if (editando) {
       DB.atualizarAbastecimento(editando._iso, editando.id, reg);
       Sync.pushLancamento(editando._iso, reg);
+      Sync.pushResumoDia(editando._iso);
       editando = null;
       toast("✔ Abastecimento atualizado");
       navegar("corrigir");
     } else {
       DB.addAbastecimento(dia, reg);
       Sync.pushLancamento(dia, reg);
+      Sync.pushResumoDia(dia);
       const foraMeta = hor ? (media > db.config.metaLh) : (media > 0 && media < db.config.metaMedia);
       if (reg.situacao === "Final de expediente") toast(`🌙 ${equip}: final de expediente`);
       else if (foraMeta) toast(`⚠️ ${equip}: consumo fora da meta`, "err");
@@ -876,7 +878,8 @@ function telaViagens() {
 
   $("#btnSalvar").onclick = () => {
     if (!viagensBuffer.length) { toast("Adicione ao menos uma rota", "err"); return; }
-    viagensBuffer.forEach(v => DB.addViagem(dia, v));
+    viagensBuffer.forEach(v => { const r = DB.addViagem(dia, v); Sync.pushViagem(dia, r); });
+    Sync.pushResumoDia(dia);
     toast(`✔ ${viagensBuffer.length} rota(s) salva(s)`);
     viagensBuffer = [];
     renderBuffer(); renderHoje();
@@ -1015,6 +1018,7 @@ function telaManutencao() {
     DB.setProximaRevisao(eq, $("#mProxRev").value.trim());
     Sync.pushManutencao(dia, mreg);
     Sync.pushEquipamento(eq);
+    Sync.pushResumoDia(dia);
     toast("✔ Manutenção registrada");
     $("#mServico").value = ""; $("#mHorKm").value = ""; $("#mObs").value = "";
     renderRevisoes(); renderHoje();
@@ -2061,6 +2065,8 @@ function telaCorrigir() {
       DB.excluir(iso, tipo, id);
       if (tipo === "abastecimentos") Sync.deleteLancamento(id);
       else if (tipo === "manutencoes") Sync.deleteManutencao(id);
+      else if (tipo === "viagens") Sync.deleteViagem(id);
+      Sync.pushResumoDia(iso);
       toast("✔ Registro excluído"); render();
     });
     bindDel("del-ab", "abastecimentos");

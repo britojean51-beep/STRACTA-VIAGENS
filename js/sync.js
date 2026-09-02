@@ -32,14 +32,86 @@ const Sync = {
       "Operador": a.motorista || "",
       "Horímetro Inicial": a.horimetroInicial ?? "",
       "Horímetro Final": a.horimetroFinal ?? "",
+      "Horas": a.horasTrabalhadas ?? "",
       "Litros": a.litros ?? "",
-      "Toneladas": a.toneladas ?? "",
-      "KM": a.kmRodado || "",
       "Combustível": a.combustivel || "S-10",
       "ARLA (L)": a.litrosArla || "",
+      "KM Rodado": a.kmRodado || "",
+      "Média": a.media ?? "",
+      "Unidade": a.unidadeMedia || "km/L",
+      "Toneladas": DB.tonEquipDia(a.equipamento, iso) || "",
+      "L/Ton": DB.ltonEquipDia(a.equipamento, iso).toFixed(2).replace(".", ",") || "",
       "Situação": a.situacao || ""
-      // Horas, L/h e L/Ton são fórmulas na planilha — não enviamos
+      // nada de fórmula: o app manda tudo calculado
     };
+  },
+
+  viagemRow(iso, v) {
+    return {
+      _id: v.id,
+      "Data": iso,
+      "Equipamento": v.equipamento,
+      "Operador": v.motorista || "",
+      "Origem": v.origem,
+      "Destino": v.destino,
+      "Viagens": v.quantidade,
+      "Material": v.material || "",
+      "Peso/viagem (t)": v.pesoViagem ?? "",
+      "Peso total (t)": v.pesoTotal ?? ""
+    };
+  },
+
+  /* ---- Linhas dos resumos (números prontos, sem fórmula) ---- */
+  _n(v, casas) { return v ? Number(v).toFixed(casas || 0).replace(".", ",") : (v === 0 ? "0" : ""); },
+
+  resumoDiaRow(iso) {
+    const r = DB.resumoDia(iso);
+    return {
+      "Data": iso,
+      "Equipamentos": r.operando.length,
+      "Operadores": r.operadores.length,
+      "Consumo total (L)": this._n(r.diesel),
+      "Horas totais": this._n(r.horas, 1),
+      "L/h": this._n(r.lh, 2),
+      "Produção (t)": this._n(r.toneladas),
+      "L/Ton": this._n(r.lton, 2),
+      "Diesel S-10 (L)": this._n(r.dieselS10),
+      "Diesel S-500 (L)": this._n(r.dieselS500),
+      "ARLA (L)": this._n(r.arla),
+      "KM": this._n(r.km),
+      "Média km/L": this._n(r.media, 2),
+      "Viagens": r.viagens,
+      "Manutenções": r.manutencao.length,
+      "Quais equipamentos": r.operando.join(", "),
+      "Quais operadores": r.operadores.join(", ")
+    };
+  },
+  resumoEquipRows(iso) {
+    return DB.totaisPorEquipamento([iso]).map(e => ({
+      "Data": iso,
+      "Equipamento": e.eq,
+      "Consumo (L)": this._n(e.diesel),
+      "Horas": this._n(e.horas, 1),
+      "L/h": this._n(e.lh, 2),
+      "Produção (t)": this._n(e.toneladas),
+      "L/Ton": this._n(e.lton, 2),
+      "KM": this._n(e.km),
+      "Média km/L": this._n(e.media, 2),
+      "Viagens": e.viagens
+    }));
+  },
+  resumoOperadorRows(iso) {
+    return DB.totaisPorOperador([iso]).map(o => ({
+      "Data": iso,
+      "Operador": o.operador,
+      "Equipamentos": o.equipamentos.join(", "),
+      "Consumo (L)": this._n(o.diesel),
+      "Horas": this._n(o.horas, 1),
+      "L/h": this._n(o.lh, 2),
+      "Produção (t)": this._n(o.toneladas),
+      "L/Ton": this._n(o.lton, 2),
+      "Viagens": o.viagens
+    }));
   },
   equipamentoRow(eq) {
     const u = DB.ultimo(eq);
@@ -80,6 +152,16 @@ const Sync = {
   pushEquipamento(eq)      { this._enqueue({ action: "upsert", kind: "equipamento", row: this.equipamentoRow(eq) }); },
   deleteEquipamento(eq)    { this._enqueue({ action: "delete", kind: "equipamento", id: eq }); },
   pushOperador(nome)       { this._enqueue({ action: "upsert", kind: "operador", row: this.operadorRow(nome) }); },
+  pushViagem(iso, reg)     { this._enqueue({ action: "upsert", kind: "viagem", row: this.viagemRow(iso, reg) }); },
+  deleteViagem(id)         { this._enqueue({ action: "delete", kind: "viagem", id }); },
+
+  /* Recalcula e regrava os 3 resumos do dia (substitui as linhas daquela data) */
+  pushResumoDia(iso) {
+    if (!this.ativo()) return;
+    this._enqueue({ action: "substituirDia", kind: "resumoDia", data: iso, rows: [this.resumoDiaRow(iso)] });
+    this._enqueue({ action: "substituirDia", kind: "resumoEquip", data: iso, rows: this.resumoEquipRows(iso) });
+    this._enqueue({ action: "substituirDia", kind: "resumoOperador", data: iso, rows: this.resumoOperadorRows(iso) });
+  },
 
   /* ---- Reenvia toda a base e confirma via ping ---- */
   syncAll(cb) {
@@ -87,13 +169,18 @@ const Sync = {
     const db = DB.load();
     const eqRows = db.equipamentos.map(e => this.equipamentoRow(e));
     const opRows = db.motoristas.map(n => this.operadorRow(n));
-    const lanRows = [], manRows = [];
-    Object.keys(db.dias).forEach(iso => {
+    const lanRows = [], manRows = [], viaRows = [];
+    const dias = Object.keys(db.dias).sort();
+    dias.forEach(iso => {
       (db.dias[iso].abastecimentos || []).forEach(a => lanRows.push(this.lancamentoRow(iso, a)));
       (db.dias[iso].manutencoes || []).forEach(m => manRows.push(this.manutencaoRow(iso, m)));
+      (db.dias[iso].viagens || []).forEach(v => viaRows.push(this.viagemRow(iso, v)));
     });
-    [["equipamento", eqRows], ["operador", opRows], ["lancamento", lanRows], ["manutencao", manRows]]
+    [["equipamento", eqRows], ["operador", opRows], ["lancamento", lanRows],
+     ["viagem", viaRows], ["manutencao", manRows]]
       .forEach(([kind, rows]) => { if (rows.length) this._enqueue({ action: "bulk", kind, rows }); });
+    // resumos de todos os dias
+    dias.forEach(iso => this.pushResumoDia(iso));
     const t0 = Date.now();
     const check = () => {
       if (this.pendentes() === 0) { this.testar(cb); }

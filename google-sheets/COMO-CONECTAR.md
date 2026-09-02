@@ -40,7 +40,8 @@ Você faz isto **uma única vez** (uns 5 minutos). Depois é automático.
 1. No fim vai aparecer uma **URL do app da Web** terminando em **`/exec`**.
    Ex.: `https://script.google.com/macros/s/AKfycb...../exec`
 2. **Copie** essa URL.
-3. No app STRACTA: **Painel** → seção **☁️ Planilha na nuvem** → cole a URL no campo → **Salvar**.
+3. No app: **Início → ⚙️ Configurações** → seção **☁️ Planilha na nuvem** → cole a URL → **Salvar**.
+   *(O app já vem com o link da planilha do GP2T embutido; isso só é preciso se você trocar de planilha.)*
 4. Toque em **Testar conexão** — deve aparecer o nome da sua planilha. ✅
 5. Toque em **Sincronizar tudo** — envia toda a base atual para a planilha.
 
@@ -48,13 +49,40 @@ Pronto! A partir daí, cada lançamento no app sobe sozinho para a planilha.
 
 ---
 
+## O que a planilha tem (8 abas, criadas sozinhas)
+
+**Quem calcula é o app.** A planilha não tem nenhuma fórmula: ela recebe os números
+já prontos, do mesmo jeito que aparecem no Painel.
+
+**Abas de lançamento (o dia a dia, linha por linha)**
+| Aba | O que guarda |
+|---|---|
+| `Abastecimentos` | Data, equipamento, operador, horímetro, **horas**, litros, combustível, ARLA, KM, **média**, toneladas, **L/Ton**, situação |
+| `Viagens` | Data, equipamento, operador, origem, destino, viagens, material, peso por viagem e peso total |
+| `Manutenções` | Data, equipamento, responsável, tipo, serviço, peças, próxima manutenção |
+| `Equipamentos` / `Operadores` | Os cadastros do app |
+
+**Abas de resumo (uma linha por dia — para acompanhar)**
+| Aba | O que mostra |
+|---|---|
+| `Resumo por Dia` | Equipamentos, operadores, **consumo total, horas totais, L/h, produção (t), L/Ton**, diesel S-10/S-500, ARLA, KM, média km/L, viagens, manutenções |
+| `Resumo por Equipamento` | Os mesmos números, **um por equipamento** naquele dia |
+| `Resumo por Operador` | Os mesmos números, **um por operador** naquele dia |
+
 ## Como funciona (resumo)
 - O **app é a fonte da verdade**. Cada lançamento tem um código oculto (`_id`).
 - Salvar/editar no app → **atualiza a mesma linha** na planilha (não duplica).
 - Excluir no app → **limpa a linha** correspondente.
-- As colunas de fórmula (**Horas, L/h, L/Ton**) continuam calculando sozinhas — o script nunca mexe nelas.
-- O script cria sozinho as colunas extras que faltarem: **KM, Combustível, ARLA (L), Situação** e a coluna oculta **_id**.
+- Nas abas de resumo, quando algo muda no dia o app **regrava aquele dia inteiro** —
+  então nunca sobra número velho.
+- Sem internet, os envios ficam guardados no celular e sobem sozinhos quando a rede voltar.
 
 ## Se precisar atualizar o script depois
 Cole a versão nova, salve e faça **Implantar → Gerenciar implantações → ✏️ (editar) → Nova versão → Implantar**.
 Assim a **mesma URL** continua valendo (não precisa trocar no app).
+Depois, no app: **Configurações → Sincronizar tudo** (cria as abas que faltarem e preenche o histórico).
+
+## Abas antigas (da planilha com fórmulas)
+Agora que o app manda tudo calculado, estas abas não servem mais e podem ser **apagadas**:
+`Lançamento Diário`, `Resumo Diário`, `Resumo Semanal`, `Resumo Mensal`,
+`Hist. Operadores`, `Hist. Equipamentos`, `Hist. Lançamentos`.

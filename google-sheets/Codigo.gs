@@ -1,17 +1,20 @@
 /*******************************************************************
- * STRACTA · Ponte com o app de Frota (Google Apps Script)
+ * GP2T · Ponte com o app de Gestão de Frota (Google Apps Script)
  * -----------------------------------------------------------------
  * Cole este arquivo em: sua planilha → Extensões → Apps Script.
  * Depois: Implantar → Nova implantação → App da Web
  *   • Executar como: Eu
  *   • Quem tem acesso: Qualquer pessoa
- * Copie a URL que termina em /exec e cole no app (Painel → Planilha).
+ * Copie a URL que termina em /exec e cole no app
+ *   (Início → ⚙️ Configurações → ☁️ Planilha na nuvem).
  *
  * O app é a fonte da verdade. Cada linha guarda um _id:
  *   upsert  → cria ou ATUALIZA a linha do mesmo _id (não duplica)
  *   delete  → limpa a linha daquele _id
  *   bulk    → vários upserts de uma vez ("Sincronizar tudo")
- * As colunas de fórmula (Horas, L/h, L/Ton) nunca são sobrescritas.
+ *   substituirDia → regrava um dia inteiro (abas de resumo)
+ * A planilha NÃO tem fórmula: quem calcula é o app, aqui só se registra.
+ * As abas que faltarem são criadas sozinhas na primeira sincronização.
  *******************************************************************/
 
 /* >>> COLE AQUI o link da sua planilha do Google Sheets <<<
@@ -35,19 +38,50 @@ function getSS() {
 
 // Configuração por tipo de dado
 var TABS = {
+  // ---- abas de detalhe (o app manda tudo pronto, sem fórmula) ----
   lancamento: {
-    nome: "Lançamento Diário",
-    extras: ["KM", "Combustível", "ARLA (L)", "Situação"],
-    dateCols: ["Data"],
-    formulas: {
-      "Horas":  function (r) { return '=IF(OR(D' + r + '="",E' + r + '=""),"",E' + r + '-D' + r + ')'; },
-      "L/h":    function (r) { return '=IF(OR(F' + r + '="",F' + r + '=0,G' + r + '=""),"",G' + r + '/F' + r + ')'; },
-      "L/Ton":  function (r) { return '=IF(OR(H' + r + '="",H' + r + '=0,G' + r + '=""),"",G' + r + '/H' + r + ')'; }
-    }
+    nome: "Abastecimentos", dateCols: ["Data"],
+    colunas: ["Data", "Equipamento", "Operador", "Horímetro Inicial", "Horímetro Final",
+              "Horas", "Litros", "Combustível", "ARLA (L)", "KM Rodado", "Média",
+              "Unidade", "Toneladas", "L/Ton", "Situação"]
   },
-  equipamento: { nome: "Equipamentos", extras: [], dateCols: [], formulas: {} },
-  operador:    { nome: "Operadores",   extras: [], dateCols: [], formulas: {} },
-  manutencao:  { nome: "Manutenções",  extras: [], dateCols: ["Data", "Próxima Manutenção"], formulas: {} }
+  viagem: {
+    nome: "Viagens", dateCols: ["Data"],
+    colunas: ["Data", "Equipamento", "Operador", "Origem", "Destino", "Viagens",
+              "Material", "Peso/viagem (t)", "Peso total (t)"]
+  },
+  manutencao: {
+    nome: "Manutenções", dateCols: ["Data", "Próxima Manutenção"],
+    colunas: ["Data", "Equipamento", "Operador/Responsável", "Horímetro", "KM", "Tipo",
+              "Serviço Realizado", "Peças/Trocas", "Observação", "Próxima Manutenção"]
+  },
+  equipamento: {
+    nome: "Equipamentos", dateCols: [],
+    colunas: ["Código", "Tipo", "Modelo", "Status", "Horímetro Atual", "KM Atual"]
+  },
+  operador: {
+    nome: "Operadores", dateCols: [],
+    colunas: ["Nome", "Função", "Status"]
+  },
+
+  // ---- abas de resumo (uma linha por dia / dia+equipamento / dia+operador) ----
+  resumoDia: {
+    nome: "Resumo por Dia", dateCols: ["Data"], semId: true,
+    colunas: ["Data", "Equipamentos", "Operadores", "Consumo total (L)", "Horas totais",
+              "L/h", "Produção (t)", "L/Ton", "Diesel S-10 (L)", "Diesel S-500 (L)",
+              "ARLA (L)", "KM", "Média km/L", "Viagens", "Manutenções",
+              "Quais equipamentos", "Quais operadores"]
+  },
+  resumoEquip: {
+    nome: "Resumo por Equipamento", dateCols: ["Data"], semId: true,
+    colunas: ["Data", "Equipamento", "Consumo (L)", "Horas", "L/h", "Produção (t)",
+              "L/Ton", "KM", "Média km/L", "Viagens"]
+  },
+  resumoOperador: {
+    nome: "Resumo por Operador", dateCols: ["Data"], semId: true,
+    colunas: ["Data", "Operador", "Equipamentos", "Consumo (L)", "Horas", "L/h",
+              "Produção (t)", "L/Ton", "Viagens"]
+  }
 };
 
 /* ------------------------ Entradas HTTP ------------------------ */
@@ -84,6 +118,10 @@ function processar(body) {
     (body.rows || []).forEach(function (row) { upsert(ctx, cfg, row); });
     return { ok: true, total: (body.rows || []).length };
   }
+  if (body.action === "substituirDia") {
+    substituirDia(ctx, cfg, body.data, body.rows || []);
+    return { ok: true, total: (body.rows || []).length };
+  }
   return { ok: false, erro: "Ação desconhecida: " + body.action };
 }
 
@@ -91,15 +129,25 @@ function processar(body) {
 function abrir(cfg) {
   var ss = getSS();
   var sh = ss.getSheetByName(cfg.nome) || acharAbaNormalizada(ss, cfg.nome);
-  if (!sh) return null;
+
+  // aba nova: cria com título e cabeçalho na linha 3 (mesmo padrão das outras)
+  if (!sh) {
+    sh = ss.insertSheet(cfg.nome);
+    sh.getRange(1, 1).setValue(cfg.nome);
+    sh.getRange(2, 1).setValue("Preenchido automaticamente pelo app GP2T — não edite à mão.");
+    var cabec = cfg.colunas.concat(cfg.semId ? [] : [ID_COL]);
+    sh.getRange(HEADER_ROW, 1, 1, cabec.length).setValues([cabec]).setFontWeight("bold");
+    sh.setFrozenRows(HEADER_ROW);
+  }
 
   var lastCol = Math.max(sh.getLastColumn(), 1);
   var headers = sh.getRange(HEADER_ROW, 1, 1, lastCol).getValues()[0];
   var map = {};
   headers.forEach(function (h, i) { if (h !== "" && h != null) map[String(h).trim()] = i + 1; });
 
-  // garante colunas extras + _id
-  var faltando = cfg.extras.concat([ID_COL]).filter(function (h) { return !map[h]; });
+  // garante as colunas esperadas + _id (quando a aba usa _id)
+  var esperadas = (cfg.colunas || []).concat(cfg.semId ? [] : [ID_COL]);
+  var faltando = esperadas.filter(function (h) { return !map[h]; });
   faltando.forEach(function (h) {
     lastCol += 1;
     sh.getRange(HEADER_ROW, lastCol).setValue(h);
@@ -113,22 +161,48 @@ function upsert(ctx, cfg, row) {
   var idCol = map[ID_COL];
   var r = acharLinhaPorId(sh, idCol, row[ID_COL]);
   if (!r) r = primeiraLinhaVazia(sh, idCol);
+  escreverLinha(sh, cfg, map, r, row);
+}
 
+/* Escreve uma linha inteira (sem fórmula: o app já manda calculado) */
+function escreverLinha(sh, cfg, map, r, row) {
   Object.keys(row).forEach(function (h) {
     var col = map[h];
     if (!col) return;                       // cabeçalho inexistente: ignora
-    if (cfg.formulas[h]) return;            // coluna de fórmula: não sobrescreve
     var v = row[h];
     if (cfg.dateCols.indexOf(h) >= 0) v = parseData(v);
     else v = numeroSePuder(v);
     sh.getRange(r, col).setValue(v);
   });
+}
 
-  // (re)aplica fórmulas da linha
-  Object.keys(cfg.formulas).forEach(function (h) {
-    var col = map[h];
-    if (col) sh.getRange(r, col).setFormula(cfg.formulas[h](r));
-  });
+/* Apaga as linhas daquela data e grava as novas — mantém o resumo sempre certo */
+function substituirDia(ctx, cfg, data, rows) {
+  var sh = ctx.sh, map = ctx.map;
+  var colData = map["Data"];
+  if (!colData) return;
+  var alvo = String(data).slice(0, 10);
+  var last = sh.getLastRow();
+
+  // limpa de baixo para cima as linhas daquele dia
+  if (last >= DATA_START) {
+    var vals = sh.getRange(DATA_START, colData, last - DATA_START + 1, 1).getValues();
+    for (var i = vals.length - 1; i >= 0; i--) {
+      if (mesmaData(vals[i][0], alvo)) sh.deleteRow(DATA_START + i);
+    }
+  }
+  // grava as novas no fim
+  var linha = Math.max(sh.getLastRow() + 1, DATA_START);
+  rows.forEach(function (row) { escreverLinha(sh, cfg, map, linha++, row); });
+}
+
+/* Compara a célula de data (Date ou texto) com "AAAA-MM-DD" */
+function mesmaData(v, iso) {
+  if (v instanceof Date) {
+    var m = iso.split("-");
+    return v.getFullYear() === Number(m[0]) && (v.getMonth() + 1) === Number(m[1]) && v.getDate() === Number(m[2]);
+  }
+  return String(v).slice(0, 10) === iso;
 }
 
 function remover(ctx, id) {
@@ -168,8 +242,13 @@ function parseData(v) {
   return isNaN(d.getTime()) ? v : d;
 }
 
+/* Texto que é número vira número de verdade na célula (aceita vírgula).
+   Códigos com zero à esquerda ("01") continuam como texto. */
 function numeroSePuder(v) {
-  if (typeof v === "string" && v.trim() !== "" && !isNaN(v) && !isNaN(parseFloat(v))) return Number(v);
+  if (typeof v !== "string") return v;
+  var s = v.trim();
+  if (s === "" || /^0\d/.test(s)) return v;
+  if (/^-?\d+(?:[.,]\d+)?$/.test(s)) return Number(s.replace(",", "."));
   return v;
 }
 
@@ -178,7 +257,7 @@ function contarLinhas() {
   Object.keys(TABS).forEach(function (k) {
     var ctx = abrir(TABS[k]);
     if (!ctx) { out[k] = 0; return; }
-    var idCol = ctx.map[ID_COL], sh = ctx.sh, last = sh.getLastRow(), n = 0;
+    var idCol = ctx.map[ID_COL] || 1, sh = ctx.sh, last = sh.getLastRow(), n = 0;
     if (last >= DATA_START) {
       var vals = sh.getRange(DATA_START, idCol, last - DATA_START + 1, 1).getValues();
       vals.forEach(function (x) { if (x[0] !== "" && x[0] != null) n++; });

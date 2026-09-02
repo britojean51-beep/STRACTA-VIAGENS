@@ -369,6 +369,44 @@ const DB = {
     }));
   },
 
+  /* ---- Totais por OPERADOR para uma lista de dias (espelha o de equipamento) ---- */
+  totaisPorOperador(dias) {
+    const mapa = {};
+    const pega = nome => (mapa[nome] ||= { operador: nome, diesel: 0, horas: 0, km: 0, viagens: 0, toneladas: 0, equipamentos: new Set() });
+    dias.forEach(iso => {
+      const d = this.getDia(iso) || { abastecimentos: [], viagens: [] };
+      (d.abastecimentos || []).forEach(a => {
+        if (!a.motorista) return;
+        const m = pega(a.motorista);
+        m.diesel += this.toN(a.litros);
+        m.horas += this.toN(a.horasTrabalhadas);
+        m.km += this.toN(a.kmRodado);
+        m.equipamentos.add(a.equipamento);
+      });
+      (d.viagens || []).forEach(v => {
+        if (!v.motorista) return;
+        const m = pega(v.motorista);
+        m.viagens += this.toN(v.quantidade);
+        m.toneladas += this.toN(v.pesoTotal);
+        m.equipamentos.add(v.equipamento);
+      });
+      // sem peso nas viagens, usa o campo toneladas do abastecimento
+      (d.abastecimentos || []).forEach(a => {
+        if (!a.motorista) return;
+        const temPeso = (d.viagens || []).some(v => v.motorista === a.motorista && this.toN(v.pesoTotal) > 0);
+        if (!temPeso) pega(a.motorista).toneladas += this.toN(a.toneladas);
+      });
+    });
+    return Object.values(mapa).map(m => ({
+      operador: m.operador,
+      equipamentos: [...m.equipamentos],
+      diesel: m.diesel, horas: m.horas, km: m.km, viagens: m.viagens, toneladas: m.toneladas,
+      lh: m.horas > 0 ? m.diesel / m.horas : 0,
+      lton: m.toneladas > 0 ? m.diesel / m.toneladas : 0,
+      media: m.diesel > 0 ? m.km / m.diesel : 0
+    }));
+  },
+
   /* Ranking dos últimos N dias (Painel) — usa o helper acima */
   rankingEquipamentos(n = 7) {
     return this.totaisPorEquipamento(this.listaDias().slice(0, n));
