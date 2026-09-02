@@ -33,7 +33,7 @@ const Cloud = {
   estado() {
     if (!this.ligada()) return { chave: "desligada", texto: "desligada" };
     if (!this.disponivel()) return { chave: "sem-login", texto: "precisa de login" };
-    if (this._erro) return { chave: "erro", texto: this._erro };
+    if (this._erro) return { chave: "erro", texto: this._erro.texto };
     if (!navigator.onLine || this._pendentes) return { chave: "offline", texto: "sem internet — vai subir depois" };
     return { chave: "ok", texto: "em dia" };
   },
@@ -72,7 +72,7 @@ const Cloud = {
       try {
         const doc = await this._cad(nome).get();
         if (!doc.exists) await this._cad(nome).set(dados, { merge: true });
-      } catch (e) { this._falha(e); }
+      } catch (e) { this._falha(e, "preparar cadastro/" + nome); }
     }
   },
   parar() {
@@ -82,11 +82,28 @@ const Cloud = {
   },
 
   _notificar() { try { this.onMudanca && this.onMudanca(); } catch (e) {} },
-  _falha(e) {
-    this._erro = (e && e.code === "permission-denied")
-      ? "sem permissão (confira as regras do Firestore)"
-      : "não conectou";
+
+  /* Guarda ONDE falhou e o código do Firestore — sem isso não dá para saber
+     se o problema é a regra, a internet ou o login. */
+  _falha(e, onde) {
+    const cod = (e && e.code) || "erro";
+    const motivo = cod === "permission-denied" ? "sem permissão"
+      : cod === "unavailable" ? "sem conexão"
+      : cod === "unauthenticated" ? "login expirado"
+      : "falhou";
+    this._erro = { codigo: cod, onde: onde || "", texto: motivo + (onde ? " ao " + onde : "") };
+    // Escuta recusada morre e não volta sozinha: solta tudo para permitir reconectar.
+    if (cod === "permission-denied" || cod === "unauthenticated") this.parar();
     this._notificar();
+  },
+
+  /* Depois de acertar as regras: liga de novo sem precisar recarregar o app. */
+  async reconectar() {
+    this.parar();
+    this._erro = null;
+    this._notificar();
+    await this.iniciar();
+    return this.estado();
   },
 
   /* ---- escuta o que muda na nuvem ---- */
@@ -96,13 +113,13 @@ const Cloud = {
       const q = this._col(col).where("dia", ">=", desde);
       this._unsub.push(q.onSnapshot(
         snap => { this._pendentes = snap.metadata.hasPendingWrites; this._aplicarLancamentos(col, snap); },
-        e => this._falha(e)
+        e => this._falha(e, "consultar " + col)
       ));
     });
     ["frota", "operacao", "estoque"].forEach(nome => {
       this._unsub.push(this._cad(nome).onSnapshot(
         doc => this._aplicarCadastro(nome, doc.data() || {}),
-        e => this._falha(e)
+        e => this._falha(e, "ler cadastro/" + nome)
       ));
     });
   },
@@ -163,15 +180,15 @@ const Cloud = {
       atualizadoEm: Date.now()
     });
     delete dados.id;
-    this._col(col).doc(reg.id).set(dados, { merge: false }).catch(e => this._falha(e));
+    this._col(col).doc(reg.id).set(dados, { merge: false }).catch(e => this._falha(e, "gravar em " + col));
   },
   remover(col, id) {
     if (!this.ativa() || !id) return;
-    this._col(col).doc(id).delete().catch(e => this._falha(e));
+    this._col(col).doc(id).delete().catch(e => this._falha(e, "excluir de " + col));
   },
   patch(nome, dados) {
     if (!this.ativa()) return;
-    this._cad(nome).set(dados, { merge: true }).catch(e => this._falha(e));
+    this._cad(nome).set(dados, { merge: true }).catch(e => this._falha(e, "gravar cadastro/" + nome));
   },
   /* soma/subtrai no tanque — dois celulares abastecendo junto continuam batendo */
   ajustarEstoque(tipo, delta) {
@@ -180,7 +197,47 @@ const Cloud = {
     this._pronta.then(() => {
       const inc = firebase.firestore.FieldValue.increment(delta);
       return this._cad("estoque").set({ [tipo]: inc }, { merge: true });
-    }).catch(e => this._falha(e));
+    }).catch(e => this._falha(e, "atualizar o tanque"));
+  },
+
+  /* ---- Diagnóstico: refaz cada operação isolada e diz qual delas trava ----
+     A ordem é a mesma que o app usa, então o primeiro ❌ é a causa. */
+  async diagnosticar() {
+    const passos = [];
+    const tentar = async (nome, fn) => {
+      try { const extra = await fn(); passos.push({ passo: nome, ok: true, info: extra || "" }); return true; }
+      catch (e) {
+        passos.push({ passo: nome, ok: false, erro: (e && e.code) || String(e && e.message || e) });
+        return false;
+      }
+    };
+    if (!this.disponivel()) {
+      return [{ passo: "login", ok: false, erro: "sem login (entre com seu usuário)" }];
+    }
+    const eu = this._quem();
+
+    await tentar("1. ler sua liberação em usuarios/" + eu, async () => {
+      const d = await this._fs().collection("usuarios").doc(eu).get();
+      if (!d.exists) throw { code: "documento não existe — confira o e-mail do usuário" };
+      const dados = d.data() || {};
+      return "perfil: " + (dados.perfil || "?") + (dados.ativo === false ? " (DESATIVADO)" : "");
+    });
+    await tentar("2. ler cadastro/frota", async () => { await this._cad("frota").get(); });
+    await tentar("3. gravar em cadastro/estoque", async () => {
+      await this._cad("estoque").set({ ping: Date.now() }, { merge: true });
+      await this._cad("estoque").set({ ping: firebase.firestore.FieldValue.delete() }, { merge: true });
+    });
+    await tentar("4. consultar os abastecimentos", async () => {
+      const desde = DB.addDias(DB.hojeISO(), -JANELA_DIAS);
+      const snap = await this._col("abastecimentos").where("dia", ">=", desde).get();
+      return snap.docs.length + " na nuvem";
+    });
+    await tentar("5. criar e apagar um lançamento de teste", async () => {
+      const ref = this._col("abastecimentos").doc("teste-" + Date.now());
+      await ref.set({ dia: DB.hojeISO(), teste: true, criadoPor: eu });
+      await ref.delete();
+    });
+    return passos;
   },
 
   /* ---- sobe a base inteira deste celular (idempotente: grava por id) ---- */

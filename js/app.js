@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "02/09/2026 · r24 (dados na nuvem)";
+const VERSION = "02/09/2026 · r25 (testar nuvem)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -280,7 +280,13 @@ function telaConfiguracoes() {
       </label>
       <div class="spacer"></div>
       <button class="btn btn-green" id="btnNuvemEnviar">⬆️ Enviar os dados deste celular</button>
+      <div class="spacer"></div>
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-sm" id="btnNuvemTestar">🔍 Testar nuvem</button>
+        <button class="btn btn-ghost btn-sm" id="btnNuvemReconectar">🔄 Reconectar</button>
+      </div>
       <p class="hint" id="nuvemMsg" style="margin-top:8px"></p>
+      <div id="nuvemDiag"></div>
     </div>
 
     <div class="card">
@@ -353,6 +359,31 @@ function telaConfiguracoes() {
       msgN("Nuvem desligada. O app volta a guardar tudo só neste celular.");
     }
     badge();
+  };
+  $("#btnNuvemTestar").onclick = async () => {
+    if (typeof Cloud === "undefined") return;
+    $("#nuvemDiag").innerHTML = "";
+    msgN("Testando cada passo…");
+    const passos = await Cloud.diagnosticar();
+    msgN("");
+    $("#nuvemDiag").innerHTML = passos.map(p => `
+      <div class="itemrow"><div class="info">${p.ok ? "✅" : "❌"} ${p.passo}
+        <div class="sub">${p.ok ? (p.info || "certo") : "erro: " + p.erro}</div></div></div>`).join("");
+    const ruim = passos.find(p => !p.ok);
+    if (!ruim) msgN("✅ Tudo certo. Se a etiqueta ainda estiver vermelha, toque em <b>Reconectar</b>.", "var(--green)");
+    else if (String(ruim.erro).includes("permission-denied"))
+      msgN("❌ O Firebase recusou em <b>" + ruim.passo + "</b>. As regras publicadas não estão liberando isso — " +
+           "confira se a versão que está valendo é a nova (ela tem <b>match /frota/{frota}</b> e <b>criadoPor</b>).", "var(--red)");
+    else msgN("❌ Parou em <b>" + ruim.passo + "</b> (" + ruim.erro + ").", "var(--red)");
+    badge();
+  };
+  $("#btnNuvemReconectar").onclick = async () => {
+    if (typeof Cloud === "undefined") return;
+    msgN("Reconectando…");
+    const e = await Cloud.reconectar();
+    badge();
+    msgN(e.chave === "ok" ? "✅ Reconectado — a nuvem está em dia." : "Situação agora: " + e.texto,
+         e.chave === "ok" ? "var(--green)" : "var(--red)");
   };
   $("#btnNuvemEnviar").onclick = async () => {
     if (typeof Cloud === "undefined") return;

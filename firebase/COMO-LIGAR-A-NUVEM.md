@@ -46,6 +46,25 @@ aparelho.
 
 ---
 
+## Se aparecer "sem permissão"
+
+A ordem certa é: **publicar as regras primeiro**, ligar a chavinha depois. Quem liga antes fica com o
+erro grudado — o Firebase derruba a conexão e ela não volta sozinha.
+
+No cartão **☁️ Dados na nuvem** há dois botões para isso:
+
+- **🔍 Testar nuvem** — refaz cada operação separada e mostra em qual delas o Firebase recusou,
+  com o código do erro. O primeiro ❌ da lista é a causa:
+  - falhou no **passo 1** (ler sua liberação) → o documento em **Usuários** não existe ou o e-mail
+    está diferente do que você usa para entrar;
+  - passou no 1 e falhou do **2 em diante** → as regras publicadas ainda não são as novas;
+  - **todos ✅** mas a etiqueta continua vermelha → era o erro grudado: toque em **Reconectar**.
+- **🔄 Reconectar** — liga de novo sem precisar fechar o app.
+
+Como saber qual versão das regras está valendo: no Firebase → Firestore → **Regras**, o texto que
+está publicado deve ter **`match /frota/{frota}`** e a palavra **`criadoPor`**. A versão antiga tem
+18 linhas e termina em `allow read, write: if false`.
+
 ## Enquanto a chave estiver desligada
 O app se comporta exatamente como antes: guarda tudo no celular e manda para a planilha.
 Nada é enviado para a nuvem. Dá para desligar a qualquer momento.
