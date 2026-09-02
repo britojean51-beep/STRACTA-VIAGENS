@@ -81,6 +81,13 @@ var TABS = {
     nome: "Resumo por Operador", dateCols: ["Data"], semId: true,
     colunas: ["Data", "Operador", "Equipamentos", "Consumo (L)", "Horas", "L/h",
               "Produção (t)", "L/Ton", "Viagens"]
+  },
+  resumoMes: {
+    nome: "Resumo por Mês", dateCols: [],
+    colunas: ["Mês", "Dias com lançamento", "Equipamentos", "Operadores",
+              "Consumo total (L)", "Horas totais", "L/h", "Produção (t)", "L/Ton",
+              "Diesel S-10 (L)", "Diesel S-500 (L)", "ARLA (L)", "KM", "Média km/L",
+              "Viagens", "Manutenções", "Quais equipamentos", "Quais operadores"]
   }
 };
 

@@ -49,7 +49,7 @@ Pronto! A partir daí, cada lançamento no app sobe sozinho para a planilha.
 
 ---
 
-## O que a planilha tem (8 abas, criadas sozinhas)
+## O que a planilha tem (9 abas, criadas sozinhas)
 
 **Quem calcula é o app.** A planilha não tem nenhuma fórmula: ela recebe os números
 já prontos, do mesmo jeito que aparecem no Painel.
@@ -68,13 +68,14 @@ já prontos, do mesmo jeito que aparecem no Painel.
 | `Resumo por Dia` | Equipamentos, operadores, **consumo total, horas totais, L/h, produção (t), L/Ton**, diesel S-10/S-500, ARLA, KM, média km/L, viagens, manutenções |
 | `Resumo por Equipamento` | Os mesmos números, **um por equipamento** naquele dia |
 | `Resumo por Operador` | Os mesmos números, **um por operador** naquele dia |
+| `Resumo por Mês` | O mês fechado: uma linha por mês, com os mesmos números somados e as médias recalculadas pelos totais |
 
 ## Como funciona (resumo)
 - O **app é a fonte da verdade**. Cada lançamento tem um código oculto (`_id`).
 - Salvar/editar no app → **atualiza a mesma linha** na planilha (não duplica).
 - Excluir no app → **limpa a linha** correspondente.
 - Nas abas de resumo, quando algo muda no dia o app **regrava aquele dia inteiro** —
-  então nunca sobra número velho.
+  então nunca sobra número velho. A linha do mês também é recalculada na hora.
 - Sem internet, os envios ficam guardados no celular e sobem sozinhos quando a rede voltar.
 
 ## Se precisar atualizar o script depois
@@ -86,3 +87,6 @@ Depois, no app: **Configurações → Sincronizar tudo** (cria as abas que falta
 Agora que o app manda tudo calculado, estas abas não servem mais e podem ser **apagadas**:
 `Lançamento Diário`, `Resumo Diário`, `Resumo Semanal`, `Resumo Mensal`,
 `Hist. Operadores`, `Hist. Equipamentos`, `Hist. Lançamentos`.
+
+O antigo `Resumo Mensal` (de fórmula) foi substituído pela aba `Resumo por Mês`,
+que o app preenche sozinho.

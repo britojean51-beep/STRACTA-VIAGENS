@@ -180,6 +180,31 @@ const DB = {
     };
   },
 
+  /* Soma vários dias num resumo só (Resumo por Mês da planilha).
+     As médias são recalculadas pelos totais — nunca média de médias. */
+  resumoPeriodo(dias) {
+    const t = { diesel: 0, dieselS10: 0, dieselS500: 0, arla: 0, km: 0, viagens: 0, horas: 0, toneladas: 0 };
+    const equip = new Set(), oper = new Set(), manut = new Set();
+    let comLancamento = 0;
+    dias.forEach(iso => {
+      const r = this.resumoDia(iso);
+      if (r.operando.length || r.manutencao.length) comLancamento++;
+      t.diesel += r.diesel; t.dieselS10 += r.dieselS10; t.dieselS500 += r.dieselS500;
+      t.arla += r.arla; t.km += r.km; t.viagens += r.viagens;
+      t.horas += r.horas; t.toneladas += r.toneladas;
+      r.operando.forEach(e => equip.add(e));
+      r.operadores.forEach(o => oper.add(o));
+      r.manutencao.forEach(m => manut.add(m));
+    });
+    return Object.assign(t, {
+      dias: comLancamento,
+      media: t.diesel > 0 ? t.km / t.diesel : 0,
+      lh: t.horas > 0 ? t.diesel / t.horas : 0,
+      lton: t.toneladas > 0 ? t.diesel / t.toneladas : 0,
+      operando: [...equip], operadores: [...oper], manutencao: [...manut]
+    });
+  },
+
   /* ---- Estado acumulado por equipamento (auto-preenchimento) ---- */
   ultimo(equip) {
     const db = this.load();

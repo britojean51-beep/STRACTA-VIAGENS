@@ -113,6 +113,30 @@ const Sync = {
       "Viagens": o.viagens
     }));
   },
+  resumoMesRow(mes) {
+    const r = DB.resumoPeriodo(mes.dias);
+    return {
+      _id: mes.chave,
+      "Mês": mes.label,
+      "Dias com lançamento": r.dias,
+      "Equipamentos": r.operando.length,
+      "Operadores": r.operadores.length,
+      "Consumo total (L)": this._n(r.diesel),
+      "Horas totais": this._n(r.horas, 1),
+      "L/h": this._n(r.lh, 2),
+      "Produção (t)": this._n(r.toneladas),
+      "L/Ton": this._n(r.lton, 2),
+      "Diesel S-10 (L)": this._n(r.dieselS10),
+      "Diesel S-500 (L)": this._n(r.dieselS500),
+      "ARLA (L)": this._n(r.arla),
+      "KM": this._n(r.km),
+      "Média km/L": this._n(r.media, 2),
+      "Viagens": r.viagens,
+      "Manutenções": r.manutencao.length,
+      "Quais equipamentos": r.operando.join(", "),
+      "Quais operadores": r.operadores.join(", ")
+    };
+  },
   equipamentoRow(eq) {
     const u = DB.ultimo(eq);
     return {
@@ -155,12 +179,21 @@ const Sync = {
   pushViagem(iso, reg)     { this._enqueue({ action: "upsert", kind: "viagem", row: this.viagemRow(iso, reg) }); },
   deleteViagem(id)         { this._enqueue({ action: "delete", kind: "viagem", id }); },
 
-  /* Recalcula e regrava os 3 resumos do dia (substitui as linhas daquela data) */
-  pushResumoDia(iso) {
+  /* Recalcula e regrava os resumos do dia (substitui as linhas daquela data)
+     e atualiza a linha do mês a que o dia pertence. */
+  pushResumoDia(iso, comMes = true) {
     if (!this.ativo()) return;
     this._enqueue({ action: "substituirDia", kind: "resumoDia", data: iso, rows: [this.resumoDiaRow(iso)] });
     this._enqueue({ action: "substituirDia", kind: "resumoEquip", data: iso, rows: this.resumoEquipRows(iso) });
     this._enqueue({ action: "substituirDia", kind: "resumoOperador", data: iso, rows: this.resumoOperadorRows(iso) });
+    if (comMes) this.pushResumoMes(iso);
+  },
+
+  /* Uma linha por mês (o mês inteiro é recalculado a cada mudança) */
+  pushResumoMes(iso) {
+    if (!this.ativo()) return;
+    const mes = DB.mesesDisponiveis().find(m => m.chave === String(iso).slice(0, 7));
+    if (mes) this._enqueue({ action: "upsert", kind: "resumoMes", row: this.resumoMesRow(mes) });
   },
 
   /* ---- Reenvia toda a base e confirma via ping ---- */
@@ -179,8 +212,9 @@ const Sync = {
     [["equipamento", eqRows], ["operador", opRows], ["lancamento", lanRows],
      ["viagem", viaRows], ["manutencao", manRows]]
       .forEach(([kind, rows]) => { if (rows.length) this._enqueue({ action: "bulk", kind, rows }); });
-    // resumos de todos os dias
-    dias.forEach(iso => this.pushResumoDia(iso));
+    // resumos de todos os dias e de cada mês (o mês vai uma vez só)
+    dias.forEach(iso => this.pushResumoDia(iso, false));
+    DB.mesesDisponiveis().forEach(m => this._enqueue({ action: "upsert", kind: "resumoMes", row: this.resumoMesRow(m) }));
     const t0 = Date.now();
     const check = () => {
       if (this.pendentes() === 0) { this.testar(cb); }
