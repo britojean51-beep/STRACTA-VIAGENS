@@ -220,7 +220,11 @@ const Cloud = {
       const d = await this._fs().collection("usuarios").doc(eu).get();
       if (!d.exists) throw { code: "documento não existe — confira o e-mail do usuário" };
       const dados = d.data() || {};
-      return "perfil: " + (dados.perfil || "?") + (dados.ativo === false ? " (DESATIVADO)" : "");
+      // os nomes dos campos importam: as regras leem 'perfil' e 'ativo' em minúsculo
+      const campos = Object.keys(dados).join(", ") || "(nenhum)";
+      const falta = ["perfil", "ativo"].filter(c => !(c in dados));
+      return "perfil: " + (dados.perfil || "?") + (dados.ativo === false ? " (DESATIVADO)" : "")
+        + " · campos: " + campos + (falta.length ? " · FALTA: " + falta.join(", ") : "");
     });
     await tentar("2. ler cadastro/frota", async () => { await this._cad("frota").get(); });
     await tentar("3. gravar em cadastro/estoque", async () => {

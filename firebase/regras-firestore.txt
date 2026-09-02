@@ -10,13 +10,15 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/usuarios/$(meuEmail())).data;
     }
     // Está logado, tem liberação e não foi desativado.
+    // Usa .get(campo, padrão): ler um campo que não existe dá ERRO nas regras,
+    // e erro nega tudo — então nunca acessamos o campo direto.
     function liberado() {
       return request.auth != null
         && exists(/databases/$(database)/documents/usuarios/$(meuEmail()))
-        && meuDoc().ativo != false;
+        && meuDoc().get('ativo', true) != false;
     }
     function ehGestor() {
-      return liberado() && meuDoc().perfil == 'gestor';
+      return liberado() && meuDoc().get('perfil', '') == 'gestor';
     }
 
     // ---- quem pode entrar no app ----
