@@ -1,10 +1,19 @@
-# Publicar o app em `gp2t-gestaodefrota.web.app`
+# Publicar o app em `gestaofrotaapp.web.app`
+
+> O app é publicado em **dois endereços ao mesmo tempo** (é o que está no `firebase.json`):
+> **gestaofrotaapp.web.app** — o oficial — e `gp2t-gestaodefrota.web.app`, mantido no ar para
+> ninguém ficar sem app durante a mudança. Cada envio de código atualiza os dois.
+>
+> Um endereço novo precisa de duas coisas no console, uma vez só:
+> **Hosting → Adicionar outro site** (com o ID `gestaofrotaapp`) e
+> **Authentication → Configurações → Domínios autorizados → Adicionar** `gestaofrotaapp.web.app`,
+> senão o login recusa por domínio não autorizado.
 
 Hoje o app abre em `britojean51-beep.github.io/STRACTA-VIAGENS/`. No GitHub Pages o endereço
 **sempre** começa com o nome de usuário. Publicando no **Firebase Hosting** — o mesmo projeto que já
 faz o login — o app passa a abrir em:
 
-**https://gp2t-gestaodefrota.web.app**
+**https://gestaofrotaapp.web.app**
 
 O login funciona nesse endereço sem configurar nada (o Firebase já autoriza o próprio domínio).
 Depois de pronto, **toda atualização vai sozinha**: é só o código ser enviado que o site se atualiza.
@@ -38,7 +47,7 @@ GitHub → repositório **STRACTA-VIAGENS** → **Settings** → **Secrets and v
 
 ### 5. Publicar
 GitHub → aba **Actions** → fluxo **Publicar** → **Run workflow**.
-Quando ficar verde ✅, abra **https://gp2t-gestaodefrota.web.app**.
+Quando ficar verde ✅, abra **https://gestaofrotaapp.web.app**.
 
 Daí em diante não precisa fazer mais nada: cada envio de código publica sozinho.
 
@@ -51,7 +60,7 @@ vazio — os dados não vão junto sozinhos. Faça assim, celular por celular:
 
 1. **No link antigo** (o de hoje): **⚙️ Configurações → 💾 Fazer backup** → salve o arquivo
    (Drive, WhatsApp para você mesmo, o que for mais fácil).
-2. Abra **https://gp2t-gestaodefrota.web.app** e faça login.
+2. Abra **https://gestaofrotaapp.web.app** e faça login.
 3. **⚙️ Configurações → ⬆️ Restaurar backup** → escolha o arquivo → confirme.
    O app mostra quantos dias e lançamentos vieram antes de trocar qualquer coisa.
 4. Menu do navegador → **Adicionar à tela inicial**.
