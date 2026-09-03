@@ -19,7 +19,7 @@ const Sync = {
   _statusLabel(st) {
     return {
       operando: "Operando", reserva: "Reserva", manutencao: "Manutenção",
-      parado: "Parado", final_expediente: "Final de expediente"
+      final_expediente: "Final de expediente"
     }[st] || "Operando";
   },
 

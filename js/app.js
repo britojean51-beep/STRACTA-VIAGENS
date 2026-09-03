@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "03/09/2026 · r38 (programar reabastecimento)";
+const VERSION = "03/09/2026 · r39 (Índice e cores da situação)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -14,7 +14,7 @@ let editando = null;
 let relatorioDiaPre = null;
 /* Equipamento selecionado ao abrir a Ficha */
 let fichaEquip = null;
-/* Painel: dias selecionados (vazio = dia atual) e janela das tendências (dias) */
+/* Índice: dias selecionados (vazio = dia atual) e janela das tendências (dias) */
 let painelDias = [];        // dias do "Geral do dia" / comparação
 let painelMes = null;       // mês exibido nos chips da comparação
 let trendDias = [];         // dias das Tendências / ranking
@@ -22,7 +22,7 @@ let trendMes = null;        // mês exibido nos chips das Tendências
 /* Relatório: tipo (diario|semanal|mensal) e período escolhido */
 let relatorioTipo = "diario";
 let relatorioPeriodoSel = null;
-/* Painel: KPI aberto no "Geral do dia" e métrica do ranking por equipamento */
+/* Índice: KPI aberto no "Geral do dia" e métrica do ranking por equipamento */
 let painelKpi = null;
 /* Área do desenvolvedor (5 toques na versão) — guarda o "Sair" longe da equipe */
 let painelMetrica = "diesel";
@@ -242,7 +242,7 @@ function telaHome() {
         <span class="desc">Quem opera a frota</span>
       </button>
       <button class="menu-card" data-go="dashboard">
-        <span class="ico">📊</span><span class="lbl">Painel</span>
+        <span class="ico">📊</span><span class="lbl">Índice</span>
         <span class="desc">Alertas, gráficos e tendências</span>
       </button>
       ${(logado && Auth.ehGestor()) ? `<button class="menu-card" data-go="usuarios">
@@ -893,7 +893,7 @@ function telaAbastecimento() {
           <input id="fLton" class="computed" readonly value="${ed?.lton ?? ""}">
         </div>
       </div>
-      <p class="hint">🚚 Para <b>caminhões</b>, deixe em branco: o L/Ton usa o <b>peso lançado nas Viagens</b> (aparece no Painel e no Relatório).</p>
+      <p class="hint">🚚 Para <b>caminhões</b>, deixe em branco: o L/Ton usa o <b>peso lançado nas Viagens</b> (aparece no Índice e no Relatório).</p>
 
       <div class="field-row">
         <div class="field">
@@ -1295,10 +1295,11 @@ function telaViagens() {
 /* ============================================================
    MANUTENÇÃO
    ============================================================ */
+/* A etiqueta tem a mesma cor da bola: na lista da Frota dá para separar
+   Reserva de Manutenção de longe, o que antes não dava (as duas eram azuis). */
 function pillStatus(st) {
-  if (st === "parado") return '<span class="pill pill-red">⛔ Parado</span>';
-  if (st === "manutencao") return '<span class="pill pill-blue">🔧 Manutenção</span>';
-  if (st === "reserva") return '<span class="pill pill-blue">🔵 Reserva</span>';
+  if (st === "manutencao") return '<span class="pill pill-red">🔴 Manutenção</span>';
+  if (st === "reserva") return '<span class="pill pill-yellow">🟡 Reserva</span>';
   if (st === "final_expediente") return '<span class="pill pill-gray">🌙 Final de expediente</span>';
   return '<span class="pill pill-green">🟢 Operando</span>';
 }
@@ -1306,9 +1307,8 @@ function pillStatus(st) {
 /* opções de status usadas nos selects (Ficha e Manutenção) */
 const STATUS_OPCOES = [
   ["operando", "🟢 Operando"],
-  ["reserva", "🔵 Reserva"],
-  ["manutencao", "🔧 Em manutenção"],
-  ["parado", "⛔ Parado"],
+  ["reserva", "🟡 Reserva"],
+  ["manutencao", "🔴 Em manutenção"],
   ["final_expediente", "🌙 Final de expediente"]
 ];
 function optsStatus(sel) {
@@ -1993,7 +1993,7 @@ function detalheKpi(chave, iso) {
 }
 
 function telaDashboard() {
-  $("#headerTitle").textContent = "📊 Painel";
+  $("#headerTitle").textContent = "📊 Índice";
   $("#headerSub").textContent = "ALERTAS · GRÁFICOS · METAS";
   const db = DB.load();
   const diaAtual = DB.garantirDiaAtual();
@@ -2617,13 +2617,13 @@ function iniciarApp() {
   avisarDieselBaixo();
 }
 
-/* Diesel no mínimo: o gestor vê assim que entra, e não só se for até o Painel.
+/* Diesel no mínimo: o gestor vê assim que entra, e não só se for até o Índice.
    Uma vez por abertura do app — não é para atrapalhar a cada tela. */
 let dieselAvisado = false;
 function avisarDieselBaixo() {
   if (dieselAvisado) return;
   if (typeof Auth !== "undefined" && Auth.configurado() && !Auth.ehGestor()) return;
-  const baixos = DB.dieselNoMinimo();      // mesma conta dos Alertas do Painel
+  const baixos = DB.dieselNoMinimo();      // mesma conta dos Alertas do Índice
   if (!baixos.length) return;
   dieselAvisado = true;
   avisar(`<b>🛢️ Diesel no nível mínimo</b><br><br>` +

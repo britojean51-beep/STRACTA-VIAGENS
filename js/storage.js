@@ -6,7 +6,7 @@ const DB_KEY = "stracta_frota_v1";
 
 /* Link do App da Web da planilha (Google Sheets) já embutido:
    assim todo celular novo abre o app com a sincronização pronta,
-   sem ninguém precisar colar o link. Pode ser trocado no Painel. */
+   sem ninguém precisar colar o link. Pode ser trocado no Índice. */
 const SHEETS_URL_PADRAO = "https://script.google.com/macros/s/AKfycbzUF4TumqnMtrZbu5WHrj3_RHA3zEEW6rGsG8cBEzZoKSzn9_zATgWBRzvlA_ZujRK2/exec";
 
 const DB = {
@@ -24,7 +24,7 @@ const DB = {
       estado: {},                      // { "CB-17": { kmFinal, horimetroFinal } } — último acumulado
       estoque: { s10: 4250, s500: 0, arla: 500 }, // litros por tanque
       tipoEquip: {},                   // { "CB-17": "km_horimetro"|"horimetro" }
-      status: {},                      // { "CB-17": "operando"|"reserva"|"manutencao"|"parado"|"final_expediente" }
+      status: {},                      // { "CB-17": "operando"|"reserva"|"manutencao"|"final_expediente" }
       operadorEquip: {},               // { "CB-17": "Saulo" } — quem está no equipamento
       proximaRevisao: {},              // { "CB-17": 20000 } — horímetro/KM alvo da próxima revisão
       /* Períodos de manutenção: abrem quando o equipamento é apontado em manutenção
@@ -251,7 +251,7 @@ const DB = {
       "Retorno de manutenção": "operando",
       "Saída para manutenção": "manutencao",
       "Reserva": "reserva",
-      "Parado": "parado",
+      "Parado": "reserva",   // Parado saiu; o que era Parado vira Reserva
       "Final de expediente": "final_expediente"
     }[sit] || "operando";
   },
@@ -376,7 +376,13 @@ const DB = {
   },
 
   /* ---- Status e revisão por equipamento ---- */
-  getStatus(eq) { return this.load().status[eq] || "operando"; },
+  /* "Parado" saiu do app. Normalizo na leitura, e não apagando o que está
+     gravado: equipamento antigo — ou vindo da nuvem de um celular que ainda
+     não atualizou — aparece como Reserva sem quebrar nada. */
+  getStatus(eq) {
+    const st = this.load().status[eq] || "operando";
+    return st === "parado" ? "reserva" : st;
+  },
   /* Único lugar que muda o status — e por isso o único que precisa saber abrir e
      fechar o período de manutenção. Abastecimento, tela de Manutenção e Ficha
      passam todos por aqui. opts: { dia, hora, origem } */
@@ -579,7 +585,7 @@ const DB = {
     }));
   },
 
-  /* Ranking dos últimos N dias (Painel) — usa o helper acima */
+  /* Ranking dos últimos N dias (Índice) — usa o helper acima */
   rankingEquipamentos(n = 7) {
     return this.totaisPorEquipamento(this.listaDias().slice(0, n));
   },
@@ -652,10 +658,9 @@ const DB = {
 
     const dia = this.getDia(iso) || { abastecimentos: [] };
     db.equipamentos.forEach(eq => {
-      // status parado / manutenção
+      // equipamento em manutenção
       const st = this.getStatus(eq);
-      if (st === "parado") push("alto", "⛔", `${eq} está PARADO`);
-      else if (st === "manutencao") {
+      if (st === "manutencao") {
         const ab = this.paradaAberta(eq);
         push("medio", "🔧", ab
           ? `${eq} está em MANUTENÇÃO desde ${this.fmtBR(ab.entradaDia).slice(0, 5)} ${ab.entradaHora} (${this.duracaoParada(ab)})`

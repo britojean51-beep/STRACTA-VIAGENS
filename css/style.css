@@ -196,8 +196,9 @@ main { padding: 16px; max-width: 640px; margin: 0 auto; animation: fade .25s eas
 .pill-red   { background: rgba(239,68,68,.15); color: #fca5a5; border: 1px solid rgba(239,68,68,.3); }
 .pill-blue  { background: rgba(59,130,246,.15); color: #93c5fd; border: 1px solid rgba(59,130,246,.3); }
 .pill-gray  { background: rgba(148,162,196,.15); color: var(--pill-txt); border: 1px solid rgba(148,162,196,.3); }
+.pill-yellow{ background: rgba(245,158,11,.15); color: #fcd34d; border: 1px solid rgba(245,158,11,.35); }
 
-/* Chips de dia (seleção múltipla no Painel) */
+/* Chips de dia (seleção múltipla no Índice) */
 .chips-dia { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
 .chip-dia {
   background: var(--caixa); color: var(--pill-txt); border: 1px solid var(--line);
@@ -391,6 +392,8 @@ body.tema-claro .pill-green { background: rgba(34,197,94,.12);  color: #047857; 
 body.tema-claro .pill-red   { background: rgba(239,68,68,.10);  color: #b91c1c; border-color: rgba(185,28,28,.35); }
 body.tema-claro .pill-blue  { background: rgba(59,130,246,.10); color: #1d4ed8; border-color: rgba(29,78,216,.35); }
 body.tema-claro .pill-gray  { background: rgba(100,116,139,.10); color: #334155; border-color: rgba(51,65,85,.30); }
+/* amarelo claro nao se le sobre branco: no tema claro a etiqueta escurece */
+body.tema-claro .pill-yellow{ background: rgba(245,158,11,.14); color: #92400e; border-color: rgba(146,64,14,.35); }
 
 /* O cabeçalho continua escuro nos dois temas (é a identidade do app),
    então o que está DENTRO dele não pode seguir a cor do texto do tema claro. */
