@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "03/09/2026 · r35 (horário e abastecedores)";
+const VERSION = "03/09/2026 · r36 (campos livres e tanque no abastecimento)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -53,8 +53,8 @@ function grafico(dados, opts = {}) {
     corpo += `<path d="${linha}" fill="none" stroke="${cor}" stroke-width="2.5" stroke-linejoin="round"/>`;
     corpo += pts.map(p =>
       `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="${cor}"/>
-       <text x="${p.x.toFixed(1)}" y="${(p.y - 7).toFixed(1)}" text-anchor="middle" font-size="9" fill="#e8eefc">${p.d.rotulo ?? p.d.valor}</text>
-       <text x="${p.x.toFixed(1)}" y="${h - 8}" text-anchor="middle" font-size="8.5" fill="#93a2c4">${p.d.label}</text>`
+       <text x="${p.x.toFixed(1)}" y="${(p.y - 7).toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--text)">${p.d.rotulo ?? p.d.valor}</text>
+       <text x="${p.x.toFixed(1)}" y="${h - 8}" text-anchor="middle" font-size="8.5" fill="var(--muted)">${p.d.label}</text>`
     ).join("");
   } else {
     const gap = areaW / dados.length;
@@ -64,13 +64,13 @@ function grafico(dados, opts = {}) {
       const x = padX + i * gap + (gap - bw) / 2;
       const y = padTop + areaH - bh;
       return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0, bh).toFixed(1)}" rx="3" fill="${cor}"/>
-        <text x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="9" fill="#e8eefc">${d.rotulo ?? d.valor}</text>
-        <text x="${(x + bw / 2).toFixed(1)}" y="${h - 8}" text-anchor="middle" font-size="8.5" fill="#93a2c4">${d.label}</text>`;
+        <text x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--text)">${d.rotulo ?? d.valor}</text>
+        <text x="${(x + bw / 2).toFixed(1)}" y="${h - 8}" text-anchor="middle" font-size="8.5" fill="var(--muted)">${d.label}</text>`;
     }).join("");
   }
   return `<svg class="chart" viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet"
             role="img" aria-label="${opts.titulo || "gráfico"}">
-            <line x1="${padX}" y1="${padTop + areaH}" x2="${w - padX}" y2="${padTop + areaH}" stroke="#26344f" stroke-width="1"/>
+            <line x1="${padX}" y1="${padTop + areaH}" x2="${w - padX}" y2="${padTop + areaH}" stroke="var(--line)" stroke-width="1"/>
             ${corpo}
           </svg>`;
 }
@@ -718,6 +718,46 @@ function telaNovoDia() {
 /* ============================================================
    ABASTECIMENTO
    ============================================================ */
+/* Campo que aceita escolher da lista OU digitar. Mesmo recurso do campo
+   "Tipo de material" das Viagens, então já é padrão conhecido do app. */
+function opcoesDatalist(id, itens) {
+  return `<datalist id="${id}">${itens.map(i => `<option value="${i}"></option>`).join("")}</datalist>`;
+}
+/* Confere o que foi digitado. Se não estiver no cadastro, PERGUNTA antes de criar —
+   erro de digitação não pode virar equipamento ou operador novo sem ninguém ver. */
+async function garantirEquipamento(valor) {
+  const v = String(valor || "").trim().toUpperCase();
+  if (!v) { toast("Escolha o equipamento", "err"); return null; }
+  if (DB.load().equipamentos.includes(v)) return v;
+  const tipo = /^CB/i.test(v) ? "km_horimetro" : "horimetro";
+  const ok = await confirmar(`${v} não está na frota. Cadastrar agora como ` +
+    `${tipo === "km_horimetro" ? "KM + Horímetro (km/L)" : "somente Horímetro (L/h)"}? ` +
+    `Dá para mudar depois na ficha do equipamento.`);
+  if (!ok) return null;
+  DB.addEquipamento(v);
+  DB.setTipoEquip(v, tipo);
+  Sync.pushEquipamento(v);
+  return v;
+}
+async function garantirOperador(valor) {
+  const v = String(valor || "").trim();
+  if (!v) { toast("Escolha o operador", "err"); return null; }
+  if (DB.load().motoristas.includes(v)) return v;
+  const ok = await confirmar(`${v} não está na lista de operadores. Cadastrar agora?`);
+  if (!ok) return null;
+  DB.addMotorista(v);
+  Sync.pushOperador(v);
+  return v;
+}
+
+/* No lançamento o operador pode ficar em branco (nem sempre se sabe quem estava).
+   Se vier escrito e não existir, pergunta. Devolve null quando o usuário desiste. */
+async function validarOperador(valor) {
+  const v = String(valor || "").trim();
+  if (!v) return "";
+  return await garantirOperador(v);
+}
+
 function horaAgora() {
   const d = new Date();
   return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
@@ -733,11 +773,39 @@ function telaAbastecimento() {
   const dia = DB.garantirDiaAtual();
   const ed = editando;
 
-  const optsEquip = db.equipamentos.map(e => `<option ${ed && ed.equipamento === e ? "selected" : ""}>${e}</option>`).join("");
-  const optsMot = db.motoristas.map(m => `<option ${ed && ed.motorista === m ? "selected" : ""}>${m}</option>`).join("");
   const optsAb = db.abastecedores.map(a => `<option ${ed && ed.abastecedor === a ? "selected" : ""}>${a}</option>`).join("");
   const optsComb = ["S-10", "S-500"].map(c => `<option ${ed?.combustivel === c ? "selected" : ""}>${c}</option>`).join("");
   const optsSit = SITUACOES.map(s => `<option ${ed?.situacao === s ? "selected" : ""}>${s}</option>`).join("");
+
+  /* Entrada do caminhão-pipa: fica aqui, que é onde a pessoa está quando o diesel chega.
+     Mexer no estoque da frota inteira é coisa de gestor. */
+  const podeTanque = (typeof Auth === "undefined") || Auth.ehGestor();
+  const tanquesHtml = !podeTanque ? "" : `
+    <div class="card">
+      <h3>🛢️ Entrada nos tanques</h3>
+      <p class="hint">Cada abastecimento de equipamento já desconta do estoque. Aqui entra o que o caminhão-pipa trouxe.</p>
+      <div class="kpi-grid">
+        <div class="kpi k-yellow"><div class="k-label">🛢️ Diesel S-10</div><div class="k-value">${fmt(db.estoque.s10)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi k-yellow"><div class="k-label">🛢️ Diesel S-500</div><div class="k-value">${fmt(db.estoque.s500)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi k-blue"><div class="k-label">💧 ARLA 32</div><div class="k-value">${fmt(db.estoque.arla)}<span class="k-unit"> L</span></div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="field">
+        <label>Tanque</label>
+        <select id="tqTipo">
+          <option value="s10">🛢️ Diesel S-10</option>
+          <option value="s500">🛢️ Diesel S-500</option>
+          <option value="arla">💧 ARLA 32</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Litros recebidos</label><input id="tqAdd" inputmode="decimal" placeholder="ex: 3000"></div>
+        <div class="field"><label>&nbsp;</label><button class="btn btn-green" id="btnTqAdd">➕ Entrada</button></div>
+      </div>
+      <div class="field"><label>Ou ajustar o saldo manualmente</label>
+        <input id="tqSet" inputmode="decimal" placeholder="definir valor total"></div>
+      <button class="btn btn-ghost btn-sm" id="btnTqSet">Definir saldo</button>
+    </div>`;
 
   app.innerHTML = `
     <div class="card">
@@ -745,7 +813,9 @@ function telaAbastecimento() {
 
       <div class="field">
         <label>Equipamento <span id="fTipoTag" class="badge-auto"></span></label>
-        <select id="fEquip">${optsEquip}</select>
+        <input id="fEquip" list="dlEquip" placeholder="selecione ou digite" autocapitalize="characters"
+               autocomplete="off" value="${ed ? ed.equipamento : ""}">
+        ${opcoesDatalist("dlEquip", db.equipamentos)}
       </div>
       <div class="field-row">
         <div class="field">
@@ -754,7 +824,9 @@ function telaAbastecimento() {
         </div>
         <div class="field">
           <label>Motorista / Operador</label>
-          <select id="fMot">${optsMot}</select>
+          <input id="fMot" list="dlMot" placeholder="selecione ou digite" autocomplete="off"
+                 value="${ed ? (ed.motorista || "") : ""}">
+          ${opcoesDatalist("dlMot", db.motoristas)}
         </div>
       </div>
 
@@ -851,6 +923,8 @@ function telaAbastecimento() {
       <h3>📈 Últimos abastecimentos <span id="fRecTitulo" class="mini"></span></h3>
       <div id="fRecentes"></div>
     </div>
+
+    ${tanquesHtml}
   `;
 
   const el = {
@@ -872,10 +946,12 @@ function telaAbastecimento() {
   }
 
   function preencherAuto() {
+    const eq = el.equip.value.trim();
+    if (!eq) { ajustarPorTipo(); recalcular(); $("#fRecTitulo").textContent = ""; $("#fRecentes").innerHTML = '<p class="empty">Escolha o equipamento.</p>'; return; }
     // quem está no equipamento já vem escolhido (definido na ficha da Frota)
-    const opEq = DB.getOperadorEquip(el.equip.value);
+    const opEq = DB.getOperadorEquip(eq);
     const selMot = $("#fMot");
-    if (opEq && selMot && [...selMot.options].some(o => o.value === opEq)) selMot.value = opEq;
+    if (opEq && selMot && !selMot.value.trim()) selMot.value = opEq;
     if (!editando) {
       const u = DB.ultimo(el.equip.value);
       el.horiIni.value = u.horimetroFinal ?? "";
@@ -928,12 +1004,23 @@ function telaAbastecimento() {
   }
 
   $("#fArla").onchange = e => { $("#fArlaLitrosWrap").style.display = e.target.value === "sim" ? "" : "none"; };
+  /* campo livre: escrever em minúscula vale igual, e assim que o texto bate com um
+     equipamento do cadastro o preenchimento automático já entra */
+  el.equip.oninput = () => {
+    const v = el.equip.value.toUpperCase();
+    if (v !== el.equip.value) el.equip.value = v;
+    if (DB.load().equipamentos.includes(v.trim())) preencherAuto();
+  };
   el.equip.onchange = preencherAuto;
   [el.horiIni, el.horiFim, el.kmIni, el.kmFim, el.litros, $("#fTon")].forEach(i => i.oninput = recalcular);
   if (!editando) preencherAuto(); else { ajustarPorTipo(); recalcular(); renderRecentes(); }
 
-  $("#btnSalvar").onclick = () => {
-    const equip = el.equip.value;
+  $("#btnSalvar").onclick = async () => {
+    const equip = await garantirEquipamento(el.equip.value);
+    if (!equip) return;
+    el.equip.value = equip;
+    const mot = await validarOperador($("#fMot").value);
+    if (mot === null) return;
     const hor = isHorimetro();
     const horiIni = num(el.horiIni.value), horiFim = num(el.horiFim.value);
     const kmIni = num(el.kmIni.value), kmFim = num(el.kmFim.value);
@@ -958,7 +1045,7 @@ function telaAbastecimento() {
     const reg = {
       equipamento: equip,
       hora: $("#fHora").value || horaAgora(),
-      motorista: $("#fMot").value,
+      motorista: mot,
       horimetroInicial: horiIni,
       horimetroFinal: horiFim,
       horasTrabalhadas: fmt(horas, 1),
@@ -998,6 +1085,18 @@ function telaAbastecimento() {
   };
 
   if (ed) $("#btnCancelEdit").onclick = () => { editando = null; navegar("corrigir"); };
+
+  if (podeTanque) {
+    $("#btnTqAdd").onclick = () => {
+      const l = num($("#tqAdd").value);
+      if (!l) { toast("Informe os litros", "err"); return; }
+      DB.addEstoque($("#tqTipo").value, l); toast(`✔ +${fmt(l)} L no tanque`); telaAbastecimento();
+    };
+    $("#btnTqSet").onclick = () => {
+      const l = num($("#tqSet").value);
+      DB.setEstoque($("#tqTipo").value, l); toast("✔ Saldo atualizado"); telaAbastecimento();
+    };
+  }
 }
 
 /* ============================================================
@@ -1009,19 +1108,18 @@ function telaViagens() {
   const db = DB.load();
   const dia = DB.garantirDiaAtual();
 
-  const optsEquip = db.equipamentos.map(e => `<option>${e}</option>`).join("");
-  const optsMot = db.motoristas.map(m => `<option>${m}</option>`).join("");
-
   app.innerHTML = `
     <div class="card">
       <h3>🚚 Registrar viagens</h3>
       <div class="field">
         <label>Equipamento</label>
-        <select id="vEquip">${optsEquip}</select>
+        <input id="vEquip" list="dlVEquip" placeholder="selecione ou digite" autocapitalize="characters" autocomplete="off">
+        ${opcoesDatalist("dlVEquip", db.equipamentos)}
       </div>
       <div class="field">
         <label>Motorista</label>
-        <select id="vMot">${optsMot}</select>
+        <input id="vMot" list="dlVMot" placeholder="selecione ou digite" autocomplete="off">
+        ${opcoesDatalist("dlVMot", db.motoristas)}
       </div>
       <div class="field-row">
         <div class="field">
@@ -1145,19 +1243,28 @@ function telaViagens() {
   $("#vPeso").oninput = previewPeso;
 
   const autoOperador = () => {
-    const opEq = DB.getOperadorEquip($("#vEquip").value);
-    if (opEq && [...$("#vMot").options].some(o => o.value === opEq)) $("#vMot").value = opEq;
+    const opEq = DB.getOperadorEquip($("#vEquip").value.trim());
+    if (opEq && !$("#vMot").value.trim()) $("#vMot").value = opEq;
+  };
+  $("#vEquip").oninput = () => {
+    const c = $("#vEquip"), v = c.value.toUpperCase();
+    if (v !== c.value) c.value = v;
+    if (DB.load().equipamentos.includes(v.trim())) autoOperador();
   };
   $("#vEquip").onchange = autoOperador;
-  autoOperador();
 
-  $("#btnAdd").onclick = () => {
+  $("#btnAdd").onclick = async () => {
     const orig = $("#vOrig").value.trim(), dest = $("#vDest").value.trim(), qtd = num($("#vQtd").value);
+    const equip = await garantirEquipamento($("#vEquip").value);
+    if (!equip) return;
+    $("#vEquip").value = equip;
+    const mot = await validarOperador($("#vMot").value);
+    if (mot === null) return;
     if (!orig || !dest) { toast("Informe origem e destino", "err"); return; }
     if (!qtd) { toast("Informe a quantidade", "err"); return; }
     const pesoViagem = num($("#vPeso").value);
     viagensBuffer.push({
-      equipamento: $("#vEquip").value, motorista: $("#vMot").value,
+      equipamento: equip, motorista: mot,
       origem: orig.padStart(2, "0"), destino: dest.padStart(2, "0"), quantidade: qtd,
       material: $("#vMat").value.trim(), pesoViagem: pesoViagem || null,
       pesoTotal: pesoViagem ? pesoViagem * qtd : null
@@ -1208,7 +1315,6 @@ function telaManutencao() {
   $("#headerSub").textContent = "SERVIÇOS · STATUS · REVISÕES";
   const db = DB.load();
   const dia = DB.garantirDiaAtual();
-  const optsEquip = db.equipamentos.map(e => `<option>${e}</option>`).join("");
   const tipos = ["Preventiva", "Corretiva", "Lubrificação", "Calibração", "Troca de Óleo"];
 
   app.innerHTML = `
@@ -1216,7 +1322,8 @@ function telaManutencao() {
       <h3>🔧 Registrar manutenção</h3>
       <div class="field">
         <label>Equipamento</label>
-        <select id="mEquip">${optsEquip}</select>
+        <input id="mEquip" list="dlMEquip" placeholder="selecione ou digite" autocapitalize="characters" autocomplete="off">
+        ${opcoesDatalist("dlMEquip", db.equipamentos)}
       </div>
       <div class="field">
         <label>Tipo</label>
@@ -1261,11 +1368,17 @@ function telaManutencao() {
   // ao trocar de equipamento, mostra o status e a revisão já cadastrados
   const selEquip = $("#mEquip");
   function carregarEquip() {
-    const eq = selEquip.value;
+    const eq = selEquip.value.trim();
+    if (!eq) return;
     $("#mStatus").value = DB.getStatus(eq);
     const rev = DB.getProximaRevisao(eq);
     $("#mProxRev").value = rev == null ? "" : rev;
   }
+  selEquip.oninput = () => {
+    const v = selEquip.value.toUpperCase();
+    if (v !== selEquip.value) selEquip.value = v;
+    if (DB.load().equipamentos.includes(v.trim())) carregarEquip();
+  };
   selEquip.onchange = carregarEquip;
 
   function renderRevisoes() {
@@ -1298,9 +1411,11 @@ function telaManutencao() {
       </div></div>`).join("");
   }
 
-  $("#btnSalvar").onclick = () => {
+  $("#btnSalvar").onclick = async () => {
     const serv = $("#mServico").value.trim();
-    const eq = selEquip.value;
+    const eq = await garantirEquipamento(selEquip.value);
+    if (!eq) return;
+    selEquip.value = eq;
     if (!serv) { toast("Descreva o serviço", "err"); return; }
     const mreg = DB.addManutencao(dia, {
       equipamento: eq, tipo: $("#mTipo").value,
@@ -2105,26 +2220,6 @@ function telaDashboard() {
       <button class="btn btn-ghost btn-sm" id="btnCfg">Salvar metas</button>
     </div>
 
-    <div class="card">
-      <h3>🛢️ Entrada nos tanques</h3>
-      <p class="hint">Cada abastecimento de equipamento desconta o estoque automaticamente.</p>
-      <div class="field">
-        <label>Tanque</label>
-        <select id="tqTipo">
-          <option value="s10">🛢️ Diesel S-10</option>
-          <option value="s500">🛢️ Diesel S-500</option>
-          <option value="arla">💧 ARLA 32</option>
-        </select>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Litros recebidos</label><input id="tqAdd" inputmode="decimal" placeholder="ex: 3000"></div>
-        <div class="field"><label>&nbsp;</label><button class="btn btn-green" id="btnTqAdd">➕ Entrada</button></div>
-      </div>
-      <div class="field"><label>Ou ajustar o saldo manualmente</label>
-        <input id="tqSet" inputmode="decimal" placeholder="definir valor total"></div>
-      <button class="btn btn-ghost btn-sm" id="btnTqSet">Definir saldo</button>
-    </div>
-
   `;
 
   $$("[data-ficha]").forEach(el => el.onclick = () => abrirFicha(el.dataset.ficha));
@@ -2157,16 +2252,6 @@ function telaDashboard() {
     });
     toast("✔ Metas salvas"); telaDashboard();
   };
-  $("#btnTqAdd").onclick = () => {
-    const l = num($("#tqAdd").value);
-    if (!l) { toast("Informe os litros", "err"); return; }
-    DB.addEstoque($("#tqTipo").value, l); toast(`✔ +${fmt(l)} L adicionados`); telaDashboard();
-  };
-  $("#btnTqSet").onclick = () => {
-    const l = num($("#tqSet").value);
-    DB.setEstoque($("#tqTipo").value, l); toast("✔ Saldo atualizado"); telaDashboard();
-  };
-
 }
 
 /* ============================================================
