@@ -71,6 +71,18 @@ Como saber qual versão das regras está valendo: no Firebase → Firestore → 
 está publicado deve ter **`match /frota/{frota}`** e a palavra **`criadoPor`**. A versão antiga tem
 18 linhas e termina em `allow read, write: if false`.
 
+## Entrar sem internet
+A partir da r31, quem **já entrou uma vez naquele celular com internet** pode entrar de novo sem
+sinal, com o mesmo usuário e senha. O app guarda no aparelho um resumo da senha (nunca a senha) e
+confere ali mesmo.
+
+- Celular novo, que nunca conectou: precisa de internet **uma vez**, no preparo. Não existe como
+  conferir uma senha que o aparelho nunca viu.
+- Entrando sem internet, o app funciona normal e os lançamentos ficam numa fila. Quando a rede
+  voltar, ele reconecta sozinho e sobe tudo — a etiqueta da nuvem mostra quantos faltam.
+- A credencial vale **90 dias** sem conectar. Depois disso o app pede internet de novo (é o que
+  impede um aparelho perdido de virar acesso eterno).
+
 ## Enquanto a chave estiver desligada
 O app se comporta exatamente como antes: guarda tudo no celular e manda para a planilha.
 Nada é enviado para a nuvem. Dá para desligar a qualquer momento.

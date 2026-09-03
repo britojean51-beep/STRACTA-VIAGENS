@@ -15,6 +15,8 @@ const FROTA_ID = "gp2t";
 const JANELA_DIAS = 120;                 // quanto tempo o celular acompanha ao vivo
 const COLECOES = ["abastecimentos", "viagens", "manutencoes"];
 
+const PEND_KEY = "gp2t_nuvem_pend";      // o que ainda não subiu para a nuvem
+
 const Cloud = {
   _unsub: [],
   _pronta: Promise.resolve(),
@@ -25,15 +27,24 @@ const Cloud = {
 
   /* ---- situação ---- */
   disponivel() {
-    return typeof firebase !== "undefined" && !!firebase.firestore
-      && typeof Auth !== "undefined" && Auth.configurado() && !!Auth.usuario;
+    if (typeof firebase === "undefined" || !firebase.firestore) return false;
+    if (typeof Auth === "undefined" || !Auth.configurado() || !Auth.usuario) return false;
+    // entrada offline não tem sessão no Firebase: sem isso, toda leitura viria
+    // como "sem permissão" e a etiqueta ficaria vermelha sem motivo
+    try { return !!firebase.auth().currentUser; } catch (e) { return false; }
   },
   ligada() { return !!DB.load().config.nuvem; },
   ativa() { return this.ligada() && this.disponivel(); },
   estado() {
     if (!this.ligada()) return { chave: "desligada", texto: "desligada" };
-    if (!this.disponivel()) return { chave: "sem-login", texto: "precisa de login" };
+    if (!this.disponivel()) {
+      return (typeof Auth !== "undefined" && Auth._offline)
+        ? { chave: "offline", texto: "entrou sem internet — " + (this.pendentes() || 0) + " para subir" }
+        : { chave: "sem-login", texto: "precisa de login" };
+    }
     if (this._erro) return { chave: "erro", texto: this._erro.texto };
+    const f = this.pendentes();
+    if (f) return { chave: "offline", texto: f + " lançamento(s) para subir" };
     if (!navigator.onLine || this._pendentes) return { chave: "offline", texto: "sem internet — vai subir depois" };
     return { chave: "ok", texto: "em dia" };
   },
@@ -54,6 +65,7 @@ const Cloud = {
       this._pronta = this._semear();
       await this._pronta;
       this._ouvir();
+      await this._enviarPend();          // sobe o que ficou pendente sem sessão
     } catch (e) {
       // a nuvem nunca pode derrubar o app: sem ela, ele volta a funcionar só no aparelho
       this.parar();
@@ -180,9 +192,49 @@ const Cloud = {
     this._notificar();
   },
 
+  /* ---- fila: o que foi lançado sem sessão (entrou offline, ou app aberto sem rede).
+     Sem isso, esses lançamentos nunca chegariam à nuvem — ficariam só no aparelho. ---- */
+  _pend() { try { return JSON.parse(localStorage.getItem(PEND_KEY) || "[]"); } catch (e) { return []; } },
+  _gravarPend(f) { try { localStorage.setItem(PEND_KEY, JSON.stringify(f)); } catch (e) {} },
+  _enfileirar(op) {
+    const f = this._pend();
+    f.push(op);
+    this._gravarPend(f.slice(-2000));      // teto de segurança
+    this._notificar();
+  },
+  pendentes() { return this._pend().length; },
+
+  async _enviarPend() {
+    if (!this.ativa()) return;
+    const f = this._pend();
+    if (!f.length) return;
+    this._gravarPend([]);                  // tira da fila antes; o que falhar volta
+    const sobrou = [];
+    for (const op of f) {
+      try { await this._executar(op); }
+      catch (e) { sobrou.push(op); }
+    }
+    if (sobrou.length) this._gravarPend(sobrou);
+    this._notificar();
+  },
+
+  _executar(op) {
+    if (op.t === "push")    return this._col(op.col).doc(op.id).set(op.dados, { merge: false });
+    if (op.t === "remover") return this._col(op.col).doc(op.id).delete();
+    if (op.t === "patch")   return this._cad(op.nome).set(op.dados, { merge: true });
+    if (op.t === "estoque") return this._cad("estoque").set(
+      { [op.tipo]: firebase.firestore.FieldValue.increment(op.delta) }, { merge: true });
+    return Promise.resolve();
+  },
+
   /* ---- escritas (chamadas pelos ganchos do storage) ---- */
+  _fazer(op, onde) {
+    if (!this.ligada()) return;
+    if (!this.ativa()) return this._enfileirar(op);     // sem sessão: guarda para depois
+    this._executar(op).catch(e => this._falha(e, onde));
+  },
   push(col, iso, reg) {
-    if (!this.ativa() || !reg || !reg.id) return;
+    if (!reg || !reg.id) return;
     const dados = Object.assign({}, reg, {
       dia: iso,
       criadoPor: reg.criadoPor || this._quem(),
@@ -190,24 +242,23 @@ const Cloud = {
       atualizadoEm: Date.now()
     });
     delete dados.id;
-    this._col(col).doc(reg.id).set(dados, { merge: false }).catch(e => this._falha(e, "gravar em " + col));
+    this._fazer({ t: "push", col, id: reg.id, dados }, "gravar em " + col);
   },
   remover(col, id) {
-    if (!this.ativa() || !id) return;
-    this._col(col).doc(id).delete().catch(e => this._falha(e, "excluir de " + col));
+    if (!id) return;
+    this._fazer({ t: "remover", col, id }, "excluir de " + col);
   },
   patch(nome, dados) {
-    if (!this.ativa()) return;
-    this._cad(nome).set(dados, { merge: true }).catch(e => this._falha(e, "gravar cadastro/" + nome));
+    this._fazer({ t: "patch", nome, dados }, "gravar cadastro/" + nome);
   },
   /* soma/subtrai no tanque — dois celulares abastecendo junto continuam batendo */
   ajustarEstoque(tipo, delta) {
-    if (!this.ativa() || !delta) return;
+    if (!delta) return;
+    if (!this.ligada()) return;
+    if (!this.ativa()) return this._enfileirar({ t: "estoque", tipo, delta });
     // espera a semeadura: somar num tanque que ainda não existe daria valor negativo
-    this._pronta.then(() => {
-      const inc = firebase.firestore.FieldValue.increment(delta);
-      return this._cad("estoque").set({ [tipo]: inc }, { merge: true });
-    }).catch(e => this._falha(e, "atualizar o tanque"));
+    this._pronta.then(() => this._executar({ t: "estoque", tipo, delta }))
+      .catch(e => this._falha(e, "atualizar o tanque"));
   },
 
   /* ---- Diagnóstico: refaz cada operação isolada e diz qual delas trava ----

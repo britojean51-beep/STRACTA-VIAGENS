@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "03/09/2026 · r30 (botão Sair)";
+const VERSION = "03/09/2026 · r31 (entrar sem internet)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -2257,6 +2257,8 @@ function mostrarLogin(aviso) {
       <div class="field"><label>Senha</label><input id="loginSenha" type="password" autocomplete="current-password" placeholder="••••••"></div>
       <button class="btn btn-primary" id="btnEntrar">Entrar</button>
       <p class="hint" id="loginMsg" style="margin-top:10px"></p>
+      ${!navigator.onLine ? `<p class="hint" style="color:var(--blue,#93c5fd)">📴 Sem internet — dá para entrar
+      com um usuário que já usou este celular. Os lançamentos sobem sozinhos quando a rede voltar.</p>` : ""}
       <p class="hint">Esqueceu a senha? Peça ao gestor para redefinir.</p>
     </div>`;
 
@@ -2267,7 +2269,9 @@ function mostrarLogin(aviso) {
     if (!email || !senha) { msg("Preencha usuário e senha.", "var(--red)"); return; }
     msg("Entrando…");
     const r = await Auth.entrar(email, senha);
-    if (r.ok) iniciarApp(); else msg("❌ " + r.erro, "var(--red)");
+    if (!r.ok) { msg("❌ " + r.erro, "var(--red)"); return; }
+    iniciarApp();
+    if (r.offline) toast("📴 Entrou sem internet — sincroniza quando a rede voltar");
   };
   $("#loginSenha").onkeydown = e => { if (e.key === "Enter") $("#btnEntrar").click(); };
 }
@@ -2301,6 +2305,9 @@ function iniciarApp() {
 function ligarNuvem() {
   if (typeof Cloud === "undefined") return;
   Cloud.onMudanca = () => {
+    // ninguém logado (tela de login na frente): não redesenhar nada por cima
+    if (typeof Auth !== "undefined" && Auth.configurado() && !Auth.usuario) return;
+    if (document.body.classList.contains("sem-login")) return;
     const el = document.getElementById("nuvemBadge");
     if (el) pintarBadgeNuvem(el);
     if (TELAS_LEITURA.includes(rotaAtual)) navegar(rotaAtual);

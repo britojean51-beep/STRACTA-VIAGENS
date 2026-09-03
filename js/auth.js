@@ -8,6 +8,8 @@
      offline, no campo, sem sinal.
    ============================================================ */
 const SESSAO_KEY = "gp2t_sessao";
+const CONTAS_KEY = "gp2t_contas";      // credenciais locais, para entrar sem internet
+const VALIDADE_OFFLINE = 90;           // dias desde a última confirmação online
 /* O Firebase exige um identificador em formato de e-mail, mas ele não precisa
    existir de verdade. Usamos um domínio interno: quem entra digita só "saulo"
    e o app completa para "saulo@gp2t.local". Ninguém precisa ter e-mail. */
@@ -43,6 +45,46 @@ const Auth = {
   sdkDisponivel() { return typeof firebase !== "undefined" && !!firebase.initializeApp; },
   ehGestor() { return !this.configurado() || (this.usuario && this.usuario.perfil === "gestor"); },
   perfil() { return this.usuario ? this.usuario.perfil : "gestor"; },
+
+  /* ---- credenciais locais: permitem entrar sem internet em quem já entrou aqui ----
+     Guardamos um RESUMO da senha (PBKDF2-SHA256 com sal), nunca a senha. */
+  _contas() { try { return JSON.parse(localStorage.getItem(CONTAS_KEY) || "{}"); } catch (e) { return {}; } },
+  _gravarContas(c) { try { localStorage.setItem(CONTAS_KEY, JSON.stringify(c)); } catch (e) {} },
+  _cripto() { return (typeof crypto !== "undefined" && crypto.subtle) ? crypto.subtle : null; },
+  _hex(buf) { return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join(""); },
+
+  async _resumo(senha, saltHex) {
+    const sub = this._cripto();
+    if (!sub) return null;                       // sem WebCrypto: fica sem acesso offline
+    const enc = new TextEncoder();
+    const salt = new Uint8Array((saltHex.match(/../g) || []).map(h => parseInt(h, 16)));
+    const chave = await sub.importKey("raw", enc.encode(senha), "PBKDF2", false, ["deriveBits"]);
+    const bits = await sub.deriveBits(
+      { name: "PBKDF2", salt, iterations: 150000, hash: "SHA-256" }, chave, 256);
+    return this._hex(bits);
+  },
+
+  async _salvarConta(dados, senha) {
+    if (!this._cripto() || !senha) return;
+    const contas = this._contas();
+    const antiga = contas[dados.email] || {};
+    const salt = antiga.salt || this._hex(crypto.getRandomValues(new Uint8Array(16)));
+    const resumo = await this._resumo(senha, salt);
+    if (!resumo) return;
+    contas[dados.email] = Object.assign({}, dados, { salt, resumo, confirmadoEm: Date.now() });
+    this._gravarContas(contas);
+  },
+
+  /* Confere a senha digitada contra o resumo guardado neste aparelho. */
+  async _conferirLocal(email, senha) {
+    const c = this._contas()[email];
+    if (!c || !c.resumo) return { status: "sem-conta" };
+    const dias = (Date.now() - (c.confirmadoEm || 0)) / 86400000;
+    if (dias > VALIDADE_OFFLINE) return { status: "vencida" };
+    const resumo = await this._resumo(senha, c.salt);
+    if (!resumo || resumo !== c.resumo) return { status: "senha" };
+    return { status: "ok", dados: { email: c.email, usuario: c.usuario, nome: c.nome, perfil: c.perfil } };
+  },
 
   /* ---- sessão salva no aparelho (modo offline) ---- */
   _salvarSessao(u) { try { localStorage.setItem(SESSAO_KEY, JSON.stringify(u)); } catch (e) {} },
@@ -120,23 +162,64 @@ const Auth = {
   },
 
   async entrar(usuario, senha) {
-    if (!this.sdkDisponivel()) return { ok: false, erro: "Sem internet. Conecte-se para entrar pela primeira vez." };
     const id = emailDe(usuario);
     if (!id) return { ok: false, erro: "Informe seu usuário." };
+    if (!this.sdkDisponivel() || !navigator.onLine) return this._entrarOffline(id, senha);
     try {
       const cred = await firebase.auth().signInWithEmailAndPassword(id, senha);
       const r = await this._buscarUsuario(cred.user.email);
-      if (r.status === "ok") { this.usuario = r.dados; this._salvarSessao(r.dados); return { ok: true }; }
+      if (r.status === "ok") {
+        this.usuario = r.dados; this._offline = false;
+        this._salvarSessao(r.dados);
+        await this._salvarConta(r.dados, senha);      // habilita entrar sem internet depois
+        return { ok: true };
+      }
       if (r.status === "erro-rede") {
-        const s = this._lerSessao();
-        if (s && s.email === id) { this.usuario = s; this._offline = true; return { ok: true }; }
+        const off = await this._entrarOffline(id, senha);
+        if (off.ok) return off;
         return { ok: false, erro: "Não deu para confirmar seu acesso. Tente de novo com internet." };
       }
       await this.sair(true);
       return { ok: false, erro: "Acesso não liberado. Fale com o gestor." };
     } catch (e) {
+      const cod = (e && e.code) || "";
+      // caiu a rede no meio: tenta pelo que está guardado neste celular
+      if (cod.includes("network") || cod.includes("unavailable") || cod.includes("timeout")) {
+        const off = await this._entrarOffline(id, senha);
+        if (off.ok) return off;
+      }
       return { ok: false, erro: this._msgErro(e) };
     }
+  },
+
+  /* Entrada sem internet: só funciona para quem já entrou neste aparelho. */
+  async _entrarOffline(id, senha) {
+    const r = await this._conferirLocal(id, senha);
+    if (r.status === "ok") {
+      this.usuario = r.dados;
+      this._offline = true;
+      this._senhaMemoria = senha;          // só na memória, para reconectar quando a rede voltar
+      this._salvarSessao(r.dados);
+      return { ok: true, offline: true };
+    }
+    if (r.status === "senha") return { ok: false, erro: "Senha incorreta." };
+    if (r.status === "vencida") return { ok: false, erro: "Faz muito tempo sem conectar. Entre uma vez com internet." };
+    return { ok: false, erro: "Sem internet. Este usuário ainda não entrou neste celular — é preciso conectar uma vez." };
+  },
+
+  /* Rede voltou: troca a sessão offline por uma real, sem incomodar ninguém. */
+  async _promover() {
+    if (!this._offline || !this._senhaMemoria || !this.sdkDisponivel() || !this.usuario) return false;
+    try {
+      const cred = await firebase.auth().signInWithEmailAndPassword(this.usuario.email, this._senhaMemoria);
+      const r = await this._buscarUsuario(cred.user.email);
+      if (r.status !== "ok") return false;
+      this.usuario = r.dados; this._offline = false;
+      this._salvarSessao(r.dados);
+      await this._salvarConta(r.dados, this._senhaMemoria);
+      if (typeof Cloud !== "undefined") Cloud.iniciar().catch(() => {});
+      return true;
+    } catch (e) { return false; }
   },
 
   /* Só faz sentido para e-mail de verdade; com usuário interno, quem redefine é o gestor. */
@@ -153,7 +236,9 @@ const Auth = {
   },
 
   async sair(silencioso) {
-    this.usuario = null; this._limparSessao();
+    // as credenciais locais FICAM: é o que permite voltar sem internet
+    this.usuario = null; this._offline = false; this._senhaMemoria = null;
+    this._limparSessao();
     try { if (this.sdkDisponivel()) await firebase.auth().signOut(); } catch (e) {}
     if (!silencioso && typeof mostrarLogin === "function") mostrarLogin();
   },
@@ -196,6 +281,7 @@ const Auth = {
 
 if (typeof window !== "undefined") {
   window.Auth = Auth;
+  window.addEventListener("online", () => { Auth._promover(); });
   window.emailDe = emailDe;
   window.usuarioDe = usuarioDe;
 }

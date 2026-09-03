@@ -246,7 +246,7 @@ const DB = {
 
   /* ---- Ponte com a nuvem (js/cloud.js). Sem nuvem ligada, não faz nada. ---- */
   _nuvem(fn) {
-    if (typeof Cloud === "undefined" || !Cloud.ativa()) return;
+    if (typeof Cloud === "undefined" || !Cloud.ligada()) return;   // ativa() não: offline vai para a fila
     try { fn(Cloud); } catch (e) { /* a nuvem nunca pode derrubar o lançamento */ }
   },
   _quem() {
