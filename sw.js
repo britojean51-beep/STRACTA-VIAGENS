@@ -1,7 +1,7 @@
 /* STRACTA · Service Worker
    Estratégia "rede primeiro, sem cache HTTP": quando há internet, sempre
    baixa a versão mais nova do servidor; offline usa a última cópia salva. */
-const CACHE = "gp2t-v37";
+const CACHE = "gp2t-v38";
 const ASSETS = [
   "./",
   "./index.html",

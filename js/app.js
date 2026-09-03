@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "03/09/2026 · r37 (histórico de manutenção e aviso de diesel)";
+const VERSION = "03/09/2026 · r38 (programar reabastecimento)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -2630,7 +2630,7 @@ function avisarDieselBaixo() {
     `<ul style="margin:0;padding-left:18px;text-align:left">${baixos.map(t =>
       `<li><b>${t.nome}</b>: ${fmt(t.litros)} L</li>`).join("")}</ul>` +
     `<br>Mínimo definido: <b>${fmt(baixos[0].minimo)} L</b>.<br>` +
-    `Programe a entrada do caminhão-pipa.`, true);
+    `Programar reabastecimento.`, true);
 }
 
 (async () => {
