@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "03/09/2026 · r31 (entrar sem internet)";
+const VERSION = "03/09/2026 · r32 (tema claro)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -99,6 +99,34 @@ function confirmar(msg) {
 /* ============================================================
    ROTEADOR
    ============================================================ */
+/* ============================================================
+   TEMA (escuro ou claro) — escolha de cada aparelho
+   Fica no localStorage, e não em DB.config: se fosse configuração,
+   subiria para a nuvem e mudaria a cor do celular de todo mundo.
+   ============================================================ */
+const TEMA_KEY = "gp2t_tema";
+function temaAtual() {
+  try { return localStorage.getItem(TEMA_KEY) === "claro" ? "claro" : "escuro"; }
+  catch (e) { return "escuro"; }
+}
+function aplicarTema(t) {
+  const claro = t === "claro";
+  document.body.classList.toggle("tema-claro", claro);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", claro ? "#1b2b4d" : "#0f172a");
+  const b = document.getElementById("btnTema");
+  if (b) {
+    b.textContent = claro ? "🌙" : "☀️";
+    b.setAttribute("aria-label", claro ? "Usar o tema escuro" : "Usar o tema claro");
+  }
+}
+function trocarTema() {
+  const novo = temaAtual() === "claro" ? "escuro" : "claro";
+  try { localStorage.setItem(TEMA_KEY, novo); } catch (e) {}
+  aplicarTema(novo);
+}
+aplicarTema(temaAtual());          // aplica antes de desenhar, para não piscar
+
 const rotas = {
   home:          telaHome,
   novodia:       telaNovoDia,
@@ -2280,6 +2308,7 @@ function mostrarLogin(aviso) {
    INICIALIZAÇÃO
    ============================================================ */
 $("#btnBack").onclick = () => navegar("home");
+$("#btnTema").onclick = trocarTema;
 $$(".tab").forEach(t => t.onclick = () => { viagensBuffer = []; editando = null; navegar(t.dataset.nav); });
 
 function iniciarApp() {

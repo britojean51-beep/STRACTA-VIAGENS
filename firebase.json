@@ -10,7 +10,8 @@
         "docs/**",
         "google-sheets/**",
         "firebase/**",
-        "README.md"
+        "README.md",
+        "redirecionar/**"
       ],
       "headers": [
         {
@@ -33,6 +34,31 @@
         },
         {
           "source": "/manifest.json",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site": "gp2t-gestaodefrota",
+      "public": "redirecionar",
+      "ignore": [
+        "firebase.json",
+        "**/.*"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "source": "**",
           "headers": [
             {
               "key": "Cache-Control",

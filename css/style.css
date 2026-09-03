@@ -19,6 +19,40 @@
   --shadow:    0 8px 24px rgba(0,0,0,.35);
   --safe-b:    env(safe-area-inset-bottom, 0px);
   --safe-t:    env(safe-area-inset-top, 0px);
+  /* peças que antes tinham cor fixa no meio do arquivo: viraram variáveis
+     para o tema claro poder trocar todas de uma vez */
+  --head-1:    #12203c;      /* degradê do cabeçalho */
+  --head-2:    #0b1220;
+  --caixa:     #101a30;      /* login, chips, chavinha, coluna fixa das tabelas */
+  --accent-1:  #1a3a24;      /* cartão NOVO DIA */
+  --accent-2:  #16223b;
+  --realce:    #ffb27a;      /* número em destaque / chip do dia ativo */
+  --sombra-sel: rgba(255,122,26,.18);
+  --pill-txt:  #c3cee3;
+}
+
+/* ===== Tema claro (escolhido no botão do cabeçalho) =====
+   Só a paleta muda: laranja da marca e cores de alerta continuam iguais,
+   para o app seguir reconhecível e os avisos legíveis nos dois temas. */
+body.tema-claro {
+  --bg:        #f4f6fb;
+  --bg-2:      #ffffff;
+  --card:      #ffffff;
+  --card-2:    #eef2f9;
+  --line:      #d5dced;
+  --text:      #16223b;
+  --muted:     #5b6b8c;
+  --shadow:    0 6px 18px rgba(22,34,59,.10);
+  --head-1:    #1b2b4d;
+  --head-2:    #0f172a;
+  --caixa:     #ffffff;
+  --accent-1:  #e8f7ee;
+  --accent-2:  #ffffff;
+  --realce:    #c2410c;
+  --sombra-sel: rgba(255,122,26,.14);
+  --pill-txt:  #3f4d6b;
+  /* laranja claro não se lê sobre branco: no tema claro o texto laranja escurece */
+  --brand-2:   #b45309;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -39,7 +73,7 @@ body {
   position: sticky; top: 0; z-index: 30;
   display: flex; align-items: center; gap: 10px;
   padding: calc(12px + var(--safe-t)) 16px 12px;
-  background: linear-gradient(135deg, #12203c 0%, #0b1220 100%);
+  background: linear-gradient(135deg, var(--head-1) 0%, var(--head-2) 100%);
   border-bottom: 1px solid var(--line);
   box-shadow: 0 2px 12px rgba(0,0,0,.3);
 }
@@ -80,7 +114,7 @@ main { padding: 16px; max-width: 640px; margin: 0 auto; animation: fade .25s eas
 .menu-card .lbl { font-weight: 700; font-size: 15px; }
 .menu-card .desc { font-size: 12px; color: var(--muted); }
 .menu-card.wide { grid-column: 1 / -1; }
-.menu-card.accent { background: linear-gradient(135deg, #1a3a24, #16223b); border-color: rgba(34,197,94,.4); }
+.menu-card.accent { background: linear-gradient(135deg, var(--accent-1), var(--accent-2)); border-color: rgba(34,197,94,.4); }
 .menu-card.accent .lbl { color: #b6f5c9; }
 
 /* ===== CARDS / FORM ===== */
@@ -161,27 +195,27 @@ main { padding: 16px; max-width: 640px; margin: 0 auto; animation: fade .25s eas
 .pill-green { background: rgba(34,197,94,.15); color: #6ee7a0; border: 1px solid rgba(34,197,94,.3); }
 .pill-red   { background: rgba(239,68,68,.15); color: #fca5a5; border: 1px solid rgba(239,68,68,.3); }
 .pill-blue  { background: rgba(59,130,246,.15); color: #93c5fd; border: 1px solid rgba(59,130,246,.3); }
-.pill-gray  { background: rgba(148,162,196,.15); color: #c3cee3; border: 1px solid rgba(148,162,196,.3); }
+.pill-gray  { background: rgba(148,162,196,.15); color: var(--pill-txt); border: 1px solid rgba(148,162,196,.3); }
 
 /* Chips de dia (seleção múltipla no Painel) */
 .chips-dia { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
 .chip-dia {
-  background: #16213c; color: #c3cee3; border: 1px solid #26344f;
+  background: var(--caixa); color: var(--pill-txt); border: 1px solid var(--line);
   border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 600;
   cursor: pointer; font-family: inherit;
 }
-.chip-dia.ativo { background: rgba(255,122,26,.18); color: #ffb27a; border-color: #ff7a1a; }
+.chip-dia.ativo { background: var(--sombra-sel); color: var(--realce); border-color: var(--brand); }
 .chip-dia:active { transform: scale(.96); }
 
 /* Tabela de comparação de dias */
 .cmp-wrap { overflow-x: auto; margin-top: 10px; -webkit-overflow-scrolling: touch; }
 .cmp-table { border-collapse: collapse; width: 100%; font-size: 13px; }
-.cmp-table th, .cmp-table td { padding: 7px 7px; border-bottom: 1px solid #26344f; white-space: nowrap; text-align: right; }
-.cmp-table thead th { color: #93a2c4; font-size: 12px; text-transform: uppercase; letter-spacing: .3px; }
-.cmp-table tbody th { text-align: left; color: #e8eefc; font-weight: 600; position: sticky; left: 0; background: #101a30; }
-.cmp-table thead th:first-child { text-align: left; position: sticky; left: 0; background: #101a30; }
-.cmp-table td { color: #e8eefc; }
-.cmp-table td.tot { color: #ffb27a; font-weight: 700; }
+.cmp-table th, .cmp-table td { padding: 7px 7px; border-bottom: 1px solid var(--line); white-space: nowrap; text-align: right; }
+.cmp-table thead th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .3px; }
+.cmp-table tbody th { text-align: left; color: var(--text); font-weight: 600; position: sticky; left: 0; background: var(--caixa); }
+.cmp-table thead th:first-child { text-align: left; position: sticky; left: 0; background: var(--caixa); }
+.cmp-table td { color: var(--text); }
+.cmp-table td.tot { color: var(--realce); font-weight: 700; }
 
 /* Cartão de KPI clicável (Geral do dia) */
 .kpi[data-kpi] { cursor: pointer; }
@@ -205,7 +239,7 @@ main { padding: 16px; max-width: 640px; margin: 0 auto; animation: fade .25s eas
 /* ===== TOAST ===== */
 .toast {
   position: fixed; left: 50%; bottom: calc(88px + var(--safe-b)); transform: translateX(-50%) translateY(20px);
-  background: #12203c; border: 1px solid var(--line); color: var(--text); padding: 12px 18px; border-radius: 12px;
+  background: var(--head-1); border: 1px solid var(--line); color: #e8eefc; padding: 12px 18px; border-radius: 12px;
   font-size: 14px; font-weight: 600; box-shadow: var(--shadow); opacity: 0; pointer-events: none;
   transition: opacity .25s, transform .25s; z-index: 60; max-width: 88%; text-align: center;
 }
@@ -317,20 +351,47 @@ body.sem-login .app-header,
 body.sem-login .tabbar { display: none; }
 .login-box {
   max-width: 380px; margin: 8vh auto 0; padding: 22px 18px;
-  background: #101a30; border: 1px solid #26344f; border-radius: 18px; text-align: center;
+  background: var(--caixa); border: 1px solid var(--line); border-radius: 18px; text-align: center;
 }
 .login-logo { font-size: 44px; line-height: 1; }
-.login-box h2 { margin: 8px 0 4px; font-size: 20px; color: #e8eefc; }
+.login-box h2 { margin: 8px 0 4px; font-size: 20px; color: var(--text); }
 .login-box .field { text-align: left; margin-top: 12px; }
 
 /* ===== Cartão do usuário logado (Início) ===== */
 .user-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.user-card .sub { color: #93a2c4; font-size: 12px; margin-top: 2px; }
+.user-card .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
 
 /* ===== Chavinha (liga/desliga) ===== */
 .switch-row {
   display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px; border: 1px solid #26344f; border-radius: 12px;
-  background: #101a30; font-size: 14px; color: #e8eefc; cursor: pointer;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--caixa); font-size: 14px; color: var(--text); cursor: pointer;
 }
 .switch-row input[type="checkbox"] { width: 20px; height: 20px; accent-color: #22c55e; flex: none; }
+
+
+/* ===== Botão de tema no cabeçalho ===== */
+.btn-tema {
+  background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.18);
+  color: #fff; font-size: 18px; line-height: 1; padding: 7px 9px;
+  border-radius: 10px; cursor: pointer; flex: none;
+}
+.btn-tema:active { transform: scale(.94); }
+
+/* As etiquetas usam cor clara para brilhar no escuro; no branco elas somem.
+   Aqui só o texto e a borda escurecem — o significado da cor continua o mesmo. */
+body.tema-claro .pill-green { background: rgba(34,197,94,.12);  color: #047857; border-color: rgba(4,120,87,.35); }
+body.tema-claro .pill-red   { background: rgba(239,68,68,.10);  color: #b91c1c; border-color: rgba(185,28,28,.35); }
+body.tema-claro .pill-blue  { background: rgba(59,130,246,.10); color: #1d4ed8; border-color: rgba(29,78,216,.35); }
+body.tema-claro .pill-gray  { background: rgba(100,116,139,.10); color: #334155; border-color: rgba(51,65,85,.30); }
+
+/* O cabeçalho continua escuro nos dois temas (é a identidade do app),
+   então o que está DENTRO dele não pode seguir a cor do texto do tema claro. */
+body.tema-claro .app-header .header-title,
+body.tema-claro .app-header .header-day { color: #e8eefc; }
+body.tema-claro .app-header .header-sub { color: #ffab5e; }
+body.tema-claro .btn-back { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.20); color: #e8eefc; }
+
+/* Cartão NOVO DIA: no fundo verde-claro o rótulo precisa de verde escuro. */
+body.tema-claro .menu-card.accent { border-color: rgba(4,120,87,.35); }
+body.tema-claro .menu-card.accent .lbl { color: #047857; }
