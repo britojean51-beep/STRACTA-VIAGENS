@@ -260,6 +260,13 @@ main { padding: 16px; max-width: 640px; margin: 0 auto; animation: fade .25s eas
 
 /* ===== DIVERSOS ===== */
 .hint { font-size: 12px; color: var(--muted); margin: -4px 0 12px; }
+/* Mensagem logo abaixo dos botões do seletor de dias: o .hint tem margem de topo
+   negativa e cola nos botões. Aqui ela desce e ganha um destaque leve. */
+.hint-forte {
+  margin: 14px 0 12px; font-size: 13px; color: var(--text);
+  background: var(--card-2); border-left: 3px solid var(--brand);
+  border-radius: 8px; padding: 9px 11px;
+}
 .badge-auto { font-size: 10px; background: rgba(255,171,94,.15); color: var(--brand-2); padding: 2px 6px; border-radius: 6px; font-weight: 700; margin-left: 6px; }
 .list-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .mini { font-size: 12px; color: var(--muted); }

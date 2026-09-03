@@ -27,6 +27,10 @@ const DB = {
       status: {},                      // { "CB-17": "operando"|"reserva"|"manutencao"|"parado"|"final_expediente" }
       operadorEquip: {},               // { "CB-17": "Saulo" } — quem está no equipamento
       proximaRevisao: {},              // { "CB-17": 20000 } — horímetro/KM alvo da próxima revisão
+      /* Períodos de manutenção: abrem quando o equipamento é apontado em manutenção
+         e fecham quando volta. Objeto (e não lista) para a nuvem mesclar chave por
+         chave: dois celulares fechando períodos diferentes não se apagam. */
+      paradas: {},                     // { "<id>": { equipamento, entradaDia, entradaHora, saidaDia, saidaHora, minutos } }
       config: {                        // metas de gestão
         metaMedia: 1.0,                // km/L mínimo esperado (equipamento rodante)
         metaLh: 20,                    // L/h máximo aceito (equipamento de horímetro)
@@ -65,6 +69,7 @@ const DB = {
     this._cache.proximaRevisao = data.proximaRevisao || {};
     this._cache.tipoEquip = data.tipoEquip || {};
     this._cache.operadorEquip = data.operadorEquip || {};
+    this._cache.paradas = data.paradas || {};
     // estoque: migra o antigo estoqueTanque (único) para o novo formato por tanque
     if (data.estoque) {
       this._cache.estoque = Object.assign({ s10: 0, s500: 0, arla: 0 }, data.estoque);
@@ -277,14 +282,16 @@ const DB = {
     // desconta o ARLA 32
     const arla = Number(reg.litrosArla) || 0;
     if (arla) db.estoque.arla = Math.max(0, (db.estoque.arla || 0) - arla);
-    // aplica o status conforme a situação
-    if (reg.situacao) db.status[reg.equipamento] = this.statusDaSituacao(reg.situacao);
     this.save();
+    // aplica o status conforme a situação — o horário é o que a pessoa digitou no lançamento
+    if (reg.situacao) {
+      this.setStatus(reg.equipamento, this.statusDaSituacao(reg.situacao),
+                     { dia: iso, hora: reg.hora, origem: "abastecimento" });
+    }
     this._nuvem(C => {
       C.push("abastecimentos", iso, reg);
       if (litros) C.ajustarEstoque(tanque, -litros);
       if (arla) C.ajustarEstoque("arla", -arla);
-      if (reg.situacao) C.patch("operacao", { status: { [reg.equipamento]: db.status[reg.equipamento] } });
     });
     return reg;
   },
@@ -370,9 +377,87 @@ const DB = {
 
   /* ---- Status e revisão por equipamento ---- */
   getStatus(eq) { return this.load().status[eq] || "operando"; },
-  setStatus(eq, st) {
-    const db = this.load(); db.status[eq] = st; this.save();
-    this._nuvem(C => C.patch("operacao", { status: { [eq]: st } }));
+  /* Único lugar que muda o status — e por isso o único que precisa saber abrir e
+     fechar o período de manutenção. Abastecimento, tela de Manutenção e Ficha
+     passam todos por aqui. opts: { dia, hora, origem } */
+  setStatus(eq, st, opts) {
+    const db = this.load();
+    const anterior = db.status[eq] || "operando";
+    const o = opts || {};
+    const dia = o.dia || this.hojeISO();
+    const hora = o.hora || this.horaAgora();
+    let parada = null, id = null;
+
+    if (st === "manutencao" && anterior !== "manutencao") {
+      id = this._novoId();
+      parada = {
+        equipamento: eq, entradaDia: dia, entradaHora: hora,
+        saidaDia: null, saidaHora: null, minutos: null,
+        origem: o.origem || "", quem: this._quem()
+      };
+      db.paradas[id] = parada;
+    } else if (anterior === "manutencao" && st !== "manutencao") {
+      id = this._idParadaAberta(eq);
+      if (id) {
+        parada = db.paradas[id];
+        parada.saidaDia = dia;
+        parada.saidaHora = hora;
+        parada.minutos = this._minutosEntre(parada.entradaDia, parada.entradaHora, dia, hora);
+      }
+    }
+
+    db.status[eq] = st;
+    this.save();
+    this._nuvem(C => {
+      const dados = { status: { [eq]: st } };
+      if (id && parada) dados.paradas = { [id]: parada };
+      C.patch("operacao", dados);
+    });
+  },
+
+  /* ---- Histórico de manutenção (entrada e saída) ---- */
+  horaAgora() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  },
+  _minutosEntre(dia1, hora1, dia2, hora2) {
+    const t = (iso, hm) => {
+      const [y, m, d] = String(iso).split("-").map(Number);
+      const [hh, mm] = String(hm || "00:00").split(":").map(Number);
+      return new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0).getTime();
+    };
+    return Math.max(0, Math.round((t(dia2, hora2) - t(dia1, hora1)) / 60000));
+  },
+  _idParadaAberta(eq) {
+    const p = this.load().paradas;
+    // o mais recente primeiro: se sobrou algum aberto antigo, fecha o certo
+    return Object.keys(p)
+      .filter(id => p[id].equipamento === eq && !p[id].saidaDia)
+      .sort((a, b) => (p[a].entradaDia + p[a].entradaHora < p[b].entradaDia + p[b].entradaHora ? 1 : -1))[0] || null;
+  },
+  paradaAberta(eq) {
+    const id = this._idParadaAberta(eq);
+    return id ? Object.assign({ id }, this.load().paradas[id]) : null;
+  },
+  /* Períodos ordenados do mais novo para o mais antigo. Sem eq, traz de toda a frota. */
+  paradasDe(eq, limite) {
+    const p = this.load().paradas;
+    const lista = Object.keys(p)
+      .filter(id => !eq || p[id].equipamento === eq)
+      .map(id => Object.assign({ id }, p[id]))
+      .sort((a, b) => (a.entradaDia + a.entradaHora < b.entradaDia + b.entradaHora ? 1 : -1));
+    return limite ? lista.slice(0, limite) : lista;
+  },
+  /* Texto do tempo parado: "3 h 20 min", "2 d 4 h". Em aberto, conta até agora. */
+  duracaoParada(p) {
+    if (!p) return "";
+    const min = p.saidaDia
+      ? (p.minutos != null ? p.minutos : this._minutosEntre(p.entradaDia, p.entradaHora, p.saidaDia, p.saidaHora))
+      : this._minutosEntre(p.entradaDia, p.entradaHora, this.hojeISO(), this.horaAgora());
+    const d = Math.floor(min / 1440), h = Math.floor((min % 1440) / 60), m = min % 60;
+    if (d > 0) return `${d} d ${h} h`;
+    if (h > 0) return `${h} h ${String(m).padStart(2, "0")} min`;
+    return `${m} min`;
   },
   getProximaRevisao(eq) { const v = this.load().proximaRevisao[eq]; return v == null ? null : v; },
   setProximaRevisao(eq, valor) {
@@ -532,6 +617,26 @@ const DB = {
     };
   },
 
+  /* Um tanque que a empresa não usa vive zerado — e zero é sempre "abaixo do
+     mínimo". Sem isso o app avisaria todo dia sobre um tanque que ninguém enche.
+     Em uso = tem saldo, ou já saiu combustível dele em algum lançamento. */
+  tanqueEmUso(tipo) {
+    const db = this.load();
+    if ((db.estoque[tipo] || 0) > 0) return true;
+    const rotulo = tipo === "s500" ? "S-500" : "S-10";
+    return Object.keys(db.dias).some(iso =>
+      (db.dias[iso].abastecimentos || []).some(a => tipo === "arla"
+        ? this.toN(a.litrosArla) > 0
+        : (a.combustivel || "S-10") === rotulo));
+  },
+  /* Tanques de diesel no mínimo (ou abaixo), ignorando os que não estão em uso. */
+  dieselNoMinimo() {
+    const db = this.load();
+    return [["s10", "Diesel S-10"], ["s500", "Diesel S-500"]]
+      .filter(([t]) => this.tanqueEmUso(t) && (db.estoque[t] || 0) <= db.config.estoqueMin)
+      .map(([t, nome]) => ({ tanque: t, nome, litros: db.estoque[t] || 0, minimo: db.config.estoqueMin }));
+  },
+
   /* ---- Alertas automáticos da frota ---- */
   alertas() {
     const db = this.load();
@@ -539,12 +644,10 @@ const DB = {
     const out = [];
     const push = (nivel, icone, msg) => out.push({ nivel, icone, msg }); // nivel: 'alto' | 'medio'
 
-    // estoque baixo (por tanque)
-    if (db.estoque.s10 <= db.config.estoqueMin)
-      push("alto", "🛢️", `Diesel S-10 baixo: ${Math.round(db.estoque.s10)} L (mínimo ${db.config.estoqueMin} L)`);
-    if (db.estoque.s500 <= db.config.estoqueMin)
-      push("alto", "🛢️", `Diesel S-500 baixo: ${Math.round(db.estoque.s500)} L (mínimo ${db.config.estoqueMin} L)`);
-    if (db.estoque.arla <= db.config.estoqueArlaMin)
+    // estoque baixo (por tanque em uso)
+    this.dieselNoMinimo().forEach(t =>
+      push("alto", "🛢️", `${t.nome} baixo: ${Math.round(t.litros)} L (mínimo ${t.minimo} L)`));
+    if (this.tanqueEmUso("arla") && db.estoque.arla <= db.config.estoqueArlaMin)
       push("medio", "💧", `ARLA 32 baixo: ${Math.round(db.estoque.arla)} L (mínimo ${db.config.estoqueArlaMin} L)`);
 
     const dia = this.getDia(iso) || { abastecimentos: [] };
@@ -552,7 +655,12 @@ const DB = {
       // status parado / manutenção
       const st = this.getStatus(eq);
       if (st === "parado") push("alto", "⛔", `${eq} está PARADO`);
-      else if (st === "manutencao") push("medio", "🔧", `${eq} está em MANUTENÇÃO`);
+      else if (st === "manutencao") {
+        const ab = this.paradaAberta(eq);
+        push("medio", "🔧", ab
+          ? `${eq} está em MANUTENÇÃO desde ${this.fmtBR(ab.entradaDia).slice(0, 5)} ${ab.entradaHora} (${this.duracaoParada(ab)})`
+          : `${eq} está em MANUTENÇÃO`);
+      }
 
       // consumo fora da meta (no dia atual) — km/L (mínimo) ou L/h (máximo)
       dia.abastecimentos.filter(a => a.equipamento === eq).forEach(a => {

@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "03/09/2026 · r36 (campos livres e tanque no abastecimento)";
+const VERSION = "03/09/2026 · r37 (histórico de manutenção e aviso de diesel)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -84,17 +84,25 @@ function toast(msg, tipo = "ok") {
   t._t = setTimeout(() => (t.className = "toast"), 2600);
 }
 
-/* ---------- Modal de confirmação ---------- */
-function confirmar(msg) {
+/* ---------- Modal ---------- */
+/* Uma caixa só serve para os dois casos: perguntar (Sim/Não) e avisar (só Entendi). */
+function _modal(msg, opcoes) {
+  const o = opcoes || {};
   return new Promise(res => {
-    const ov = $("#modalOverlay");
-    $("#modalMsg").textContent = msg;
+    const ov = $("#modalOverlay"), cancelar = $("#modalCancel"), ok = $("#modalConfirm");
+    const box = $("#modalMsg");
+    if (o.html) box.innerHTML = msg; else box.textContent = msg;
+    cancelar.style.display = o.aviso ? "none" : "";
+    ok.textContent = o.aviso ? "Entendi" : "Confirmar";
+    ok.className = o.aviso ? "btn btn-primary" : "btn btn-danger";
     ov.classList.add("show");
     const done = v => { ov.classList.remove("show"); res(v); };
-    $("#modalConfirm").onclick = () => done(true);
-    $("#modalCancel").onclick = () => done(false);
+    ok.onclick = () => done(true);
+    cancelar.onclick = () => done(false);
   });
 }
+function confirmar(msg) { return _modal(msg, {}); }
+function avisar(msg, html) { return _modal(msg, { aviso: true, html: !!html }); }
 
 /* ============================================================
    ROTEADOR
@@ -758,10 +766,7 @@ async function validarOperador(valor) {
   return await garantirOperador(v);
 }
 
-function horaAgora() {
-  const d = new Date();
-  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
-}
+function horaAgora() { return DB.horaAgora(); }
 /* Só o que se usa no dia a dia. Reserva, Parado e Final de expediente continuam
    existindo — mudam pela ficha do equipamento (Frota) e pelo Novo Dia. */
 const SITUACOES = ["Operando", "Manutenção"];
@@ -1310,6 +1315,23 @@ function optsStatus(sel) {
   return STATUS_OPCOES.map(([v, l]) => `<option value="${v}" ${v === sel ? "selected" : ""}>${l}</option>`).join("");
 }
 
+/* Lista de períodos de manutenção: entrada, saída e tempo parado.
+   Serve a tela de Manutenção (frota toda) e a Ficha (um equipamento só). */
+function listaParadas(lista, comEquip) {
+  if (!lista.length) return '<p class="empty">Nenhuma parada registrada.</p>';
+  const dm = iso => DB.fmtBR(iso).slice(0, 5);
+  return `<div class="itemlist">${lista.map(p => {
+    const quem = comEquip ? `<b>${p.equipamento}</b> ` : "";
+    if (!p.saidaDia) {
+      return `<div class="itemrow"><div class="info">${quem}<span class="pill pill-red">🔧 em manutenção</span>
+        <div class="sub">desde ${dm(p.entradaDia)} às ${p.entradaHora} · há ${DB.duracaoParada(p)}</div></div></div>`;
+    }
+    return `<div class="itemrow"><div class="info">${quem}<span class="mini">🔧 parada</span>
+      <div class="sub">${dm(p.entradaDia)} ${p.entradaHora} → ${dm(p.saidaDia)} ${p.saidaHora}
+      · <b>${DB.duracaoParada(p)}</b> parado</div></div></div>`;
+  }).join("")}</div>`;
+}
+
 function telaManutencao() {
   $("#headerTitle").textContent = "🔧 Manutenção";
   $("#headerSub").textContent = "SERVIÇOS · STATUS · REVISÕES";
@@ -1363,6 +1385,13 @@ function telaManutencao() {
       <h3>📅 Manutenções de hoje (${DB.fmtBR(dia)})</h3>
       <div id="mHoje"></div>
     </div>
+
+    <div class="card">
+      <h3>🕓 Histórico de manutenção</h3>
+      <p class="hint">O relógio começa quando alguém aponta <b>Manutenção</b> e para quando aponta
+      <b>Operando</b> — não precisa anotar nada.</p>
+      <div id="mParadas"></div>
+    </div>
   `;
 
   // ao trocar de equipamento, mostra o status e a revisão já cadastrados
@@ -1411,6 +1440,10 @@ function telaManutencao() {
       </div></div>`).join("");
   }
 
+  function renderParadas() {
+    $("#mParadas").innerHTML = listaParadas(DB.paradasDe(null, 20), true);
+  }
+
   $("#btnSalvar").onclick = async () => {
     const serv = $("#mServico").value.trim();
     const eq = await garantirEquipamento(selEquip.value);
@@ -1421,17 +1454,18 @@ function telaManutencao() {
       equipamento: eq, tipo: $("#mTipo").value,
       servico: serv, horKm: $("#mHorKm").value.trim(), observacoes: $("#mObs").value.trim()
     });
-    DB.setStatus(eq, $("#mStatus").value);
+    // o dia é o dia de operação do app (o mesmo dos lançamentos), o horário é o relógio
+    DB.setStatus(eq, $("#mStatus").value, { dia, origem: "manutencao" });
     DB.setProximaRevisao(eq, $("#mProxRev").value.trim());
     Sync.pushManutencao(dia, mreg);
     Sync.pushEquipamento(eq);
     Sync.pushResumoDia(dia);
     toast("✔ Manutenção registrada");
     $("#mServico").value = ""; $("#mHorKm").value = ""; $("#mObs").value = "";
-    renderRevisoes(); renderHoje();
+    renderRevisoes(); renderHoje(); renderParadas();
   };
 
-  carregarEquip(); renderRevisoes(); renderHoje();
+  carregarEquip(); renderRevisoes(); renderHoje(); renderParadas();
 }
 
 /* ============================================================
@@ -1846,10 +1880,10 @@ function seletorDias(pref, mesSel, selecionados, dica) {
     <div class="chips-dia">${diasMes.map(d =>
       `<button class="chip-dia ${selecionados.includes(d) ? "ativo" : ""}" data-${pref}dia="${d}">${DB.fmtBR(d).slice(0, 5)}</button>`).join("")}</div>
     <div class="btn-row" style="margin-top:6px">
-      <button class="btn btn-ghost btn-sm" data-${pref}todos="1">Todos do mês</button>
-      <button class="btn btn-ghost btn-sm" data-${pref}so="1">Só o último</button>
+      <button class="btn btn-ghost btn-sm" data-${pref}todos="1">Todos os dias do mês</button>
+      <button class="btn btn-ghost btn-sm" data-${pref}so="1">Último dia</button>
     </div>
-    ${fora.length ? `<p class="hint">Também selecionados: ${fora.map(d => DB.fmtBR(d).slice(0, 5)).join(", ")}</p>` : ""}
+    ${fora.length ? `<p class="hint hint-forte">Também selecionados: ${fora.map(d => DB.fmtBR(d).slice(0, 5)).join(", ")}</p>` : ""}
   `;
 }
 
@@ -2142,7 +2176,7 @@ function telaDashboard() {
       <h3>${comparando ? `🔀 Comparação de ${sel.length} dias` : "📅 Geral do dia"}</h3>
       ${seletorDias("pn", painelMes, sel, "Escolha os dias (toque em mais de um para comparar)")}
       ${comparando ? comparaDiasHtml : `
-      <p class="hint">Toque num cartão para ver os dados por trás dele.</p>
+      <p class="hint hint-forte">Toque num cartão para ver os dados por trás dele.</p>
       <div class="kpi-grid">
         <div class="kpi k-green ${painelKpi === "equipamentos" ? "kpi-ativo" : ""}" data-kpi="equipamentos"><div class="k-label">🚛 Equipamentos</div><div class="k-value">${String(r.operando.length).padStart(2, "0")}</div></div>
         <div class="kpi k-blue ${painelKpi === "operadores" ? "kpi-ativo" : ""}" data-kpi="operadores"><div class="k-label">👷 Operadores</div><div class="k-value">${String(r.operadores.length).padStart(2, "0")}</div></div>
@@ -2395,6 +2429,11 @@ function telaFicha() {
     </div>
 
     <div class="card">
+      <h3>🕓 Paradas para manutenção</h3>
+      ${listaParadas(DB.paradasDe(eq, 15), false)}
+    </div>
+
+    <div class="card">
       <h3>🔧 Manutenções</h3>
       <div class="itemlist">${f.manut.slice().reverse().map(m =>
         `<div class="itemrow"><div class="info"><b>${DB.fmtBR(m.iso)}</b> <span class="pill pill-red">${m.tipo}</span>
@@ -2413,7 +2452,7 @@ function telaFicha() {
   `;
 
   $("#btnFkSalvar").onclick = () => {
-    DB.setStatus(eq, $("#fkStatus").value);
+    DB.setStatus(eq, $("#fkStatus").value, { dia: DB.garantirDiaAtual(), origem: "ficha" });
     DB.setTipoEquip(eq, $("#fkTipo").value);
     DB.setProximaRevisao(eq, $("#fkRev").value.trim());
     DB.setOperadorEquip(eq, $("#fkOperador").value);
@@ -2575,6 +2614,23 @@ function iniciarApp() {
   ligarNuvem();
   const rotaInicial = (location.hash || "#home").slice(1);
   navegar(rotas[rotaInicial] && podeVer(rotaInicial) ? rotaInicial : "home");
+  avisarDieselBaixo();
+}
+
+/* Diesel no mínimo: o gestor vê assim que entra, e não só se for até o Painel.
+   Uma vez por abertura do app — não é para atrapalhar a cada tela. */
+let dieselAvisado = false;
+function avisarDieselBaixo() {
+  if (dieselAvisado) return;
+  if (typeof Auth !== "undefined" && Auth.configurado() && !Auth.ehGestor()) return;
+  const baixos = DB.dieselNoMinimo();      // mesma conta dos Alertas do Painel
+  if (!baixos.length) return;
+  dieselAvisado = true;
+  avisar(`<b>🛢️ Diesel no nível mínimo</b><br><br>` +
+    `<ul style="margin:0;padding-left:18px;text-align:left">${baixos.map(t =>
+      `<li><b>${t.nome}</b>: ${fmt(t.litros)} L</li>`).join("")}</ul>` +
+    `<br>Mínimo definido: <b>${fmt(baixos[0].minimo)} L</b>.<br>` +
+    `Programe a entrada do caminhão-pipa.`, true);
 }
 
 (async () => {
@@ -2598,6 +2654,9 @@ function ligarNuvem() {
     const el = document.getElementById("nuvemBadge");
     if (el) pintarBadgeNuvem(el);
     if (TELAS_LEITURA.includes(rotaAtual)) navegar(rotaAtual);
+    // celular recém-sincronizado: o saldo do tanque só chega alguns segundos
+    // depois de abrir, então a primeira novidade da nuvem também dispara o aviso
+    avisarDieselBaixo();
   };
   Cloud.iniciar().catch(() => {});
 }
