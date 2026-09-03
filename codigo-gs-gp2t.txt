@@ -41,7 +41,7 @@ var TABS = {
   // ---- abas de detalhe (o app manda tudo pronto, sem fórmula) ----
   lancamento: {
     nome: "Abastecimentos", dateCols: ["Data"],
-    colunas: ["Data", "Hora", "Equipamento", "Operador", "Horímetro Inicial", "Horímetro Final",
+    colunas: ["Data", "Horário", "Equipamento", "Operador", "Horímetro Inicial", "Horímetro Final",
               "Horas", "Litros", "Combustível", "ARLA (L)", "KM Rodado", "Média",
               "Unidade", "Toneladas", "L/Ton", "Situação"]
   },

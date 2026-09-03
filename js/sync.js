@@ -28,7 +28,7 @@ const Sync = {
     return {
       _id: a.id,
       "Data": iso,
-      "Hora": a.hora || "",
+      "Horário": a.hora || "",
       "Equipamento": a.equipamento,
       "Operador": a.motorista || "",
       "Horímetro Inicial": a.horimetroInicial ?? "",

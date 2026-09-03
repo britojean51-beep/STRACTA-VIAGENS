@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "03/09/2026 · r34 (hora e abastecedores)";
+const VERSION = "03/09/2026 · r35 (horário e abastecedores)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -749,7 +749,7 @@ function telaAbastecimento() {
       </div>
       <div class="field-row">
         <div class="field">
-          <label>Hora do abastecimento</label>
+          <label>Horário do abastecimento</label>
           <input id="fHora" type="time" value="${ed && ed.hora ? ed.hora : horaAgora()}">
         </div>
         <div class="field">
