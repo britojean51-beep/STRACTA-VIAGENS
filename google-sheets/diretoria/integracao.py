@@ -14,7 +14,8 @@ for m in re.finditer(r'nome:\s*"([^"]+)",\s*dateCols:[^\n]*\n?(?:[^\n]*semId[^\n
     abas[nome] = [c.strip().strip('"') for c in re.findall(r'"([^"]+)"', cols)]
 sem_id = {m.group(1) for m in re.finditer(r'nome:\s*"([^"]+)"[^\n]*semId', bloco)}
 
-wb = load_workbook("GP2T-Planilha-Diretoria.xlsx")
+import sys
+wb = load_workbook(sys.argv[1] if len(sys.argv)>1 else "../GP2T-Planilha-Diretoria.xlsx")
 falhas = 0
 for nome, cols in abas.items():
     esperado = cols + ([] if nome in sem_id else ["_id"])
@@ -34,9 +35,9 @@ for nome, cols in abas.items():
 
 # as abas de apresentacao so podem ler as abas de resumo/cadastro, nunca dado cru
 FONTES_OK = {"Resumo por Dia", "Resumo por Equipamento", "Resumo por Operador", "Resumo por Mês",
-             "Equipamentos", "Operadores", "Manutenções", "Diretoria",
+             "Equipamentos", "Operadores", "Manutenções", "Resumo Geral",
              "Por Equipamento", "Por Operador"}
-for nome in ("Diretoria", "Por Equipamento", "Por Operador", "Evolução Diária",
+for nome in ("Resumo Geral", "Por Equipamento", "Por Operador", "Evolução Diária",
              "Evolução Mensal", "Frota e Manutenção"):
     for row in wb[nome].iter_rows():
         for cel in row:

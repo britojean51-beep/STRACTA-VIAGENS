@@ -2,7 +2,7 @@
 """Calcula as formulas com o motor 'formulas' e compara com a conta feita em Python."""
 import datetime, formulas, dados
 
-ARQ = "GP2T-Planilha-Diretoria.xlsx"
+ARQ = "../GP2T-Planilha-Diretoria-EXEMPLO.xlsx"
 xl = formulas.ExcelModel().loads(ARQ).finish()
 sol = xl.calculate()
 
@@ -38,14 +38,14 @@ def conf(nome, cel, esperado, tol=0.02):
     bate = isinstance(got, float) and abs(got - esperado) <= max(tol, abs(esperado) * 0.0005)
     ok.append((bate, nome, got, esperado))
 
-conf("Diretoria · consumo total", "'DIRETORIA'!B7", esperado_diesel)
-conf("Diretoria · horas",         "'DIRETORIA'!B8", esperado_horas, tol=0.2)
-conf("Diretoria · produção",      "'DIRETORIA'!B9", esperado_ton)
-conf("Diretoria · viagens",       "'DIRETORIA'!B10", esperado_viag)
-conf("Diretoria · L/h (total/total)",   "'DIRETORIA'!B11", esperado_diesel / esperado_horas)
-conf("Diretoria · L/Ton (total/total)", "'DIRETORIA'!B12", esperado_diesel / esperado_ton)
-conf("Diretoria · km/L",          "'DIRETORIA'!B13", esperado_km / esperado_diesel)
-conf("Diretoria · dias operados", "'DIRETORIA'!B14", len(no_periodo))
+conf("Diretoria · consumo total", "'RESUMO GERAL'!B7", esperado_diesel)
+conf("Diretoria · horas",         "'RESUMO GERAL'!B8", esperado_horas, tol=0.2)
+conf("Diretoria · produção",      "'RESUMO GERAL'!B9", esperado_ton)
+conf("Diretoria · viagens",       "'RESUMO GERAL'!B10", esperado_viag)
+conf("Diretoria · L/h (total/total)",   "'RESUMO GERAL'!B11", esperado_diesel / esperado_horas)
+conf("Diretoria · L/Ton (total/total)", "'RESUMO GERAL'!B12", esperado_diesel / esperado_ton)
+conf("Diretoria · km/L",          "'RESUMO GERAL'!B13", esperado_km / esperado_diesel)
+conf("Diretoria · dias operados", "'RESUMO GERAL'!B14", len(no_periodo))
 
 # por equipamento: confere 3 maquinas, uma de cada tipo + a fora da meta
 for eq in ["CB-17", "CB-22", "PC-01"]:
@@ -84,16 +84,16 @@ for eq in ordem:
     dies = sum(x["diesel"] for x in linhas); ton = sum(x["ton"] for x in linhas)
     if ton: ltons[eq] = dies / ton
 melhor = min(ltons, key=ltons.get); pior = max(ltons, key=ltons.get)
-ok.append((val("'Diretoria'!B17") == melhor, "Destaque · melhor L/Ton", val("'Diretoria'!B17"), melhor))
-ok.append((val("'Diretoria'!B18") == pior, "Destaque · pior L/Ton", val("'Diretoria'!B18"), pior))
-conf("Destaque · valor do melhor L/Ton", "'Diretoria'!C17", ltons[melhor])
-conf("Destaque · valor do pior L/Ton", "'Diretoria'!C18", ltons[pior])
+ok.append((val("'Resumo Geral'!B17") == melhor, "Destaque · melhor L/Ton", val("'Resumo Geral'!B17"), melhor))
+ok.append((val("'Resumo Geral'!B18") == pior, "Destaque · pior L/Ton", val("'Resumo Geral'!B18"), pior))
+conf("Destaque · valor do melhor L/Ton", "'Resumo Geral'!C17", ltons[melhor])
+conf("Destaque · valor do pior L/Ton", "'Resumo Geral'!C18", ltons[pior])
 
 # --- frota: equipamentos que operaram e disponibilidade ---
-conf("Frota · equipamentos que operaram", "'Diretoria'!E7", len(ordem))
-conf("Frota · disponibilidade (7 de 8 operando)", "'Diretoria'!E10", 7 / 8)
-conf("Frota · manutenções no período", "'Diretoria'!E11", len(manut))
-conf("Frota · acima da meta de L/h", "'Diretoria'!E12",
+conf("Frota · equipamentos que operaram", "'Resumo Geral'!E7", len(ordem))
+conf("Frota · disponibilidade (7 de 8 operando)", "'Resumo Geral'!E10", 7 / 8)
+conf("Frota · manutenções no período", "'Resumo Geral'!E11", len(manut))
+conf("Frota · acima da meta de L/h", "'Resumo Geral'!E12",
      sum(1 for eq in ordem
          if (lambda ls: (sum(x["diesel"] for x in ls) / sum(x["horas"] for x in ls)) > 20 if ls else False)(
              [x for x in por_eq if x["equipamento"] == eq

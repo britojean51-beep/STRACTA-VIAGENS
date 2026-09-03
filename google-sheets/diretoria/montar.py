@@ -5,7 +5,10 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.chart import BarChart, LineChart, Reference
 from openpyxl.utils import get_column_letter
+import sys
 import dados
+
+ZERADA = "--zerada" in sys.argv
 
 FONTE = "Arial"
 ESCURO = "0F172A"; AZUL = "1E3A8A"; CINZA = "E2E8F0"; CLARO = "F1F5F9"
@@ -22,7 +25,8 @@ LTOT = L2 + 2                    # linha do total (fora dos intervalos de MIN/MA
 CHART = 15                       # até onde os gráficos olham
 RD = "'Resumo por Dia'"; RE = "'Resumo por Equipamento'"
 RO = "'Resumo por Operador'"; RM = "'Resumo por Mês'"
-INI, FIM = "Diretoria!$B$4", "Diretoria!$D$4"
+ABA1 = "'Resumo Geral'"          # aba principal (o nome tem espaço: precisa de aspas nas fórmulas)
+INI, FIM = f"{ABA1}!$B$4", f"{ABA1}!$D$4"
 
 def periodo(aba, col_data):
     return f",{aba}!${col_data}$4:${col_data}${MAX},\">=\"&{INI},{aba}!${col_data}$4:${col_data}${MAX},\"<=\"&{FIM}"
@@ -52,14 +56,20 @@ def zebra(ws, r1, r2, ncols):
 
 wb = Workbook()
 
-# ==================== 1. DIRETORIA ====================
-d = wb.active; d.title = "Diretoria"
+# ==================== 1. RESUMO GERAL ====================
+d = wb.active; d.title = "Resumo Geral"
 titulo(d, "GP2T · GESTÃO DE FROTA", "Relatório da Diretoria — os números vêm do aplicativo, sem digitação.", 8)
-d["A3"] = "⚠️ Este arquivo está com DADOS DE EXEMPLO (linhas com _id começando em EX-). Apague-as quando os dados reais entrarem."
-d["A3"].font = f(9, True, VERMELHO)
+if ZERADA:
+    d["A3"] = "Planilha pronta para uso. Os números aparecem sozinhos assim que o app sincronizar (⚙️ Configurações → Sincronizar tudo)."
+    d["A3"].font = f(9, True, VERDE)
+else:
+    d["A3"] = "⚠️ Este arquivo está com DADOS DE EXEMPLO (linhas com _id começando em EX-). Apague-as quando os dados reais entrarem."
+    d["A3"].font = f(9, True, VERMELHO)
 
 d["A4"] = "Período de:"; d["A4"].font = f(10, True)
-d["B4"] = datetime.date(2026, 8, 1); d["D4"] = datetime.date(2026, 9, 30)
+# zerada abre no mês corrente; a de exemplo abre no período que tem dados
+d["B4"] = datetime.date(2026, 9, 1) if ZERADA else datetime.date(2026, 8, 1)
+d["D4"] = datetime.date(2026, 9, 30)
 d["C4"] = "até:"; d["C4"].font = f(10, True)
 d["E4"] = "Meta L/h:"; d["E4"].font = f(10, True); d["F4"] = 20
 d["G4"] = "Meta km/L:"; d["G4"].font = f(10, True); d["H4"] = 1.0
@@ -143,7 +153,7 @@ d.sheet_view.showGridLines = False
 
 # ==================== 2. POR EQUIPAMENTO ====================
 pe = wb.create_sheet("Por Equipamento")
-titulo(pe, "DESEMPENHO POR EQUIPAMENTO", "Período definido na aba Diretoria. Fonte: aba Resumo por Equipamento (preenchida pelo app).", 11)
+titulo(pe, "DESEMPENHO POR EQUIPAMENTO", "Período definido na aba Resumo Geral. Fonte: aba Resumo por Equipamento (preenchida pelo app).", 11)
 COLS = ["Equipamento", "Tipo", "Dias operados", "Consumo (L)", "Horas", "L/h",
         "Produção (t)", "L/Ton", "KM rodado", "Média km/L", "Viagens"]
 cabecalho(pe, 3, COLS, [14, 18, 12, 13, 10, 10, 13, 10, 12, 12, 10])
@@ -194,7 +204,7 @@ pe.add_chart(g2, f"A{LTOT + 21}")
 
 # ==================== 3. POR OPERADOR ====================
 po = wb.create_sheet("Por Operador")
-titulo(po, "DESEMPENHO POR OPERADOR", "Período definido na aba Diretoria. Fonte: aba Resumo por Operador (preenchida pelo app).", 8)
+titulo(po, "DESEMPENHO POR OPERADOR", "Período definido na aba Resumo Geral. Fonte: aba Resumo por Operador (preenchida pelo app).", 8)
 COLS_O = ["Operador", "Dias trabalhados", "Consumo (L)", "Horas", "L/h", "Produção (t)", "L/Ton", "Viagens"]
 cabecalho(po, 3, COLS_O, [16, 14, 13, 10, 10, 13, 10, 10])
 p = periodo(RO, "A")
@@ -297,6 +307,9 @@ fm.freeze_panes = "A4"; fm.sheet_view.showGridLines = False
 # ==================== ABAS DO APP ====================
 abast, viagens, manut, estado = dados.gerar()
 por_dia, por_eq, por_op, por_mes = dados.resumos(abast, viagens, manut)
+if ZERADA:                       # só o cabeçalho: o app escreve a partir da linha 4
+    abast = viagens = manut = por_dia = por_eq = por_op = por_mes = []
+    estado = {}
 DT = lambda iso: datetime.date(*map(int, iso.split("-")))
 
 def aba_app(nome, nota, cols, larguras, linhas):
@@ -362,19 +375,21 @@ aba_app("Manutenções", NOTA,
 aba_app("Equipamentos", NOTA,
         ["Código", "Tipo", "Modelo", "Status", "Horímetro Atual", "KM Atual", "_id"],
         [12, 18, 16, 14, 14, 12, 12],
+        [] if ZERADA else
         [[eq, tipo, "", "Manutenção" if eq == "PC-02" else "Operando",
           round(estado.get(eq, {}).get("hor", 0), 1), estado.get(eq, {}).get("km", 0), eq]
          for eq, tipo in dados.EQUIPS])
 aba_app("Operadores", NOTA, ["Nome", "Função", "Status", "_id"], [18, 14, 12, 14],
-        [[o, "Operador", "Ativo", o] for o in dados.OPERADORES])
+        [] if ZERADA else [[o, "Operador", "Ativo", o] for o in dados.OPERADORES])
 
 # cor das guias: azul = apresentação, cinza = alimentada pelo app
-for nome in ("Diretoria", "Por Equipamento", "Por Operador", "Evolução Diária", "Evolução Mensal", "Frota e Manutenção"):
+for nome in ("Resumo Geral", "Por Equipamento", "Por Operador", "Evolução Diária", "Evolução Mensal", "Frota e Manutenção"):
     wb[nome].sheet_properties.tabColor = AZUL
 for nome in ("Resumo por Dia", "Resumo por Equipamento", "Resumo por Operador", "Resumo por Mês",
              "Abastecimentos", "Viagens", "Manutenções", "Equipamentos", "Operadores"):
     wb[nome].sheet_properties.tabColor = "94A3B8"
 
-SAIDA = "/tmp/claude-0/-home-user-STRACTA-VIAGENS/9649ac54-b899-5593-b27e-ed710f4ff541/scratchpad/diretoria/GP2T-Planilha-Diretoria.xlsx"
+SAIDA = ("/home/user/STRACTA-VIAGENS/google-sheets/GP2T-Planilha-Diretoria.xlsx" if ZERADA else
+         "/home/user/STRACTA-VIAGENS/google-sheets/GP2T-Planilha-Diretoria-EXEMPLO.xlsx")
 wb.save(SAIDA)
 print("salvo:", SAIDA, "| abas:", len(wb.sheetnames))
