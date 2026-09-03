@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "03/09/2026 · r32 (tema claro)";
+const VERSION = "03/09/2026 · r33 (usuários e operadores)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -139,6 +139,7 @@ const rotas = {
   ficha:         telaFicha,
   corrigir:      telaCorrigir,
   usuarios:      telaUsuarios,
+  operadores:    telaOperadores,
   configuracoes: telaConfiguracoes
 };
 
@@ -227,6 +228,10 @@ function telaHome() {
       <button class="menu-card" data-go="frota">
         <span class="ico">🚛</span><span class="lbl">Frota</span>
         <span class="desc">Status e ficha por equipamento</span>
+      </button>
+      <button class="menu-card" data-go="operadores">
+        <span class="ico">👷</span><span class="lbl">Operadores</span>
+        <span class="desc">Quem opera a frota</span>
       </button>
       <button class="menu-card" data-go="dashboard">
         <span class="ico">📊</span><span class="lbl">Painel</span>
@@ -434,16 +439,21 @@ async function telaUsuarios() {
   app.innerHTML = `
     <div class="card">
       <h3>➕ Liberar acesso</h3>
-      <p class="hint">Primeiro crie a pessoa no Firebase (Authentication → Users) como <b>nome@gp2t.local</b>. Depois libere o usuário aqui.</p>
+      <p class="hint">O app cria a pessoa no Firebase e libera o acesso de uma vez. Ela entra digitando
+      só o usuário (sem e-mail) e a senha que você definir aqui.</p>
       <div class="field"><label>Usuário (sem e-mail)</label><input id="uEmail" placeholder="ex: saulo" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
       <div class="field"><label>Nome</label><input id="uNome" placeholder="Nome da pessoa"></div>
+      <div class="field"><label>Senha inicial <span class="mini">mínimo 6 caracteres</span></label>
+        <input id="uSenha" value="gp2t2026" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
       <div class="field"><label>Perfil</label>
         <select id="uPerfil">
           <option value="operador">👷 Operador — só lança abastecimento e viagens</option>
           <option value="gestor">🧑‍💼 Gestor — acesso total</option>
         </select>
       </div>
-      <button class="btn btn-primary" id="btnAddUser">Liberar acesso</button>
+      <button class="btn btn-primary" id="btnAddUser">Criar e liberar</button>
+      <p class="hint" style="margin-top:10px">Para <b>trocar a senha</b> de alguém, é no Firebase →
+      Authentication → Users. O app não consegue mexer na senha de outra pessoa.</p>
     </div>
     <div class="card">
       <h3>👥 Liberados</h3>
@@ -455,14 +465,30 @@ async function telaUsuarios() {
     const lista = await Auth.listarUsuarios();
     const box = $("#uLista");
     if (!lista.length) { box.innerHTML = '<p class="empty">Ninguém liberado ainda.</p>'; return; }
-    box.innerHTML = lista.map(u => `
+    const eu = (Auth.usuario && Auth.usuario.email) || "";
+    box.innerHTML = lista.map(u => {
+      const souEu = u.email === eu;
+      return `
       <div class="itemrow"><div class="info"><b>${u.nome || u.usuario}</b>
         <span class="pill ${u.perfil === "gestor" ? "pill-green" : "pill-blue"}">${u.perfil === "gestor" ? "Gestor" : "Operador"}</span>
+        ${souEu ? '<span class="pill pill-gray">você</span>' : ""}
         ${u.ativo === false ? '<span class="pill pill-red">Bloqueado</span>' : ""}
-        <div class="sub">usuário: ${u.usuario}</div></div>
+        <div class="sub">usuário: ${u.usuario}${souEu ? " · seu acesso não pode ser alterado aqui" : ""}</div></div>
+        ${souEu ? "" : `
         <button class="btn btn-ghost btn-sm" data-troca="${u.usuario}" data-perfil="${u.perfil}">Trocar perfil</button>
-        <button class="del" data-bloq="${u.usuario}" data-ativo="${u.ativo === false ? "0" : "1"}">${u.ativo === false ? "✓" : "✕"}</button>
-      </div>`).join("");
+        <button class="btn btn-ghost btn-sm" data-bloq="${u.usuario}" data-ativo="${u.ativo === false ? "0" : "1"}">${u.ativo === false ? "Liberar" : "Bloquear"}</button>
+        <button class="del" data-excluir="${u.usuario}">🗑️</button>`}
+      </div>`;
+    }).join("");
+
+    $$("[data-excluir]").forEach(b => b.onclick = async () => {
+      const quem = b.dataset.excluir;
+      const ok = await confirmar(`Excluir o acesso de ${quem}? Ele não vai mais conseguir entrar. Os lançamentos que ele fez continuam guardados.`);
+      if (!ok) return;
+      const r = await Auth.removerUsuario(quem);
+      toast(r.ok ? "✔ Acesso excluído" : r.erro, r.ok ? "ok" : "err");
+      render();
+    });
 
     $$("[data-troca]").forEach(b => b.onclick = async () => {
       const novo = b.dataset.perfil === "gestor" ? "operador" : "gestor";
@@ -481,13 +507,82 @@ async function telaUsuarios() {
   $("#btnAddUser").onclick = async () => {
     const entrada = $("#uEmail").value.trim();
     const nome = $("#uNome").value.trim();
+    const senha = $("#uSenha").value;
+    const perfil = $("#uPerfil").value;
     const id = emailDe(entrada);
     if (!id) { toast("Informe o nome de usuário", "err"); return; }
-    const r = await Auth.salvarUsuario(entrada, { nome: nome || usuarioDe(id), perfil: $("#uPerfil").value, ativo: true });
+    const btn = $("#btnAddUser");
+    btn.disabled = true; btn.textContent = "Criando…";
+    const r = await Auth.criarUsuario(entrada, senha, { nome: nome || usuarioDe(id), perfil, ativo: true });
+    btn.disabled = false; btn.textContent = "Criar e liberar";
     if (!r.ok) { toast(r.erro, "err"); return; }
-    toast(`✔ ${usuarioDe(id)} liberado`);
+    // operador também entra na lista de quem opera equipamento: um cadastro só
+    if (perfil === "operador") { DB.addMotorista(nome || usuarioDe(id)); Sync.pushOperador(nome || usuarioDe(id)); }
+    toast(r.jaExistia ? `✔ ${usuarioDe(id)} liberado (já existia no Firebase)` : `✔ ${usuarioDe(id)} criado e liberado`);
     $("#uEmail").value = ""; $("#uNome").value = "";
     render();
+  };
+  render();
+}
+
+/* ============================================================
+   OPERADORES (só gestor) — a lista que aparece no campo Motorista
+   ============================================================ */
+function telaOperadores() {
+  $("#headerTitle").textContent = "👷 Operadores";
+  $("#headerSub").textContent = "QUEM OPERA A FROTA";
+  const db = DB.load();
+
+  app.innerHTML = `
+    <div class="card">
+      <h3>➕ Adicionar operador</h3>
+      <p class="hint">Esta é a lista que aparece no campo <b>Motorista</b> ao lançar. Quem for entrar no
+      app também precisa de acesso em <b>Usuários</b>.</p>
+      <div class="field"><label>Nome</label><input id="opNome" placeholder="ex: José Silva"></div>
+      <button class="btn btn-primary" id="btnAddOp">Adicionar</button>
+    </div>
+
+    <div class="card">
+      <h3>👷 Operadores <span class="mini">(${db.motoristas.length})</span></h3>
+      <div class="itemlist" id="opLista"></div>
+    </div>
+  `;
+
+  function render() {
+    const d = DB.load();
+    const box = $("#opLista");
+    if (!d.motoristas.length) { box.innerHTML = '<p class="empty">Nenhum operador cadastrado.</p>'; return; }
+    box.innerHTML = d.motoristas.map(m => {
+      const eqs = DB.equipDoOperador(m);
+      const n = DB.lancamentosDoOperador(m);
+      return `<div class="itemrow"><div class="info"><b>${m}</b>
+        ${eqs.length ? `<span class="pill pill-blue">${eqs.join(", ")}</span>` : ""}
+        <div class="sub">${n ? n + " lançamento(s)" : "sem lançamentos ainda"}</div></div>
+        <button class="del" data-del-op="${m}">🗑️</button></div>`;
+    }).join("");
+
+    $$("[data-del-op]").forEach(b => b.onclick = async () => {
+      const nome = b.dataset.delOp;
+      const n = DB.lancamentosDoOperador(nome);
+      const ok = await confirmar(n
+        ? `Apagar ${nome} da lista? Os ${n} lançamento(s) que ele já fez continuam no histórico e nos relatórios.`
+        : `Apagar ${nome} da lista de operadores?`);
+      if (!ok) return;
+      DB.removerMotorista(nome);
+      toast("✔ Operador removido");
+      telaOperadores();
+    });
+  }
+
+  $("#btnAddOp").onclick = () => {
+    const nome = $("#opNome").value.trim();
+    if (!nome) { toast("Digite o nome", "err"); return; }
+    if (DB.load().motoristas.includes(nome)) { toast("Esse operador já está na lista", "err"); return; }
+    DB.addMotorista(nome);
+    Sync.pushOperador(nome);
+    $("#opNome").value = "";
+    toast("✔ Operador adicionado");
+    telaOperadores();
   };
   render();
 }
@@ -719,6 +814,10 @@ function telaAbastecimento() {
   }
 
   function preencherAuto() {
+    // quem está no equipamento já vem escolhido (definido na ficha da Frota)
+    const opEq = DB.getOperadorEquip(el.equip.value);
+    const selMot = $("#fMot");
+    if (opEq && selMot && [...selMot.options].some(o => o.value === opEq)) selMot.value = opEq;
     if (!editando) {
       const u = DB.ultimo(el.equip.value);
       el.horiIni.value = u.horimetroFinal ?? "";
@@ -985,6 +1084,13 @@ function telaViagens() {
   };
   $("#vQtd").oninput = previewPeso;
   $("#vPeso").oninput = previewPeso;
+
+  const autoOperador = () => {
+    const opEq = DB.getOperadorEquip($("#vEquip").value);
+    if (opEq && [...$("#vMot").options].some(o => o.value === opEq)) $("#vMot").value = opEq;
+  };
+  $("#vEquip").onchange = autoOperador;
+  autoOperador();
 
   $("#btnAdd").onclick = () => {
     const orig = $("#vOrig").value.trim(), dest = $("#vDest").value.trim(), qtd = num($("#vQtd").value);
@@ -2104,6 +2210,13 @@ function telaFicha() {
         </select>
       </div>
       <div class="field">
+        <label>Operador atual <span class="mini">preenche sozinho ao lançar</span></label>
+        <select id="fkOperador">
+          <option value="">— ninguém definido —</option>
+          ${DB.load().motoristas.map(m => `<option ${DB.getOperadorEquip(eq) === m ? "selected" : ""}>${m}</option>`).join("")}
+        </select>
+      </div>
+      <div class="field">
         <label>Próxima revisão em (horímetro/KM)</label>
         <input id="fkRev" inputmode="decimal" value="${f.proximaRevisao ?? ""}" placeholder="ex: 20000">
       </div>
@@ -2159,6 +2272,7 @@ function telaFicha() {
     DB.setStatus(eq, $("#fkStatus").value);
     DB.setTipoEquip(eq, $("#fkTipo").value);
     DB.setProximaRevisao(eq, $("#fkRev").value.trim());
+    DB.setOperadorEquip(eq, $("#fkOperador").value);
     Sync.pushEquipamento(eq);
     toast("✔ Situação salva"); telaFicha();
   };

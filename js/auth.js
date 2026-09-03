@@ -261,10 +261,44 @@ const Auth = {
       return snap.docs.map(d => Object.assign({ email: d.id, usuario: usuarioDe(d.id) }, d.data()));
     } catch (e) { return []; }
   },
+  /* Cria a pessoa no Firebase SEM derrubar quem está logado.
+     O createUser troca a sessão do app onde roda — por isso ele roda num
+     SEGUNDO app do Firebase, descartado logo em seguida. */
+  async criarUsuario(usuario, senha, dados) {
+    if (!this.sdkDisponivel()) return { ok: false, erro: "Sem internet no momento." };
+    const id = emailDe(usuario);
+    if (!id) return { ok: false, erro: "Informe o nome de usuário." };
+    if (!senha || senha.length < 6) return { ok: false, erro: "A senha precisa de 6 caracteres ou mais." };
+
+    let secundario = null, jaExistia = false;
+    try {
+      secundario = firebase.apps.find(a => a.name === "adm") || firebase.initializeApp(FIREBASE_CONFIG, "adm");
+      await secundario.auth().createUserWithEmailAndPassword(id, senha);
+    } catch (e) {
+      const cod = (e && e.code) || "";
+      if (cod.includes("email-already-in-use")) jaExistia = true;
+      else {
+        try { if (secundario) await secundario.delete(); } catch (x) {}
+        return { ok: false, erro: this._msgErro(e) };
+      }
+    }
+    try { await secundario.auth().signOut(); } catch (e) {}
+    try { await secundario.delete(); } catch (e) {}
+
+    const r = await this.salvarUsuario(usuario, dados);
+    if (!r.ok) return r;
+    return { ok: true, jaExistia };
+  },
+
   async salvarUsuario(usuario, dados) {
     if (!this.sdkDisponivel()) return { ok: false, erro: "Sem internet no momento." };
     const id = emailDe(usuario);
     if (!id) return { ok: false, erro: "Informe o nome de usuário." };
+    // mexer no próprio perfil ou se bloquear tira o acesso e não teria volta pelo app
+    if (this.usuario && id === this.usuario.email &&
+        (dados.perfil && dados.perfil !== "gestor" || dados.ativo === false)) {
+      return { ok: false, erro: "Você não pode tirar o seu próprio acesso." };
+    }
     try {
       await firebase.firestore().collection("usuarios").doc(id).set(dados, { merge: true });
       return { ok: true };
@@ -272,6 +306,10 @@ const Auth = {
   },
   async removerUsuario(usuario) {
     if (!this.sdkDisponivel()) return { ok: false, erro: "Sem internet no momento." };
+    // a trava fica aqui, e não só na tela: excluir a própria liberação tranca o acesso
+    if (this.usuario && emailDe(usuario) === this.usuario.email) {
+      return { ok: false, erro: "Você não pode excluir o seu próprio acesso." };
+    }
     try {
       await firebase.firestore().collection("usuarios").doc(emailDe(usuario)).delete();
       return { ok: true };

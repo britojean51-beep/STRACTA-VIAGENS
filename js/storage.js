@@ -25,6 +25,7 @@ const DB = {
       estoque: { s10: 4250, s500: 0, arla: 500 }, // litros por tanque
       tipoEquip: {},                   // { "CB-17": "km_horimetro"|"horimetro" }
       status: {},                      // { "CB-17": "operando"|"reserva"|"manutencao"|"parado"|"final_expediente" }
+      operadorEquip: {},               // { "CB-17": "Saulo" } — quem está no equipamento
       proximaRevisao: {},              // { "CB-17": 20000 } — horímetro/KM alvo da próxima revisão
       config: {                        // metas de gestão
         metaMedia: 1.0,                // km/L mínimo esperado (equipamento rodante)
@@ -63,6 +64,7 @@ const DB = {
     this._cache.status = data.status || {};
     this._cache.proximaRevisao = data.proximaRevisao || {};
     this._cache.tipoEquip = data.tipoEquip || {};
+    this._cache.operadorEquip = data.operadorEquip || {};
     // estoque: migra o antigo estoqueTanque (único) para o novo formato por tanque
     if (data.estoque) {
       this._cache.estoque = Object.assign({ s10: 0, s500: 0, arla: 0 }, data.estoque);
@@ -592,6 +594,41 @@ const DB = {
     this._nuvem(C => {
       C.patch("frota", { equipamentos: db.equipamentos, tipoEquip: db.tipoEquip, proximaRevisao: db.proximaRevisao });
       C.patch("operacao", { status: db.status, estado: db.estado });
+    });
+  },
+  /* Quem está em cada equipamento: usado para preencher o operador sozinho. */
+  getOperadorEquip(eq) { return this.load().operadorEquip[eq] || ""; },
+  setOperadorEquip(eq, nome) {
+    const db = this.load();
+    if (nome) db.operadorEquip[eq] = nome; else delete db.operadorEquip[eq];
+    this.save();
+    this._nuvem(C => C.patch("operacao", { operadorEquip: db.operadorEquip }));
+  },
+  equipDoOperador(nome) {
+    const m = this.load().operadorEquip;
+    return Object.keys(m).filter(eq => m[eq] === nome);
+  },
+  /* Quantos lançamentos a pessoa tem — para avisar antes de apagar. */
+  lancamentosDoOperador(nome) {
+    const db = this.load();
+    let n = 0;
+    Object.values(db.dias).forEach(d => {
+      n += (d.abastecimentos || []).filter(a => a.motorista === nome).length;
+      n += (d.viagens || []).filter(v => v.motorista === nome).length;
+    });
+    return n;
+  },
+  /* Tira o operador da lista. O histórico dos dias fica intacto. */
+  removerMotorista(nome) {
+    const db = this.load();
+    db.motoristas = db.motoristas.filter(m => m !== nome);
+    Object.keys(db.operadorEquip).forEach(eq => {
+      if (db.operadorEquip[eq] === nome) delete db.operadorEquip[eq];
+    });
+    this.save();
+    this._nuvem(C => {
+      C.patch("frota", { motoristas: db.motoristas });
+      C.patch("operacao", { operadorEquip: db.operadorEquip });
     });
   },
   addMotorista(nome) {

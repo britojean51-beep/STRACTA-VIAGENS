@@ -83,7 +83,7 @@ const Cloud = {
       ["frota", { equipamentos: db.equipamentos, motoristas: db.motoristas,
                   abastecedores: db.abastecedores, tipoEquip: db.tipoEquip,
                   proximaRevisao: db.proximaRevisao, config: cfg }],
-      ["operacao", { estado: db.estado, status: db.status }],
+      ["operacao", { estado: db.estado, status: db.status, operadorEquip: db.operadorEquip }],
       ["estoque", db.estoque]
     ];
     const gestor = (typeof Auth === "undefined") || Auth.ehGestor();
@@ -185,6 +185,7 @@ const Cloud = {
     } else if (nome === "operacao") {
       if (d.estado) db.estado = d.estado;
       if (d.status) db.status = d.status;
+      if (d.operadorEquip) db.operadorEquip = d.operadorEquip;
     } else if (nome === "estoque") {
       ["s10", "s500", "arla"].forEach(t => { if (typeof d[t] === "number") db.estoque[t] = d[t]; });
     }
