@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "02/09/2026 · r29 (nuvem ligada)";
+const VERSION = "03/09/2026 · r30 (botão Sair)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -25,7 +25,6 @@ let relatorioPeriodoSel = null;
 /* Painel: KPI aberto no "Geral do dia" e métrica do ranking por equipamento */
 let painelKpi = null;
 /* Área do desenvolvedor (5 toques na versão) — guarda o "Sair" longe da equipe */
-let devAberto = false;
 let painelMetrica = "diesel";
 
 /* ---------- Utilidades numéricas ---------- */
@@ -165,6 +164,7 @@ function telaHome() {
     ${logado ? `<div class="card user-card">
       <div><b>👤 ${logado.nome}</b> <span class="pill ${logado.perfil === "gestor" ? "pill-green" : "pill-blue"}">${logado.perfil === "gestor" ? "Gestor" : "Operador"}</span>
       <div class="sub">usuário: ${logado.usuario || logado.email}</div></div>
+      <button class="btn btn-ghost btn-sm" id="btnSair">Sair</button>
     </div><div class="spacer"></div>` : ""}
     <div class="menu-grid">
       ${gestor ? `<button class="menu-card accent wide" data-go="novodia">
@@ -215,32 +215,21 @@ function telaHome() {
     </div>
     <div class="spacer"></div>
     <p class="hint" style="text-align:center">STRACTA · Gestão de Frota · funciona no celular, tablet e computador</p>
-    ${devAberto ? `<div class="card" style="border-color:var(--red)">
-      <h3>🛠️ Área do desenvolvedor</h3>
-      <p class="hint">Sair <b>não apaga</b> os lançamentos — só encerra o acesso salvo neste celular.
-      Depois de sair, será preciso <b>internet</b> para entrar de novo.</p>
-      ${logado ? `<button class="btn btn-danger" id="btnSair">Trocar usuário (sair)</button>` : '<p class="empty">Login não está ativo.</p>'}
-      <div class="spacer"></div>
-      <button class="btn btn-ghost btn-sm" id="btnFecharDev">Fechar</button>
-    </div>` : ""}
     <p class="hint" style="text-align:center" id="verVersao">versão ${VERSION}</p>
   `;
   $$("[data-go]").forEach(b => b.onclick = () => navegar(b.dataset.go));
-  // 5 toques na versão abrem a área do desenvolvedor
-  let toques = 0, tmr = null;
-  const ver = $("#verVersao");
-  if (ver) ver.onclick = () => {
-    toques++;
-    clearTimeout(tmr);
-    tmr = setTimeout(() => { toques = 0; }, 1500);
-    if (toques >= 5) { toques = 0; devAberto = true; telaHome(); }
-  };
-  const bf = $("#btnFecharDev");
-  if (bf) bf.onclick = () => { devAberto = false; telaHome(); };
+
   const bs = $("#btnSair");
   if (bs) bs.onclick = async () => {
-    const ok = await confirmar("Sair da conta neste celular?\n\nOs lançamentos NÃO serão apagados, mas será preciso internet para entrar de novo.");
-    if (ok) await Auth.sair();
+    // sem internet a pessoa sai e não consegue voltar: o aviso muda de tom
+    const semRede = !navigator.onLine;
+    const aviso = semRede
+      ? "SEM INTERNET agora. Se sair, só vai conseguir entrar de novo quando a rede voltar. Sair mesmo assim?"
+      : "Sair da conta neste celular? Os lançamentos não são apagados — estão na nuvem e na planilha.";
+    const ok = await confirmar(aviso);
+    if (!ok) return;
+    if (typeof Cloud !== "undefined") Cloud.parar();
+    await Auth.sair();
   };
 }
 
