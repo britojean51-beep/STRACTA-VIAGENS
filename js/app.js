@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "03/09/2026 · r39 (Índice e cores da situação)";
+const VERSION = "03/09/2026 · r40 (minha conta e acesso do dono)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -147,12 +147,13 @@ const rotas = {
   ficha:         telaFicha,
   corrigir:      telaCorrigir,
   usuarios:      telaUsuarios,
+  conta:         telaMinhaConta,
   operadores:    telaOperadores,
   configuracoes: telaConfiguracoes
 };
 
 /* O operador só lança; o resto é do gestor. */
-const ROTAS_OPERADOR = ["home", "abastecimento", "viagens", "corrigir"];
+const ROTAS_OPERADOR = ["home", "abastecimento", "viagens", "corrigir", "conta"];
 function podeVer(rota) {
   if (typeof Auth === "undefined" || !Auth.configurado()) return true;   // modo local: tudo liberado
   if (Auth.ehGestor()) return true;
@@ -201,7 +202,10 @@ function telaHome() {
     ${logado ? `<div class="card user-card">
       <div><b>👤 ${logado.nome}</b> <span class="pill ${logado.perfil === "gestor" ? "pill-green" : "pill-blue"}">${logado.perfil === "gestor" ? "Gestor" : "Operador"}</span>
       <div class="sub">usuário: ${logado.usuario || logado.email}</div></div>
-      <button class="btn btn-ghost btn-sm" id="btnSair">Sair</button>
+      <div class="btn-col">
+        <button class="btn btn-ghost btn-sm" data-go="conta">👤 Minha conta</button>
+        <button class="btn btn-ghost btn-sm" id="btnSair">Sair</button>
+      </div>
     </div><div class="spacer"></div>` : ""}
     <div class="menu-grid">
       ${gestor ? `<button class="menu-card accent wide" data-go="novodia">
@@ -275,14 +279,91 @@ function telaHome() {
 }
 
 /* ============================================================
+   MINHA CONTA — nome e senha da própria pessoa (gestor e operador)
+   ============================================================ */
+function telaMinhaConta() {
+  $("#headerTitle").textContent = "👤 Minha conta";
+  $("#headerSub").textContent = "NOME · SENHA";
+  const u = (typeof Auth !== "undefined" && Auth.usuario) || null;
+
+  if (!u) {
+    app.innerHTML = '<div class="card"><p class="empty">Este app está sem login.</p></div>';
+    return;
+  }
+
+  app.innerHTML = `
+    <div class="card">
+      <h3>👤 Meu nome</h3>
+      <p class="hint">É o nome que aparece no Início e na lista de Usuários. Seu usuário para entrar
+      continua <b>${u.usuario || u.email}</b> — esse não muda.</p>
+      <div class="field">
+        <label>Nome</label>
+        <input id="cnNome" value="${u.nome || ""}" placeholder="Seu nome" autocomplete="off">
+      </div>
+      <button class="btn btn-primary btn-sm" id="btnCnNome">💾 Salvar nome</button>
+      <p class="hint" id="cnNomeMsg" style="margin-top:8px"></p>
+    </div>
+
+    <div class="card">
+      <h3>🔑 Minha senha</h3>
+      <p class="hint">Precisa de internet. Depois de trocar, use a senha nova também para entrar
+      sem sinal neste celular.</p>
+      <div class="field">
+        <label>Senha atual</label>
+        <input id="cnAtual" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false">
+      </div>
+      <div class="field">
+        <label>Senha nova <span class="mini">mínimo 6 caracteres</span></label>
+        <input id="cnNova" type="password" autocomplete="new-password" autocapitalize="none" spellcheck="false">
+      </div>
+      <div class="field">
+        <label>Repetir a senha nova</label>
+        <input id="cnNova2" type="password" autocomplete="new-password" autocapitalize="none" spellcheck="false">
+      </div>
+      <button class="btn btn-primary btn-sm" id="btnCnSenha">🔑 Trocar senha</button>
+      <p class="hint" id="cnSenhaMsg" style="margin-top:8px"></p>
+    </div>
+  `;
+
+  const diz = (id, t, cor) => { const m = $(id); m.innerHTML = t; m.style.color = cor || "var(--muted)"; };
+
+  $("#btnCnNome").onclick = async () => {
+    const b = $("#btnCnNome");
+    b.disabled = true; b.textContent = "Salvando…";
+    const r = await Auth.trocarNome($("#cnNome").value);
+    b.disabled = false; b.textContent = "💾 Salvar nome";
+    if (!r.ok) { diz("#cnNomeMsg", "❌ " + r.erro, "var(--red)"); toast(r.erro, "err"); return; }
+    diz("#cnNomeMsg", "✅ Nome salvo.", "var(--green)");
+    toast("✔ Nome salvo");
+  };
+
+  $("#btnCnSenha").onclick = async () => {
+    const atual = $("#cnAtual").value, nova = $("#cnNova").value, nova2 = $("#cnNova2").value;
+    if (nova !== nova2) { diz("#cnSenhaMsg", "❌ As duas senhas novas estão diferentes.", "var(--red)"); return; }
+    const b = $("#btnCnSenha");
+    b.disabled = true; b.textContent = "Trocando…";
+    const r = await Auth.trocarSenha(atual, nova);
+    b.disabled = false; b.textContent = "🔑 Trocar senha";
+    if (!r.ok) { diz("#cnSenhaMsg", "❌ " + r.erro, "var(--red)"); toast(r.erro, "err"); return; }
+    $("#cnAtual").value = ""; $("#cnNova").value = ""; $("#cnNova2").value = "";
+    diz("#cnSenhaMsg", "✅ Senha trocada. Use a nova da próxima vez que entrar.", "var(--green)");
+    toast("✔ Senha trocada");
+  };
+}
+
+/* ============================================================
    CONFIGURAÇÕES (só gestor)
    ============================================================ */
 function telaConfiguracoes() {
   $("#headerTitle").textContent = "⚙️ Configurações";
   $("#headerSub").textContent = "PLANILHA · INTEGRAÇÕES";
   const db = DB.load();
+  /* O link da planilha vale para TODOS os celulares: um link errado aqui quebra a
+     sincronização da empresa inteira. Por isso o quadro é só do desenvolvedor. */
+  const donoDaPlanilha = (typeof Auth === "undefined") || Auth.ehDono();
 
   app.innerHTML = `
+    ${donoDaPlanilha ? `
     <div class="card">
       <h3>☁️ Planilha na nuvem <span id="syncBadge" class="pill pill-gray">desligada</span></h3>
       <p class="hint">A planilha já vem conectada de fábrica — não precisa colar nada em cada celular. Só mexa aqui se for trocar de planilha.</p>
@@ -297,7 +378,7 @@ function telaConfiguracoes() {
       <div class="spacer"></div>
       <button class="btn btn-green" id="btnSheetsSync">🔄 Sincronizar tudo</button>
       <p class="hint" id="sheetsMsg" style="margin-top:8px"></p>
-    </div>
+    </div>` : ""}
 
     <div class="card">
       <h3>☁️ Dados na nuvem <span id="nuvemBadge" class="pill pill-gray">desligada</span></h3>
@@ -333,6 +414,8 @@ function telaConfiguracoes() {
     </div>
   `;
 
+  // os botões abaixo vivem dentro do quadro da planilha: sem ele na tela, nem existem
+  if (donoDaPlanilha) {
   Sync._badge();
   const msg = (t, cor) => { const m = $("#sheetsMsg"); if (m) { m.innerHTML = t; m.style.color = cor || "var(--muted)"; } };
   $("#btnSheetsSalvar").onclick = () => {
@@ -368,6 +451,7 @@ function telaConfiguracoes() {
       }
     });
   };
+  }
 
   const msgN = (t, cor) => { const m = $("#nuvemMsg"); if (m) { m.innerHTML = t; m.style.color = cor || "var(--muted)"; } };
   const badge = () => { const el = $("#nuvemBadge"); if (el && typeof Cloud !== "undefined") pintarBadgeNuvem(el); };
@@ -460,8 +544,9 @@ async function telaUsuarios() {
         </select>
       </div>
       <button class="btn btn-primary" id="btnAddUser">Criar e liberar</button>
-      <p class="hint" style="margin-top:10px">Para <b>trocar a senha</b> de alguém, é no Firebase →
-      Authentication → Users. O app não consegue mexer na senha de outra pessoa.</p>
+      <p class="hint" style="margin-top:10px">Cada pessoa troca a <b>própria</b> senha e o próprio nome
+      no app, em <b>👤 Minha conta</b> (no Início). Só quando alguém <b>esquece</b> a senha é que se
+      resolve no Firebase → Authentication → Users: o app não mexe na senha de outra pessoa.</p>
     </div>
     <div class="card">
       <h3>👥 Liberados</h3>
@@ -476,13 +561,17 @@ async function telaUsuarios() {
     const eu = (Auth.usuario && Auth.usuario.email) || "";
     box.innerHTML = lista.map(u => {
       const souEu = u.email === eu;
+      const dono = Auth.contaDoDono(u.email);        // desenvolvedor: linha sem botões
+      const nota = dono ? " · acesso do desenvolvedor: não dá para trocar a função nem excluir"
+                : souEu ? " · seu acesso não pode ser alterado aqui" : "";
       return `
       <div class="itemrow"><div class="info"><b>${u.nome || u.usuario}</b>
         <span class="pill ${u.perfil === "gestor" ? "pill-green" : "pill-blue"}">${u.perfil === "gestor" ? "Gestor" : "Operador"}</span>
+        ${dono ? '<span class="pill pill-gray">🔒 desenvolvedor</span>' : ""}
         ${souEu ? '<span class="pill pill-gray">você</span>' : ""}
         ${u.ativo === false ? '<span class="pill pill-red">Bloqueado</span>' : ""}
-        <div class="sub">usuário: ${u.usuario}${souEu ? " · seu acesso não pode ser alterado aqui" : ""}</div></div>
-        ${souEu ? "" : `
+        <div class="sub">usuário: ${u.usuario}${nota}</div></div>
+        ${(souEu || dono) ? "" : `
         <button class="btn btn-ghost btn-sm" data-troca="${u.usuario}" data-perfil="${u.perfil}">Trocar perfil</button>
         <button class="btn btn-ghost btn-sm" data-bloq="${u.usuario}" data-ativo="${u.ativo === false ? "0" : "1"}">${u.ativo === false ? "Liberar" : "Bloquear"}</button>
         <button class="del" data-excluir="${u.usuario}">🗑️</button>`}

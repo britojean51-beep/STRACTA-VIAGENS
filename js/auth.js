@@ -14,6 +14,10 @@ const VALIDADE_OFFLINE = 90;           // dias desde a última confirmação onl
    existir de verdade. Usamos um domínio interno: quem entra digita só "saulo"
    e o app completa para "saulo@gp2t.local". Ninguém precisa ter e-mail. */
 const DOMINIO_INTERNO = "gp2t.local";
+/* O desenvolvedor. O acesso dele não se mexe pelo app: nem trocar perfil, nem
+   bloquear, nem excluir — só ele mesmo. Já aconteceu de outro caminho rebaixar
+   esse usuário e deixar o app sem gestor. */
+const DONO = "jean@gp2t.local";
 
 /* "José Silva" -> "jose.silva" (sem acento, sem espaço, só o que o e-mail aceita) */
 function normalizarUsuario(v) {
@@ -44,6 +48,8 @@ const Auth = {
   configurado() { return !!(typeof FIREBASE_CONFIG !== "undefined" && FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey); },
   sdkDisponivel() { return typeof firebase !== "undefined" && !!firebase.initializeApp; },
   ehGestor() { return !this.configurado() || (this.usuario && this.usuario.perfil === "gestor"); },
+  ehDono() { return !this.configurado() || !!(this.usuario && this.usuario.email === DONO); },
+  contaDoDono(usuario) { return emailDe(usuario) === DONO; },
   perfil() { return this.usuario ? this.usuario.perfil : "gestor"; },
 
   /* ---- credenciais locais: permitem entrar sem internet em quem já entrou aqui ----
@@ -185,8 +191,9 @@ const Auth = {
       const cod = (e && e.code) || "";
       // caiu a rede no meio: tenta pelo que está guardado neste celular
       if (cod.includes("network") || cod.includes("unavailable") || cod.includes("timeout")) {
-        const off = await this._entrarOffline(id, senha);
-        if (off.ok) return off;
+        // devolve o motivo do acesso local, e não "sem internet": quem digita a
+        // senha antiga depois de trocá-la precisa ler "Senha incorreta"
+        return await this._entrarOffline(id, senha);
       }
       return { ok: false, erro: this._msgErro(e) };
     }
@@ -294,6 +301,12 @@ const Auth = {
     if (!this.sdkDisponivel()) return { ok: false, erro: "Sem internet no momento." };
     const id = emailDe(usuario);
     if (!id) return { ok: false, erro: "Informe o nome de usuário." };
+    // o acesso do desenvolvedor só ele mexe. A trava fica aqui e não só na tela
+    // porque criarUsuario() termina neste método: "Criar e liberar" com o usuário
+    // dele já rebaixou esse acesso uma vez.
+    if (id === DONO && !this.ehDono()) {
+      return { ok: false, erro: "Esse acesso é do desenvolvedor e não pode ser alterado." };
+    }
     // mexer no próprio perfil ou se bloquear tira o acesso e não teria volta pelo app
     if (this.usuario && id === this.usuario.email &&
         (dados.perfil && dados.perfil !== "gestor" || dados.ativo === false)) {
@@ -304,8 +317,69 @@ const Auth = {
       return { ok: true };
     } catch (e) { return { ok: false, erro: "Não foi possível salvar (confira as regras do Firestore)." }; }
   },
+  /* ---- a própria conta: nome e senha ---- */
+  /* Troca a senha no Firebase. Pede a senha atual de propósito: além de o Firebase
+     recusar sessão antiga (requires-recent-login), impede que um celular destravado
+     esquecido na mesa vire troca de senha. */
+  async trocarSenha(atual, nova) {
+    if (!this.configurado()) return { ok: false, erro: "Este app não usa login." };
+    if (!nova || nova.length < 6) return { ok: false, erro: "A senha nova precisa de 6 caracteres ou mais." };
+    if (!atual) return { ok: false, erro: "Digite a sua senha atual." };
+    if (!this.sdkDisponivel() || !navigator.onLine) {
+      return { ok: false, erro: "Para trocar a senha é preciso internet." };
+    }
+    const user = firebase.auth().currentUser;
+    if (!user) return { ok: false, erro: "Entre de novo com internet para trocar a senha." };
+    try {
+      const cred = firebase.auth.EmailAuthProvider.credential(user.email, atual);
+      await user.reauthenticateWithCredential(cred);
+      await user.updatePassword(nova);
+      // o acesso sem internet confere um resumo da senha guardado aqui: sem
+      // regravar, a pessoa continuaria entrando offline com a senha ANTIGA
+      await this._salvarConta(this.usuario, nova);
+      return { ok: true };
+    } catch (e) {
+      const cod = (e && e.code) || "";
+      if (cod.includes("wrong-password") || cod.includes("invalid-credential")) {
+        return { ok: false, erro: "Senha atual incorreta." };
+      }
+      if (cod.includes("weak-password")) return { ok: false, erro: "Senha muito fraca. Use 6 caracteres ou mais." };
+      return { ok: false, erro: this._msgErro(e) };
+    }
+  },
+
+  /* Troca o nome do próprio acesso (o que aparece no Início e na lista de Usuários). */
+  async trocarNome(novo) {
+    const nome = String(novo || "").trim();
+    if (!nome) return { ok: false, erro: "Digite o seu nome." };
+    if (!this.configurado()) return { ok: false, erro: "Este app não usa login." };
+    if (!this.usuario) return { ok: false, erro: "Entre de novo para mudar o nome." };
+    if (!this.sdkDisponivel() || !navigator.onLine) {
+      return { ok: false, erro: "Para mudar o nome é preciso internet." };
+    }
+    try {
+      await firebase.firestore().collection("usuarios").doc(this.usuario.email)
+        .set({ nome }, { merge: true });
+    } catch (e) {
+      return { ok: false, erro: "Não foi possível salvar (confira as regras do Firestore)." };
+    }
+    this.usuario.nome = nome;
+    this._salvarSessao(this.usuario);
+    // o nome também vive nas credenciais locais: sem isso, entrando sem internet
+    // o app voltaria a chamar a pessoa pelo nome antigo
+    const contas = this._contas();
+    if (contas[this.usuario.email]) {
+      contas[this.usuario.email].nome = nome;
+      this._gravarContas(contas);
+    }
+    return { ok: true };
+  },
+
   async removerUsuario(usuario) {
     if (!this.sdkDisponivel()) return { ok: false, erro: "Sem internet no momento." };
+    if (emailDe(usuario) === DONO) {
+      return { ok: false, erro: "Esse acesso é do desenvolvedor e não pode ser excluído." };
+    }
     // a trava fica aqui, e não só na tela: excluir a própria liberação tranca o acesso
     if (this.usuario && emailDe(usuario) === this.usuario.email) {
       return { ok: false, erro: "Você não pode excluir o seu próprio acesso." };

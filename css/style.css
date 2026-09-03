@@ -368,6 +368,9 @@ body.sem-login .tabbar { display: none; }
 /* ===== Cartão do usuário logado (Início) ===== */
 .user-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .user-card .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+/* Minha conta + Sair: um embaixo do outro, para caber na largura do celular */
+.btn-col { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+.btn-col .btn { white-space: nowrap; }
 
 /* ===== Chavinha (liga/desliga) ===== */
 .switch-row {

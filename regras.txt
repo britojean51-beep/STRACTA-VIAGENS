@@ -20,12 +20,23 @@ service cloud.firestore {
     function ehGestor() {
       return liberado() && meuDoc().get('perfil', '') == 'gestor';
     }
+    // O desenvolvedor: o acesso dele não se mexe, nem por outro gestor.
+    function contaDoDono(email) { return email == 'jean@gp2t.local'; }
+    function ehDono() { return meuEmail() == 'jean@gp2t.local'; }
 
     // ---- quem pode entrar no app ----
-    // Cada um lê a própria liberação. Só o gestor lê a lista e cria/edita/remove.
+    // Cada um lê a própria liberação. Só o gestor lê a lista e cria/remove.
+    // O acesso do desenvolvedor só ele altera ou exclui.
+    // No update, qualquer um arruma o PRÓPRIO nome — sem poder se promover a
+    // gestor nem se desbloquear, porque perfil e ativo têm que continuar iguais.
     match /usuarios/{email} {
       allow get: if request.auth != null && (meuEmail() == email || ehGestor());
-      allow list, create, update, delete: if ehGestor();
+      allow list: if ehGestor();
+      allow create, delete: if ehGestor() && (!contaDoDono(email) || ehDono());
+      allow update: if (ehGestor() && (!contaDoDono(email) || ehDono()))
+        || (meuEmail() == email
+            && request.resource.data.get('perfil', '') == resource.data.get('perfil', '')
+            && request.resource.data.get('ativo', true) == resource.data.get('ativo', true));
     }
 
     // ---- os dados da frota ----
