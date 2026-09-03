@@ -238,10 +238,15 @@ const DB = {
   /* Situação escolhida no abastecimento → status do equipamento */
   statusDaSituacao(sit) {
     return {
+      // as duas de hoje
+      "Operando": "operando",
+      "Manutenção": "manutencao",
+      // as antigas continuam valendo: já existem lançamentos gravados com elas
       "Continua em operação": "operando",
       "Retorno de manutenção": "operando",
       "Saída para manutenção": "manutencao",
       "Reserva": "reserva",
+      "Parado": "parado",
       "Final de expediente": "final_expediente"
     }[sit] || "operando";
   },
@@ -631,6 +636,30 @@ const DB = {
       C.patch("operacao", { operadorEquip: db.operadorEquip });
     });
   },
+  /* Abastecedores: mesma lógica dos operadores. Apagar não mexe no histórico. */
+  addAbastecedor(nome) {
+    const db = this.load();
+    nome = nome.trim();
+    if (nome && !db.abastecedores.includes(nome)) {
+      db.abastecedores.push(nome);
+      this.save();
+      this._nuvem(C => C.patch("frota", { abastecedores: db.abastecedores }));
+    }
+  },
+  removerAbastecedor(nome) {
+    const db = this.load();
+    db.abastecedores = db.abastecedores.filter(a => a !== nome);
+    this.save();
+    this._nuvem(C => C.patch("frota", { abastecedores: db.abastecedores }));
+  },
+  lancamentosDoAbastecedor(nome) {
+    let n = 0;
+    Object.values(this.load().dias).forEach(d => {
+      n += (d.abastecimentos || []).filter(a => a.abastecedor === nome).length;
+    });
+    return n;
+  },
+
   addMotorista(nome) {
     const db = this.load();
     nome = nome.trim();

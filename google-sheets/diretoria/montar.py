@@ -354,10 +354,10 @@ aba_app("Resumo por Mês", NOTA,
           x["ton"], round(x["lton"], 2), x["s10"], x["s500"], x["arla"], x["km"], round(x["media"], 2),
           x["viagens"], x["manutencoes"], x["quais_eq"], x["quais_op"], x["chave"]] for x in por_mes])
 aba_app("Abastecimentos", NOTA,
-        ["Data", "Equipamento", "Operador", "Horímetro Inicial", "Horímetro Final", "Horas", "Litros",
+        ["Data", "Hora", "Equipamento", "Operador", "Horímetro Inicial", "Horímetro Final", "Horas", "Litros",
          "Combustível", "ARLA (L)", "KM Rodado", "Média", "Unidade", "Toneladas", "L/Ton", "Situação", "_id"],
-        [12, 13, 12, 14, 14, 8, 9, 12, 10, 11, 9, 9, 11, 9, 20, 12],
-        [[DT(a["dia"]), a["equipamento"], a["operador"], a["hor_ini"], a["hor_fim"], a["horas"], a["litros"],
+        [12, 8, 13, 12, 14, 14, 8, 9, 12, 10, 11, 9, 9, 11, 9, 20, 12],
+        [[DT(a["dia"]), a.get("hora", ""), a["equipamento"], a["operador"], a["hor_ini"], a["hor_fim"], a["horas"], a["litros"],
           a["combustivel"], a["arla"], a["km"], a["media"], a["unidade"], a["toneladas"] or "", a["lton"] or "",
           a["situacao"], a["id"]] for a in abast])
 aba_app("Viagens", NOTA,

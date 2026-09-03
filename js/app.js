@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "03/09/2026 · r33 (usuários e operadores)";
+const VERSION = "03/09/2026 · r34 (hora e abastecedores)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -530,7 +530,7 @@ async function telaUsuarios() {
    ============================================================ */
 function telaOperadores() {
   $("#headerTitle").textContent = "👷 Operadores";
-  $("#headerSub").textContent = "QUEM OPERA A FROTA";
+  $("#headerSub").textContent = "OPERADORES E ABASTECEDORES";
   const db = DB.load();
 
   app.innerHTML = `
@@ -545,6 +545,18 @@ function telaOperadores() {
     <div class="card">
       <h3>👷 Operadores <span class="mini">(${db.motoristas.length})</span></h3>
       <div class="itemlist" id="opLista"></div>
+    </div>
+
+    <div class="card">
+      <h3>⛽ Adicionar abastecedor</h3>
+      <p class="hint">Quem enche o tanque. Aparece no campo <b>Abastecedor</b> do lançamento.</p>
+      <div class="field"><label>Nome</label><input id="abNome" placeholder="ex: Pedro"></div>
+      <button class="btn btn-primary" id="btnAddAb">Adicionar</button>
+    </div>
+
+    <div class="card">
+      <h3>⛽ Abastecedores <span class="mini">(${db.abastecedores.length})</span></h3>
+      <div class="itemlist" id="abLista"></div>
     </div>
   `;
 
@@ -574,6 +586,39 @@ function telaOperadores() {
     });
   }
 
+  function renderAb() {
+    const d = DB.load();
+    const box = $("#abLista");
+    if (!d.abastecedores.length) { box.innerHTML = '<p class="empty">Nenhum abastecedor cadastrado.</p>'; return; }
+    box.innerHTML = d.abastecedores.map(a => {
+      const n = DB.lancamentosDoAbastecedor(a);
+      return `<div class="itemrow"><div class="info"><b>${a}</b>
+        <div class="sub">${n ? n + " abastecimento(s)" : "sem lançamentos ainda"}</div></div>
+        <button class="del" data-del-ab2="${a}">🗑️</button></div>`;
+    }).join("");
+    $$("[data-del-ab2]").forEach(b => b.onclick = async () => {
+      const nome = b.dataset.delAb2;
+      const n = DB.lancamentosDoAbastecedor(nome);
+      const ok = await confirmar(n
+        ? `Apagar ${nome} da lista? Os ${n} abastecimento(s) que ele fez continuam no histórico.`
+        : `Apagar ${nome} da lista de abastecedores?`);
+      if (!ok) return;
+      DB.removerAbastecedor(nome);
+      toast("✔ Abastecedor removido");
+      telaOperadores();
+    });
+  }
+
+  $("#btnAddAb").onclick = () => {
+    const nome = $("#abNome").value.trim();
+    if (!nome) { toast("Digite o nome", "err"); return; }
+    if (DB.load().abastecedores.includes(nome)) { toast("Esse abastecedor já está na lista", "err"); return; }
+    DB.addAbastecedor(nome);
+    $("#abNome").value = "";
+    toast("✔ Abastecedor adicionado");
+    telaOperadores();
+  };
+
   $("#btnAddOp").onclick = () => {
     const nome = $("#opNome").value.trim();
     if (!nome) { toast("Digite o nome", "err"); return; }
@@ -585,6 +630,7 @@ function telaOperadores() {
     telaOperadores();
   };
   render();
+  renderAb();
 }
 
 /* ============================================================
@@ -672,7 +718,13 @@ function telaNovoDia() {
 /* ============================================================
    ABASTECIMENTO
    ============================================================ */
-const SITUACOES = ["Continua em operação", "Retorno de manutenção", "Saída para manutenção", "Reserva", "Final de expediente"];
+function horaAgora() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+/* Só o que se usa no dia a dia. Reserva, Parado e Final de expediente continuam
+   existindo — mudam pela ficha do equipamento (Frota) e pelo Novo Dia. */
+const SITUACOES = ["Operando", "Manutenção"];
 
 function telaAbastecimento() {
   $("#headerTitle").textContent = "⛽ Abastecimento";
@@ -695,9 +747,15 @@ function telaAbastecimento() {
         <label>Equipamento <span id="fTipoTag" class="badge-auto"></span></label>
         <select id="fEquip">${optsEquip}</select>
       </div>
-      <div class="field">
-        <label>Motorista / Operador</label>
-        <select id="fMot">${optsMot}</select>
+      <div class="field-row">
+        <div class="field">
+          <label>Hora do abastecimento</label>
+          <input id="fHora" type="time" value="${ed && ed.hora ? ed.hora : horaAgora()}">
+        </div>
+        <div class="field">
+          <label>Motorista / Operador</label>
+          <select id="fMot">${optsMot}</select>
+        </div>
       </div>
 
       <div class="field-row">
@@ -864,7 +922,7 @@ function telaAbastecimento() {
     $("#fRecentes").innerHTML = ult.length ? ult.map(a => {
       const und = a.unidadeMedia || "km/L";
       const extra = und === "L/h" ? `${a.horasTrabalhadas} h` : `${fmt(a.kmRodado)} km`;
-      return `<div class="itemrow"><div class="info"><b>${DB.fmtBR(a.iso)}</b>
+      return `<div class="itemrow"><div class="info"><b>${DB.fmtBR(a.iso)}${a.hora ? " · " + a.hora : ""}</b>
         <div class="sub">${fmt(a.litros)} L ${a.combustivel || "S-10"} · ${extra} · ${a.media} ${und}${a.litrosArla ? " · ARLA " + fmt(a.litrosArla) + " L" : ""}</div></div></div>`;
     }).join("") : '<p class="empty">Sem abastecimentos anteriores.</p>';
   }
@@ -899,6 +957,7 @@ function telaAbastecimento() {
 
     const reg = {
       equipamento: equip,
+      hora: $("#fHora").value || horaAgora(),
       motorista: $("#fMot").value,
       horimetroInicial: horiIni,
       horimetroFinal: horiFim,
@@ -2245,7 +2304,7 @@ function telaFicha() {
       <div class="itemlist">${f.abast.slice().reverse().slice(0, 15).map(a => {
         const und = a.unidadeMedia || "km/L";
         const extra = und === "L/h" ? `${a.horasTrabalhadas} h` : `${fmt(a.kmRodado)} km`;
-        return `<div class="itemrow"><div class="info"><b>${DB.fmtBR(a.iso)}</b>${a.motorista ? ` <span class="mini">👷 ${a.motorista}</span>` : ""}
+        return `<div class="itemrow"><div class="info"><b>${DB.fmtBR(a.iso)}${a.hora ? " · " + a.hora : ""}</b>${a.motorista ? ` <span class="mini">👷 ${a.motorista}</span>` : ""}
           <div class="sub">${fmt(a.litros)} L ${a.combustivel || "S-10"} · ${extra} · ${a.media} ${und}${a.litrosArla ? " · ARLA " + fmt(a.litrosArla) + " L" : ""}</div></div></div>`;
       }).join("") || '<p class="empty">Nenhum.</p>'}</div>
     </div>
@@ -2329,7 +2388,7 @@ function telaCorrigir() {
 
     html += `<div class="card"><h3>⛽ Abastecimentos</h3>`;
     html += d.abastecimentos.length ? d.abastecimentos.map(a => `
-      <div class="itemrow"><div class="info"><b>${a.equipamento}</b> · ${fmt(a.litros)} L · ${a.media} km/L
+      <div class="itemrow"><div class="info"><b>${a.equipamento}</b>${a.hora ? ` <span class="mini">${a.hora}</span>` : ""} · ${fmt(a.litros)} L · ${a.media} km/L
         <div class="sub">${a.motorista} · ${fmt(a.kmRodado)} km · ${a.horasTrabalhadas} h</div></div>
         <div>
           <button class="btn-sm btn btn-blue" data-edit="${a.id}">✏️</button>
