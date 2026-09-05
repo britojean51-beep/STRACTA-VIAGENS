@@ -590,6 +590,18 @@ const DB = {
     return this.totaisPorEquipamento(this.listaDias().slice(0, n));
   },
 
+  /* ---- As duas medidas de um lançamento ----
+     O caminhão registra horímetro JUNTO com o KM, então dá para saber o km/L e o
+     L/h dele sem gravar nada novo — inclusive no que já está lançado. */
+  lhDoLancamento(a) {
+    const horas = this.toN(a.horasTrabalhadas), litros = this.toN(a.litros);
+    return horas > 0 ? litros / horas : 0;
+  },
+  kmLDoLancamento(a) {
+    const km = this.toN(a.kmRodado), litros = this.toN(a.litros);
+    return litros > 0 ? km / litros : 0;
+  },
+
   /* ---- Ficha completa de um equipamento (todos os dias) ---- */
   fichaEquipamento(eq) {
     const db = this.load();
@@ -617,6 +629,9 @@ const DB = {
       media: tipo === "horimetro"
         ? (totHoras > 0 ? totDiesel / totHoras : 0)   // L/h
         : (totDiesel > 0 ? totKm / totDiesel : 0),    // km/L
+      // as duas medidas, sempre: o caminhão tem km/L e L/h
+      lh: totHoras > 0 ? totDiesel / totHoras : 0,
+      kmL: totDiesel > 0 ? totKm / totDiesel : 0,
       ultimo: this.ultimo(eq),
       status: this.getStatus(eq),
       proximaRevisao: this.getProximaRevisao(eq)

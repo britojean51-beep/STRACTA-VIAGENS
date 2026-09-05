@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "03/09/2026 · r40 (minha conta e acesso do dono)";
+const VERSION = "05/09/2026 · r41 (L/h no caminhão e KM nas listas)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -856,6 +856,21 @@ async function validarOperador(valor) {
 }
 
 function horaAgora() { return DB.horaAgora(); }
+
+/* Uma linha de lançamento para as listas. O caminhão mostra KM e horas, e as
+   DUAS medidas (km/L e L/h): a mesma máquina tem as duas leituras. Só o que
+   existe aparece — máquina de horímetro não ganha "0 km". */
+function resumoLancamento(a) {
+  const km = DB.toN(a.kmRodado), horas = DB.toN(a.horasTrabalhadas);
+  const kmL = DB.kmLDoLancamento(a), lh = DB.lhDoLancamento(a);
+  const p = [`${fmt(a.litros)} L ${a.combustivel || "S-10"}`];
+  if (km > 0) p.push(`${fmt(km)} km`);
+  if (horas > 0) p.push(`${fmt(horas, 1)} h`);
+  if (kmL > 0) p.push(`<b>${fmt(kmL, 2)}</b> km/L`);
+  if (lh > 0) p.push(`<b>${fmt(lh, 2)}</b> L/h`);
+  if (DB.toN(a.litrosArla) > 0) p.push(`ARLA ${fmt(a.litrosArla)} L`);
+  return p.join(" · ");
+}
 /* Só o que se usa no dia a dia. Reserva, Parado e Final de expediente continuam
    existindo — mudam pela ficha do equipamento (Frota) e pelo Novo Dia. */
 const SITUACOES = ["Operando", "Manutenção"];
@@ -966,9 +981,15 @@ function telaAbastecimento() {
           <input id="fLitros" inputmode="decimal" value="${ed?.litros ?? ""}">
         </div>
       </div>
-      <div class="field">
-        <label id="fMediaLabel">Média</label>
-        <input id="fMedia" class="computed" readonly value="${ed?.media ?? ""}">
+      <div class="field-row">
+        <div class="field">
+          <label id="fMediaLabel">Média</label>
+          <input id="fMedia" class="computed" readonly value="${ed?.media ?? ""}">
+        </div>
+        <div class="field" id="blocoLh">
+          <label>Consumo L/h <span class="mini">(máx ${fmt(db.config.metaLh, 0)})</span></label>
+          <input id="fMediaLh" class="computed" readonly>
+        </div>
       </div>
       <p class="hint" id="fMediaAlerta" style="display:none"></p>
 
@@ -1033,7 +1054,9 @@ function telaAbastecimento() {
   function ajustarPorTipo() {
     const hor = isHorimetro();
     $("#blocoKm").style.display = hor ? "none" : "";
-    $("#fTipoTag").textContent = hor ? "horímetro · L/h" : "km · km/L";
+    // na máquina de horímetro o próprio campo Média JÁ é o L/h: mostrar de novo confundiria
+    $("#blocoLh").style.display = hor ? "none" : "";
+    $("#fTipoTag").textContent = hor ? "horímetro · L/h" : "km · km/L · L/h";
     $("#fMediaLabel").innerHTML = hor
       ? `Média L/h <span class="mini">(máx ${fmt(db.config.metaLh, 0)})</span>`
       : `Média km/L <span class="mini">(meta ${fmt(db.config.metaMedia, 2)})</span>`;
@@ -1068,20 +1091,26 @@ function telaAbastecimento() {
     if (hor) media = (litros > 0 && horas > 0) ? litros / horas : 0;
     else media = (litros > 0 && kmRod > 0) ? kmRod / litros : 0;
     el.media.value = media > 0 ? fmt(media, 2) + " " + unidade : "";
+    // o caminhão tem as duas leituras: km/L acima e L/h aqui
+    const lh = (litros > 0 && horas > 0) ? litros / horas : 0;
+    $("#fMediaLh").value = lh > 0 ? fmt(lh, 2) + " L/h" : "";
 
     const ton = num($("#fTon").value);
     const lton = (litros > 0 && ton > 0) ? litros / ton : 0;
     $("#fLton").value = lton > 0 ? fmt(lton, 2) + " L/t" : "";
 
+    // o caminhão é conferido pelas DUAS metas: km/L baixo e L/h alto
     const al = $("#fMediaAlerta");
-    let fora = false, txt = "";
-    if (hor && media > 0 && media > db.config.metaLh) {
-      fora = true; txt = `⚠️ Consumo <b>${fmt(media, 2)}</b> L/h acima da meta (${fmt(db.config.metaLh, 0)}).`;
-    } else if (!hor && media > 0 && media < db.config.metaMedia) {
-      fora = true; txt = `⚠️ Média <b>${fmt(media, 2)}</b> km/L abaixo da meta (${fmt(db.config.metaMedia, 2)}).`;
+    const avisos = [];
+    if (!hor && media > 0 && media < db.config.metaMedia) {
+      avisos.push(`⚠️ Média <b>${fmt(media, 2)}</b> km/L abaixo da meta (${fmt(db.config.metaMedia, 2)}).`);
     }
-    al.style.display = fora ? "block" : "none";
-    if (fora) { al.innerHTML = txt; al.style.color = "var(--red)"; }
+    const lhAtual = hor ? media : lh;
+    if (lhAtual > 0 && lhAtual > db.config.metaLh) {
+      avisos.push(`⚠️ Consumo <b>${fmt(lhAtual, 2)}</b> L/h acima da meta (${fmt(db.config.metaLh, 0)}).`);
+    }
+    al.style.display = avisos.length ? "block" : "none";
+    if (avisos.length) { al.innerHTML = avisos.join("<br>"); al.style.color = "var(--red)"; }
   }
 
   function renderRecentes() {
@@ -1089,12 +1118,10 @@ function telaAbastecimento() {
     const f = DB.fichaEquipamento(eq);
     const ult = f.abast.slice(-3).reverse();
     $("#fRecTitulo").textContent = `· ${eq}`;
-    $("#fRecentes").innerHTML = ult.length ? ult.map(a => {
-      const und = a.unidadeMedia || "km/L";
-      const extra = und === "L/h" ? `${a.horasTrabalhadas} h` : `${fmt(a.kmRodado)} km`;
-      return `<div class="itemrow"><div class="info"><b>${DB.fmtBR(a.iso)}${a.hora ? " · " + a.hora : ""}</b>
-        <div class="sub">${fmt(a.litros)} L ${a.combustivel || "S-10"} · ${extra} · ${a.media} ${und}${a.litrosArla ? " · ARLA " + fmt(a.litrosArla) + " L" : ""}</div></div></div>`;
-    }).join("") : '<p class="empty">Sem abastecimentos anteriores.</p>';
+    $("#fRecentes").innerHTML = ult.length ? ult.map(a =>
+      `<div class="itemrow"><div class="info"><b>${DB.fmtBR(a.iso)}${a.hora ? " · " + a.hora : ""}</b>
+        <div class="sub">${resumoLancamento(a)}</div></div></div>`
+    ).join("") : '<p class="empty">Sem abastecimentos anteriores.</p>';
   }
 
   $("#fArla").onchange = e => { $("#fArlaLitrosWrap").style.display = e.target.value === "sim" ? "" : "none"; };
@@ -1592,6 +1619,8 @@ function gerarRelatorioTexto(iso) {
     txt += `Combustível: ${a.combustivel || "S-10"} · ${fmt(a.litros)} L\n`;
     if (a.litrosArla) txt += `ARLA 32: ${fmt(a.litrosArla)} L\n`;
     txt += `Média: ${a.media} ${und}\n`;
+    const lhAb = DB.lhDoLancamento(a);
+    if (und !== "L/h" && lhAb > 0) txt += `Consumo: ${fmt(lhAb, 2)} L/h\n`;
     const tonEq = DB.tonEquipDia(a.equipamento, iso);
     if (tonEq > 0) {
       txt += `Produção: ${fmt(tonEq)} t\n`;
@@ -2493,6 +2522,8 @@ function telaFicha() {
     <div class="kpi-grid">
       <div class="kpi"><div class="k-label">⛽ Diesel total</div><div class="k-value">${fmt(f.totDiesel)}<span class="k-unit"> L</span></div></div>
       <div class="kpi k-green"><div class="k-label">📈 Média geral</div><div class="k-value">${fmt(f.media, 2)}<span class="k-unit"> ${f.unidadeMedia}</span></div></div>
+      ${f.tipo === "horimetro" ? "" :
+        `<div class="kpi k-yellow"><div class="k-label">📊 Consumo L/h</div><div class="k-value">${fmt(f.lh, 2)}<span class="k-unit"> L/h</span></div></div>`}
       <div class="kpi k-blue"><div class="k-label">🚚 Viagens</div><div class="k-value">${fmt(f.totViag)}</div></div>
       <div class="kpi"><div class="k-label">🛣️ KM total</div><div class="k-value">${fmt(f.totKm)}<span class="k-unit"> km</span></div></div>
       <div class="kpi k-yellow"><div class="k-label">⏱️ Horas</div><div class="k-value">${fmt(f.totHoras, 1)}<span class="k-unit"> h</span></div></div>
@@ -2509,12 +2540,10 @@ function telaFicha() {
 
     <div class="card">
       <h3>⛽ Abastecimentos</h3>
-      <div class="itemlist">${f.abast.slice().reverse().slice(0, 15).map(a => {
-        const und = a.unidadeMedia || "km/L";
-        const extra = und === "L/h" ? `${a.horasTrabalhadas} h` : `${fmt(a.kmRodado)} km`;
-        return `<div class="itemrow"><div class="info"><b>${DB.fmtBR(a.iso)}${a.hora ? " · " + a.hora : ""}</b>${a.motorista ? ` <span class="mini">👷 ${a.motorista}</span>` : ""}
-          <div class="sub">${fmt(a.litros)} L ${a.combustivel || "S-10"} · ${extra} · ${a.media} ${und}${a.litrosArla ? " · ARLA " + fmt(a.litrosArla) + " L" : ""}</div></div></div>`;
-      }).join("") || '<p class="empty">Nenhum.</p>'}</div>
+      <div class="itemlist">${f.abast.slice().reverse().slice(0, 15).map(a =>
+        `<div class="itemrow"><div class="info"><b>${DB.fmtBR(a.iso)}${a.hora ? " · " + a.hora : ""}</b>${a.motorista ? ` <span class="mini">👷 ${a.motorista}</span>` : ""}
+          <div class="sub">${resumoLancamento(a)}</div></div></div>`
+      ).join("") || '<p class="empty">Nenhum.</p>'}</div>
     </div>
 
     <div class="card">
@@ -2601,8 +2630,8 @@ function telaCorrigir() {
 
     html += `<div class="card"><h3>⛽ Abastecimentos</h3>`;
     html += d.abastecimentos.length ? d.abastecimentos.map(a => `
-      <div class="itemrow"><div class="info"><b>${a.equipamento}</b>${a.hora ? ` <span class="mini">${a.hora}</span>` : ""} · ${fmt(a.litros)} L · ${a.media} km/L
-        <div class="sub">${a.motorista} · ${fmt(a.kmRodado)} km · ${a.horasTrabalhadas} h</div></div>
+      <div class="itemrow"><div class="info"><b>${a.equipamento}</b>${a.hora ? ` <span class="mini">${a.hora}</span>` : ""} · ${fmt(a.litros)} L · ${a.media} ${a.unidadeMedia || "km/L"}
+        <div class="sub">${resumoLancamento(a)}${a.motorista ? " · 👷 " + a.motorista : ""}</div></div>
         <div>
           <button class="btn-sm btn btn-blue" data-edit="${a.id}">✏️</button>
           <button class="del" data-del-ab="${a.id}">🗑️</button>
