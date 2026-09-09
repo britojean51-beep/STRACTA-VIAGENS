@@ -85,6 +85,9 @@ function grafico(dados, opts = {}) {
    celular recebe pela nuvem e recarrega sozinho, sem ninguém tocar em nada.
    ============================================================ */
 const VERSAO_APLICADA_KEY = "gp2t_versao_aplicada";
+/* Hora em que ESTE carregamento buscou os arquivos. Publicação anterior a isso
+   já está dentro do que o celular baixou — não é motivo para recarregar. */
+const CARREGADO_EM = Date.now();
 
 /* Recarregar no meio de um lançamento apagaria o que a pessoa digitou. Então o
    app só espera ela terminar — continua sem exigir toque nenhum. */
@@ -134,12 +137,13 @@ function checarVersaoPublicada() {
   if (!v || !v.em) return;
   let bruto = null;
   try { bruto = localStorage.getItem(VERSAO_APLICADA_KEY); } catch (e) {}
-  const vista = Number(bruto || 0);
-  if (v.em <= vista) return;                       // esta publicação já foi tratada
+  if (bruto === null) {
+    // primeira vez neste celular: a régua passa a ser a hora em que ele carregou
+    bruto = String(CARREGADO_EM);
+    try { localStorage.setItem(VERSAO_APLICADA_KEY, bruto); } catch (e) {}
+  }
+  if (v.em <= Number(bruto)) return;               // publicação velha ou já tratada
   try { localStorage.setItem(VERSAO_APLICADA_KEY, String(v.em)); } catch (e) {}
-  // primeira vez neste celular: ele acabou de baixar os arquivos do servidor,
-  // então já está atualizado — recarregar aqui seria recarga à toa
-  if (bruto === null) return;
   if (v.versao === VERSION) return;                // já estamos na versão publicada
   if (formSujo) {                                  // no meio de um lançamento: espera salvar
     atualizacaoPendente = true;
