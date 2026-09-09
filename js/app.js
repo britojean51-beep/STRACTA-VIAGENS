@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "05/09/2026 · r41 (L/h no caminhão e KM nas listas)";
+const VERSION = "09/09/2026 · r42 (litragem com décimo)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -30,6 +30,10 @@ let painelMetrica = "diesel";
 /* ---------- Utilidades numéricas ---------- */
 const num = v => { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; };
 const fmt = (n, d = 0) => Number(n).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+/* Litragem, com o décimo que a bomba marca (120,1) e sem ",0" no número redondo. */
+const fmtL = n => DB.fmtL(n);
+/* Valor de campo decimal: guardado com ponto, mostrado com vírgula. */
+const dec = v => (v === null || v === undefined || v === "") ? "" : String(v).replace(".", ",");
 
 /* ---------- Gráficos simples em SVG (offline, sem bibliotecas) ---------- */
 function grafico(dados, opts = {}) {
@@ -748,7 +752,7 @@ function telaNovoDia() {
   app.innerHTML = `
     <p class="section-title">Resumo do dia aberto · ${DB.fmtBR(atual)}</p>
     <div class="kpi-grid" style="margin-bottom:14px">
-      ${kpi("⛽ Diesel", fmt(r.diesel) + '<span class="k-unit"> L</span>')}
+      ${kpi("⛽ Diesel", fmtL(r.diesel) + '<span class="k-unit"> L</span>')}
       ${kpi("📈 Média", fmt(r.media, 2) + '<span class="k-unit"> km/L</span>', "k-green")}
       ${kpi("🚚 Viagens", r.viagens, "k-blue")}
       ${kpi("🛣️ KM", fmt(r.km) + '<span class="k-unit"> km</span>')}
@@ -788,7 +792,7 @@ function telaNovoDia() {
       <div class="itemlist">${DB.listaDias().map(iso => {
         const rr = DB.resumoDia(iso);
         return `<div class="itemrow" data-dia="${iso}"><div class="info"><b>${DB.fmtBR(iso)}</b>${iso === atual ? ' <span class="pill pill-green">aberto</span>' : ""}
-          <div class="sub">${fmt(rr.diesel)} L · ${rr.viagens} viagens · ${fmt(rr.media, 2)} km/L</div></div><span class="mini">ver ›</span></div>`;
+          <div class="sub">${fmtL(rr.diesel)} L · ${rr.viagens} viagens · ${fmt(rr.media, 2)} km/L</div></div><span class="mini">ver ›</span></div>`;
       }).join("") || '<p class="empty">Sem dias registrados.</p>'}</div>
     </div>
   `;
@@ -863,12 +867,12 @@ function horaAgora() { return DB.horaAgora(); }
 function resumoLancamento(a) {
   const km = DB.toN(a.kmRodado), horas = DB.toN(a.horasTrabalhadas);
   const kmL = DB.kmLDoLancamento(a), lh = DB.lhDoLancamento(a);
-  const p = [`${fmt(a.litros)} L ${a.combustivel || "S-10"}`];
+  const p = [`${fmtL(a.litros)} L ${a.combustivel || "S-10"}`];
   if (km > 0) p.push(`${fmt(km)} km`);
   if (horas > 0) p.push(`${fmt(horas, 1)} h`);
   if (kmL > 0) p.push(`<b>${fmt(kmL, 2)}</b> km/L`);
   if (lh > 0) p.push(`<b>${fmt(lh, 2)}</b> L/h`);
-  if (DB.toN(a.litrosArla) > 0) p.push(`ARLA ${fmt(a.litrosArla)} L`);
+  if (DB.toN(a.litrosArla) > 0) p.push(`ARLA ${fmtL(a.litrosArla)} L`);
   return p.join(" · ");
 }
 /* Só o que se usa no dia a dia. Reserva, Parado e Final de expediente continuam
@@ -894,9 +898,9 @@ function telaAbastecimento() {
       <h3>🛢️ Entrada nos tanques</h3>
       <p class="hint">Cada abastecimento de equipamento já desconta do estoque. Aqui entra o que o caminhão-pipa trouxe.</p>
       <div class="kpi-grid">
-        <div class="kpi k-yellow"><div class="k-label">🛢️ Diesel S-10</div><div class="k-value">${fmt(db.estoque.s10)}<span class="k-unit"> L</span></div></div>
-        <div class="kpi k-yellow"><div class="k-label">🛢️ Diesel S-500</div><div class="k-value">${fmt(db.estoque.s500)}<span class="k-unit"> L</span></div></div>
-        <div class="kpi k-blue"><div class="k-label">💧 ARLA 32</div><div class="k-value">${fmt(db.estoque.arla)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi k-yellow"><div class="k-label">🛢️ Diesel S-10</div><div class="k-value">${fmtL(db.estoque.s10)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi k-yellow"><div class="k-label">🛢️ Diesel S-500</div><div class="k-value">${fmtL(db.estoque.s500)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi k-blue"><div class="k-label">💧 ARLA 32</div><div class="k-value">${fmtL(db.estoque.arla)}<span class="k-unit"> L</span></div></div>
       </div>
       <div class="spacer"></div>
       <div class="field">
@@ -942,11 +946,11 @@ function telaAbastecimento() {
       <div class="field-row">
         <div class="field">
           <label>Horímetro Inicial <span class="badge-auto">auto</span></label>
-          <input id="fHoriIni" inputmode="decimal" value="${ed?.horimetroInicial ?? ""}">
+          <input id="fHoriIni" inputmode="decimal" value="${dec(ed?.horimetroInicial)}">
         </div>
         <div class="field">
           <label>Horímetro Final</label>
-          <input id="fHoriFim" inputmode="decimal" value="${ed?.horimetroFinal ?? ""}">
+          <input id="fHoriFim" inputmode="decimal" value="${dec(ed?.horimetroFinal)}">
         </div>
       </div>
       <div class="field">
@@ -958,11 +962,11 @@ function telaAbastecimento() {
         <div class="field-row">
           <div class="field">
             <label>KM Inicial <span class="badge-auto">auto</span></label>
-            <input id="fKmIni" inputmode="decimal" value="${ed?.kmInicial ?? ""}">
+            <input id="fKmIni" inputmode="decimal" value="${dec(ed?.kmInicial)}">
           </div>
           <div class="field">
             <label>KM Final</label>
-            <input id="fKmFim" inputmode="decimal" value="${ed?.kmFinal ?? ""}">
+            <input id="fKmFim" inputmode="decimal" value="${dec(ed?.kmFinal)}">
           </div>
         </div>
         <div class="field">
@@ -978,7 +982,7 @@ function telaAbastecimento() {
         </div>
         <div class="field">
           <label>Litros</label>
-          <input id="fLitros" inputmode="decimal" value="${ed?.litros ?? ""}">
+          <input id="fLitros" inputmode="decimal" value="${dec(ed?.litros)}">
         </div>
       </div>
       <div class="field-row">
@@ -996,7 +1000,7 @@ function telaAbastecimento() {
       <div class="field-row">
         <div class="field">
           <label>Produção (toneladas) <span class="mini">pá/carreg.</span></label>
-          <input id="fTon" inputmode="decimal" value="${ed?.toneladas ?? ""}" placeholder="ex: 320">
+          <input id="fTon" inputmode="decimal" value="${dec(ed?.toneladas)}" placeholder="ex: 320">
         </div>
         <div class="field">
           <label id="fLtonLabel">L/Ton</label>
@@ -1012,7 +1016,7 @@ function telaAbastecimento() {
         </div>
         <div class="field" id="fArlaLitrosWrap" style="${ed?.arla ? "" : "display:none"}">
           <label>Litros de ARLA</label>
-          <input id="fArlaLitros" inputmode="decimal" value="${ed?.litrosArla ?? ""}">
+          <input id="fArlaLitros" inputmode="decimal" value="${dec(ed?.litrosArla)}">
         </div>
       </div>
 
@@ -1200,7 +1204,7 @@ function telaAbastecimento() {
       const foraMeta = hor ? (media > db.config.metaLh) : (media > 0 && media < db.config.metaMedia);
       if (reg.situacao === "Final de expediente") toast(`🌙 ${equip}: final de expediente`);
       else if (foraMeta) toast(`⚠️ ${equip}: consumo fora da meta`, "err");
-      else toast(`✔ ${equip} salvo · ${fmt(litros, 0)} L`);
+      else toast(`✔ ${equip} salvo · ${fmtL(litros)} L`);
       telaAbastecimento();
     }
   };
@@ -1211,7 +1215,7 @@ function telaAbastecimento() {
     $("#btnTqAdd").onclick = () => {
       const l = num($("#tqAdd").value);
       if (!l) { toast("Informe os litros", "err"); return; }
-      DB.addEstoque($("#tqTipo").value, l); toast(`✔ +${fmt(l)} L no tanque`); telaAbastecimento();
+      DB.addEstoque($("#tqTipo").value, l); toast(`✔ +${fmtL(l)} L no tanque`); telaAbastecimento();
     };
     $("#btnTqSet").onclick = () => {
       const l = num($("#tqSet").value);
@@ -1616,8 +1620,8 @@ function gerarRelatorioTexto(iso) {
     txt += `Horímetro: ${a.horimetroFinal}\n`;
     txt += `Horas Trabalhadas: ${a.horasTrabalhadas} h\n`;
     if (und === "km/L") txt += `KM Rodado: ${fmt(a.kmRodado)} km\n`;
-    txt += `Combustível: ${a.combustivel || "S-10"} · ${fmt(a.litros)} L\n`;
-    if (a.litrosArla) txt += `ARLA 32: ${fmt(a.litrosArla)} L\n`;
+    txt += `Combustível: ${a.combustivel || "S-10"} · ${fmtL(a.litros)} L\n`;
+    if (a.litrosArla) txt += `ARLA 32: ${fmtL(a.litrosArla)} L\n`;
     txt += `Média: ${a.media} ${und}\n`;
     const lhAb = DB.lhDoLancamento(a);
     if (und !== "L/h" && lhAb > 0) txt += `Consumo: ${fmt(lhAb, 2)} L/h\n`;
@@ -1658,10 +1662,10 @@ function gerarRelatorioTexto(iso) {
 
   const mediaFrota = totalDiesel > 0 ? (totalKm / totalDiesel) : 0;
   txt += `📊 RESUMO GERAL\n\n`;
-  txt += `Diesel S-10: ${fmt(totalS10)} L\n`;
-  txt += `Diesel S-500: ${fmt(totalS500)} L\n`;
-  txt += `Total Diesel: ${fmt(totalDiesel)} L\n`;
-  txt += `ARLA 32: ${fmt(totalArla)} L\n`;
+  txt += `Diesel S-10: ${fmtL(totalS10)} L\n`;
+  txt += `Diesel S-500: ${fmtL(totalS500)} L\n`;
+  txt += `Total Diesel: ${fmtL(totalDiesel)} L\n`;
+  txt += `ARLA 32: ${fmtL(totalArla)} L\n`;
   txt += `Total KM: ${fmt(totalKm)} km\n`;
   txt += `Média Frota: ${fmt(mediaFrota, 2)} km/L\n`;
   txt += `Total Viagens: ${totalViagens}\n`;
@@ -1700,8 +1704,8 @@ function gerarRelatorioPeriodo(dias, titulo) {
   txt += `━━━━━━━━━━━━━━━━━━━━\n\n📊 RESUMO DO PERÍODO\n\n`;
   txt += `Diesel S-10: ${fmt(s10)} L\n`;
   txt += `Diesel S-500: ${fmt(s500)} L\n`;
-  txt += `Total Diesel: ${fmt(diesel)} L\n`;
-  txt += `ARLA 32: ${fmt(arla)} L\n`;
+  txt += `Total Diesel: ${fmtL(diesel)} L\n`;
+  txt += `ARLA 32: ${fmtL(arla)} L\n`;
   txt += `Horas Trabalhadas: ${fmt(horas, 1)} h\n`;
   txt += `L/h: ${fmt(lh, 2)}\n`;
   txt += `Produção: ${fmt(ton)} t\n`;
@@ -1717,7 +1721,7 @@ function gerarRelatorioPeriodo(dias, titulo) {
 
   txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n📅 POR DIA\n\n`;
   res.forEach(x => {
-    txt += `${DB.fmtBR(x.iso)} · ${fmt(x.r.diesel)} L · ${fmt(x.r.horas, 1)} h`;
+    txt += `${DB.fmtBR(x.iso)} · ${fmtL(x.r.diesel)} L · ${fmt(x.r.horas, 1)} h`;
     if (x.r.toneladas > 0) txt += ` · ${fmt(x.r.toneladas)} t`;
     if (x.r.lton > 0) txt += ` · ${fmt(x.r.lton, 2)} L/t`;
     txt += ` · ${x.r.viagens} viagens\n`;
@@ -1728,7 +1732,7 @@ function gerarRelatorioPeriodo(dias, titulo) {
     .sort((a, b) => b.diesel - a.diesel)
     .forEach(e => {
       txt += `${e.eq}\n`;
-      txt += `  Diesel: ${fmt(e.diesel)} L · Horas: ${fmt(e.horas, 1)} h · L/h: ${fmt(e.lh, 2)}\n`;
+      txt += `  Diesel: ${fmtL(e.diesel)} L · Horas: ${fmt(e.horas, 1)} h · L/h: ${fmt(e.lh, 2)}\n`;
       if (e.toneladas > 0) txt += `  Produção: ${fmt(e.toneladas)} t · L/Ton: ${fmt(e.lton, 2)}\n`;
       if (e.km > 0) txt += `  KM: ${fmt(e.km)} km · Média: ${fmt(e.media, 2)} km/L\n`;
       if (e.viagens > 0) txt += `  Viagens: ${e.viagens}\n`;
@@ -1842,7 +1846,7 @@ function montarCSV(dias, titulo) {
     const d = DB.getDia(iso) || { abastecimentos: [] };
     (d.abastecimentos || []).forEach(a => L.push(linha([
       DB.fmtBR(iso), a.equipamento, a.motorista, a.horimetroInicial, a.horimetroFinal, a.horasTrabalhadas,
-      fmt(a.litros), a.combustivel || "S-10", a.litrosArla || "", a.kmRodado || "",
+      fmtL(a.litros), a.combustivel || "S-10", a.litrosArla || "", a.kmRodado || "",
       a.media, a.unidadeMedia || "km/L", a.toneladas ?? "", a.lton || "", a.situacao || ""
     ])));
   });
@@ -1964,7 +1968,7 @@ function gerarPDF(dias, titulo, texto) {
     </div>
     <h2 class="pdf-date">${varios ? `Período: ${DB.fmtBR(lista[0])} a ${DB.fmtBR(lista[lista.length - 1])}` : `Data: ${DB.fmtBR(lista[0])}`}</h2>
     <div class="pdf-kpis">
-      <div><b>${fmt(diesel)}</b><span>Diesel (L)</span></div>
+      <div><b>${fmtL(diesel)}</b><span>Diesel (L)</span></div>
       <div><b>${fmt(media, 2)}</b><span>Média km/L</span></div>
       <div><b>${viagens}</b><span>Viagens</span></div>
       <div><b>${fmt(km)}</b><span>KM rodado</span></div>
@@ -2081,7 +2085,7 @@ function detalheKpi(chave, iso) {
     case "lton":
       return porEquip("🏭 L/Ton por equipamento", eq => {
         const lt = DB.ltonEquipDia(eq, iso), t = DB.tonEquipDia(eq, iso);
-        return lt > 0 ? `${fmt(lt, 2)} L/t · ${fmt(somaAb(eq, "litros"))} L em ${fmt(t)} t` : "";
+        return lt > 0 ? `${fmt(lt, 2)} L/t · ${fmtL(somaAb(eq, "litros"))} L em ${fmt(t)} t` : "";
       });
     case "media":
       return porEquip("📈 Média km/L", eq => {
@@ -2145,7 +2149,7 @@ function telaDashboard() {
   // ---- séries (janela selecionada) ----
   const lab = x => DB.fmtBR(x.iso).slice(0, 5);
   const s = diasTend.map(iso => Object.assign({ iso }, DB.resumoDia(iso)));
-  const gDiesel = grafico(s.map(x => ({ label: lab(x), valor: Math.round(x.diesel), rotulo: fmt(x.diesel) })), { tipo: "barra", cor: "#ff7a1a", titulo: "Diesel" });
+  const gDiesel = grafico(s.map(x => ({ label: lab(x), valor: Math.round(x.diesel), rotulo: fmtL(x.diesel) })), { tipo: "barra", cor: "#ff7a1a", titulo: "Diesel" });
   const gProd = grafico(s.map(x => ({ label: lab(x), valor: Math.round(x.toneladas), rotulo: fmt(x.toneladas) })), { tipo: "barra", cor: "#a855f7", titulo: "Produção" });
   const gLton = grafico(s.map(x => ({ label: lab(x), valor: x.lton, rotulo: fmt(x.lton, 2) })), { tipo: "linha", cor: "#f59e0b", titulo: "L/Ton" });
   const gLh = grafico(s.map(x => ({ label: lab(x), valor: x.lh, rotulo: fmt(x.lh, 2) })), { tipo: "linha", cor: "#ef4444", titulo: "L/h" });
@@ -2205,7 +2209,7 @@ function telaDashboard() {
     const LINHAS = [
       ["Equip.", x => String(x.operando.length).padStart(2, "0"), () => "—"],
       ["Operad.", x => String(x.operadores.length).padStart(2, "0"), () => "—"],
-      ["Diesel L", x => fmt(x.diesel), () => fmt(tot.diesel)],
+      ["Diesel L", x => fmtL(x.diesel), () => fmtL(tot.diesel)],
       ["Horas", x => fmt(x.horas, 1), () => fmt(tot.horas, 1)],
       ["L/h", x => fmt(x.lh, 2), () => fmt(tot.lh, 2)],
       ["Prod. t", x => fmt(x.toneladas), () => fmt(tot.toneladas)],
@@ -2213,7 +2217,7 @@ function telaDashboard() {
       ["km/L", x => fmt(x.media, 2), () => fmt(tot.media, 2)],
       ["Viagens", x => x.viagens, () => tot.viagens],
       ["KM", x => fmt(x.km), () => fmt(tot.km)],
-      ["ARLA L", x => fmt(x.arla), () => fmt(tot.arla)],
+      ["ARLA L", x => fmtL(x.arla), () => fmtL(tot.arla)],
       ["Manut.", x => String(x.manutencao.length).padStart(2, "0"), () => "—"]
     ];
     comparaDiasHtml = `
@@ -2286,7 +2290,7 @@ function telaDashboard() {
       ...(f.viagens || []).filter(v => v.equipamento === eq).map(v => v.motorista)
     ].filter(Boolean))].join(", ");
     return `<div class="itemrow" data-ficha="${eq}"><div class="info"><b>${eq}</b> ${pillStatus(st)}
-      <div class="sub">${mots ? `👷 ${mots}<br>` : ""}${fmt(litros)} L · ${md} · ${viag} viagens${lt > 0 ? ` · ${fmt(lt, 2)} L/t` : ""}</div></div><span class="mini">ficha ›</span></div>`;
+      <div class="sub">${mots ? `👷 ${mots}<br>` : ""}${fmtL(litros)} L · ${md} · ${viag} viagens${lt > 0 ? ` · ${fmt(lt, 2)} L/t` : ""}</div></div><span class="mini">ficha ›</span></div>`;
   }).join("");
 
   app.innerHTML = `
@@ -2298,7 +2302,7 @@ function telaDashboard() {
       <div class="kpi-grid">
         <div class="kpi k-green ${painelKpi === "equipamentos" ? "kpi-ativo" : ""}" data-kpi="equipamentos"><div class="k-label">🚛 Equipamentos</div><div class="k-value">${String(r.operando.length).padStart(2, "0")}</div></div>
         <div class="kpi k-blue ${painelKpi === "operadores" ? "kpi-ativo" : ""}" data-kpi="operadores"><div class="k-label">👷 Operadores</div><div class="k-value">${String(r.operadores.length).padStart(2, "0")}</div></div>
-        <div class="kpi ${painelKpi === "diesel" ? "kpi-ativo" : ""}" data-kpi="diesel"><div class="k-label">⛽ Consumo diesel</div><div class="k-value">${fmt(r.diesel)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi ${painelKpi === "diesel" ? "kpi-ativo" : ""}" data-kpi="diesel"><div class="k-label">⛽ Consumo diesel</div><div class="k-value">${fmtL(r.diesel)}<span class="k-unit"> L</span></div></div>
         <div class="kpi k-yellow ${painelKpi === "horas" ? "kpi-ativo" : ""}" data-kpi="horas"><div class="k-label">⏱️ Horas totais</div><div class="k-value">${fmt(r.horas, 1)}<span class="k-unit"> h</span></div></div>
         <div class="kpi ${painelKpi === "lh" ? "kpi-ativo" : ""}" data-kpi="lh"><div class="k-label">📊 L/h</div><div class="k-value">${fmt(r.lh, 2)}<span class="k-unit"> L/h</span></div></div>
         <div class="kpi k-blue ${painelKpi === "toneladas" ? "kpi-ativo" : ""}" data-kpi="toneladas"><div class="k-label">🏭 Produção</div><div class="k-value">${fmt(r.toneladas)}<span class="k-unit"> t</span></div></div>
@@ -2306,7 +2310,7 @@ function telaDashboard() {
         <div class="kpi k-green ${painelKpi === "media" ? "kpi-ativo" : ""}" data-kpi="media"><div class="k-label">📈 Média km/L</div><div class="k-value">${fmt(r.media, 2)}<span class="k-unit"> km/L</span></div></div>
         <div class="kpi k-blue ${painelKpi === "viagens" ? "kpi-ativo" : ""}" data-kpi="viagens"><div class="k-label">🚚 Viagens</div><div class="k-value">${r.viagens}</div></div>
         <div class="kpi ${painelKpi === "km" ? "kpi-ativo" : ""}" data-kpi="km"><div class="k-label">🛣️ KM rodado</div><div class="k-value">${fmt(r.km)}<span class="k-unit"> km</span></div></div>
-        <div class="kpi ${painelKpi === "arla" ? "kpi-ativo" : ""}" data-kpi="arla"><div class="k-label">💧 ARLA</div><div class="k-value">${fmt(r.arla)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi ${painelKpi === "arla" ? "kpi-ativo" : ""}" data-kpi="arla"><div class="k-label">💧 ARLA</div><div class="k-value">${fmtL(r.arla)}<span class="k-unit"> L</span></div></div>
         <div class="kpi k-red ${painelKpi === "manutencao" ? "kpi-ativo" : ""}" data-kpi="manutencao"><div class="k-label">🔧 Manutenção</div><div class="k-value">${String(r.manutencao.length).padStart(2, "0")}</div></div>
       </div>
       ${detalheHtml}`}
@@ -2314,9 +2318,9 @@ function telaDashboard() {
 
     <p class="section-title" style="margin-top:16px">Estoques dos tanques</p>
     <div class="kpi-grid">
-      <div class="kpi k-yellow"><div class="k-label">🛢️ Diesel S-10</div><div class="k-value">${fmt(db.estoque.s10)}<span class="k-unit"> L</span></div></div>
-      <div class="kpi k-yellow"><div class="k-label">🛢️ Diesel S-500</div><div class="k-value">${fmt(db.estoque.s500)}<span class="k-unit"> L</span></div></div>
-      <div class="kpi k-blue"><div class="k-label">💧 ARLA 32</div><div class="k-value">${fmt(db.estoque.arla)}<span class="k-unit"> L</span></div></div>
+      <div class="kpi k-yellow"><div class="k-label">🛢️ Diesel S-10</div><div class="k-value">${fmtL(db.estoque.s10)}<span class="k-unit"> L</span></div></div>
+      <div class="kpi k-yellow"><div class="k-label">🛢️ Diesel S-500</div><div class="k-value">${fmtL(db.estoque.s500)}<span class="k-unit"> L</span></div></div>
+      <div class="kpi k-blue"><div class="k-label">💧 ARLA 32</div><div class="k-value">${fmtL(db.estoque.arla)}<span class="k-unit"> L</span></div></div>
     </div>
 
     <div class="spacer"></div>
@@ -2630,7 +2634,7 @@ function telaCorrigir() {
 
     html += `<div class="card"><h3>⛽ Abastecimentos</h3>`;
     html += d.abastecimentos.length ? d.abastecimentos.map(a => `
-      <div class="itemrow"><div class="info"><b>${a.equipamento}</b>${a.hora ? ` <span class="mini">${a.hora}</span>` : ""} · ${fmt(a.litros)} L · ${a.media} ${a.unidadeMedia || "km/L"}
+      <div class="itemrow"><div class="info"><b>${a.equipamento}</b>${a.hora ? ` <span class="mini">${a.hora}</span>` : ""} · ${fmtL(a.litros)} L · ${a.media} ${a.unidadeMedia || "km/L"}
         <div class="sub">${resumoLancamento(a)}${a.motorista ? " · 👷 " + a.motorista : ""}</div></div>
         <div>
           <button class="btn-sm btn btn-blue" data-edit="${a.id}">✏️</button>
@@ -2746,7 +2750,7 @@ function avisarDieselBaixo() {
   dieselAvisado = true;
   avisar(`<b>🛢️ Diesel no nível mínimo</b><br><br>` +
     `<ul style="margin:0;padding-left:18px;text-align:left">${baixos.map(t =>
-      `<li><b>${t.nome}</b>: ${fmt(t.litros)} L</li>`).join("")}</ul>` +
+      `<li><b>${t.nome}</b>: ${fmtL(t.litros)} L</li>`).join("")}</ul>` +
     `<br>Mínimo definido: <b>${fmt(baixos[0].minimo)} L</b>.<br>` +
     `Programar reabastecimento.`, true);
 }

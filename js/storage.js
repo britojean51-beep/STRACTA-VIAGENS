@@ -86,6 +86,14 @@ const DB = {
 
   toN(v) { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; },
 
+  /* Litragem: a bomba marca décimo, então 120,1 tem que continuar 120,1.
+     Número redondo segue sem o ",0" — 120 fica 120, e não "120,0". */
+  fmtL(n) {
+    const v = Number(n) || 0;
+    const d = Math.round(v * 10) % 10 === 0 ? 0 : 1;
+    return v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+  },
+
   save() {
     localStorage.setItem(DB_KEY, JSON.stringify(this._cache));
   },
@@ -667,9 +675,9 @@ const DB = {
 
     // estoque baixo (por tanque em uso)
     this.dieselNoMinimo().forEach(t =>
-      push("alto", "🛢️", `${t.nome} baixo: ${Math.round(t.litros)} L (mínimo ${t.minimo} L)`));
+      push("alto", "🛢️", `${t.nome} baixo: ${this.fmtL(t.litros)} L (mínimo ${t.minimo} L)`));
     if (this.tanqueEmUso("arla") && db.estoque.arla <= db.config.estoqueArlaMin)
-      push("medio", "💧", `ARLA 32 baixo: ${Math.round(db.estoque.arla)} L (mínimo ${db.config.estoqueArlaMin} L)`);
+      push("medio", "💧", `ARLA 32 baixo: ${this.fmtL(db.estoque.arla)} L (mínimo ${db.config.estoqueArlaMin} L)`);
 
     const dia = this.getDia(iso) || { abastecimentos: [] };
     db.equipamentos.forEach(eq => {
