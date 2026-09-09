@@ -372,6 +372,14 @@ body.sem-login .tabbar { display: none; }
 .btn-col { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
 .btn-col .btn { white-space: nowrap; }
 
+/* Faixa da atualização lançada pelo dono */
+.faixa-atualiza {
+  position: fixed; left: 0; right: 0; bottom: calc(58px + var(--safe-b));
+  z-index: 60; text-align: center; font-size: 13px; font-weight: 700;
+  padding: 10px 14px; color: #fff; background: var(--brand);
+  box-shadow: 0 -4px 14px rgba(0,0,0,.28);
+}
+
 /* ===== Chavinha (liga/desliga) ===== */
 .switch-row {
   display: flex; align-items: center; gap: 10px;

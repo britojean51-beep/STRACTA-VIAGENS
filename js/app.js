@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "09/09/2026 · r42 (litragem com décimo)";
+const VERSION = "09/09/2026 · r43 (lançar atualização para todos)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -77,6 +77,76 @@ function grafico(dados, opts = {}) {
             <line x1="${padX}" y1="${padTop + areaH}" x2="${w - padX}" y2="${padTop + areaH}" stroke="var(--line)" stroke-width="1"/>
             ${corpo}
           </svg>`;
+}
+
+/* ============================================================
+   ATUALIZAÇÃO LANÇADA PARA TODOS
+   O dono publica a versão que está no aparelho dele (Configurações). Todo
+   celular recebe pela nuvem e recarrega sozinho, sem ninguém tocar em nada.
+   ============================================================ */
+const VERSAO_APLICADA_KEY = "gp2t_versao_aplicada";
+
+/* Recarregar no meio de um lançamento apagaria o que a pessoa digitou. Então o
+   app só espera ela terminar — continua sem exigir toque nenhum. */
+let formSujo = false;
+let atualizacaoPendente = false;
+document.addEventListener("input", e => { if (app && app.contains(e.target)) formSujo = true; });
+
+/* Terminou de lançar (salvou): a hora certa de aplicar o que estava esperando.
+   Salvar redesenha a tela sem passar por navegar(), então o gancho vem aqui. */
+function terminouLancamento() {
+  formSujo = false;
+  if (atualizacaoPendente) { atualizacaoPendente = false; aplicarAtualizacao(); }
+}
+
+function faixaAtualizacao(texto) {
+  let f = document.getElementById("faixaAtualiza");
+  if (!f) {
+    f = document.createElement("div");
+    f.id = "faixaAtualiza";
+    f.className = "faixa-atualiza";
+    document.body.appendChild(f);
+  }
+  f.textContent = texto;
+}
+
+/* Limpa o que está guardado e recarrega: sem isso o celular voltaria com os
+   mesmos arquivos de antes. */
+async function aplicarAtualizacao() {
+  faixaAtualizacao("🚀 Atualizando o app…");
+  try {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.update().catch(() => {})));
+    }
+    if (window.caches) {
+      const nomes = await caches.keys();
+      await Promise.all(nomes.map(n => caches.delete(n)));
+    }
+  } catch (e) { /* nada aqui pode impedir a recarga */ }
+  setTimeout(() => location.reload(), 400);
+}
+
+/* Chegou versão nova da nuvem? Guarda ANTES de recarregar: se o arquivo no
+   servidor ainda for o antigo, o app não entra em laço de recarga. */
+function checarVersaoPublicada() {
+  const v = DB.load().versaoApp;
+  if (!v || !v.em) return;
+  let bruto = null;
+  try { bruto = localStorage.getItem(VERSAO_APLICADA_KEY); } catch (e) {}
+  const vista = Number(bruto || 0);
+  if (v.em <= vista) return;                       // esta publicação já foi tratada
+  try { localStorage.setItem(VERSAO_APLICADA_KEY, String(v.em)); } catch (e) {}
+  // primeira vez neste celular: ele acabou de baixar os arquivos do servidor,
+  // então já está atualizado — recarregar aqui seria recarga à toa
+  if (bruto === null) return;
+  if (v.versao === VERSION) return;                // já estamos na versão publicada
+  if (formSujo) {                                  // no meio de um lançamento: espera salvar
+    atualizacaoPendente = true;
+    faixaAtualizacao("🚀 Atualização pronta — entra assim que você terminar este lançamento.");
+    return;
+  }
+  aplicarAtualizacao();
 }
 
 /* ---------- Toast ---------- */
@@ -173,6 +243,9 @@ const TELAS_LEITURA = ["home", "dashboard", "relatorio", "frota", "ficha", "corr
 
 function navegar(rota) {
   if (!podeVer(rota)) { toast("Seu perfil não tem acesso a essa tela", "err"); rota = "home"; }
+  // trocou de tela: o que estava sendo digitado já foi salvo ou abandonado
+  formSujo = false;
+  if (atualizacaoPendente) { atualizacaoPendente = false; aplicarAtualizacao(); return; }
   rotaAtual = rota;
   const fn = rotas[rota] || telaHome;
   window.scrollTo(0, 0);
@@ -365,6 +438,7 @@ function telaConfiguracoes() {
   /* O link da planilha vale para TODOS os celulares: um link errado aqui quebra a
      sincronização da empresa inteira. Por isso o quadro é só do desenvolvedor. */
   const donoDaPlanilha = (typeof Auth === "undefined") || Auth.ehDono();
+  const pub = db.versaoApp;
 
   app.innerHTML = `
     ${donoDaPlanilha ? `
@@ -382,6 +456,21 @@ function telaConfiguracoes() {
       <div class="spacer"></div>
       <button class="btn btn-green" id="btnSheetsSync">🔄 Sincronizar tudo</button>
       <p class="hint" id="sheetsMsg" style="margin-top:8px"></p>
+    </div>
+
+    <div class="card">
+      <h3>🚀 Atualizar o app de todo mundo</h3>
+      <p class="hint">Manda todos os celulares passarem a rodar a <b>versão que está neste aparelho</b>.
+      Cada um recarrega sozinho, sem ninguém tocar em nada. Quem estiver no meio de um lançamento
+      atualiza assim que salvar — nada do que foi digitado se perde.</p>
+      <div class="itemlist">
+        <div class="itemrow"><div class="info">Versão <b>neste aparelho</b>
+          <div class="sub">${VERSION}</div></div></div>
+        <div class="itemrow"><div class="info">Lançada para a frota
+          <div class="sub">${pub ? `${pub.versao}${pub.por ? " · por " + usuarioDe(pub.por) : ""}${pub.em ? " · " + new Date(pub.em).toLocaleString("pt-BR") : ""}` : "nenhuma ainda"}</div></div></div>
+      </div>
+      <button class="btn btn-primary" id="btnLancarVersao">🚀 Lançar atualização</button>
+      <p class="hint" id="versaoMsg" style="margin-top:8px"></p>
     </div>` : ""}
 
     <div class="card">
@@ -455,6 +544,25 @@ function telaConfiguracoes() {
       }
     });
   };
+  }
+
+  if (donoDaPlanilha) {
+    const msgV = (t, cor) => { const m = $("#versaoMsg"); if (m) { m.innerHTML = t; m.style.color = cor || "var(--muted)"; } };
+    $("#btnLancarVersao").onclick = async () => {
+      if (typeof Cloud === "undefined" || !Cloud.ligada()) {
+        msgV("❌ A nuvem está desligada neste aparelho — é por ela que o aviso chega nos outros.", "var(--red)");
+        return;
+      }
+      const ok = await confirmar(`Mandar todos os celulares atualizarem para "${VERSION}"? ` +
+        `Cada um recarrega sozinho assim que receber.`);
+      if (!ok) return;
+      const dados = { versao: VERSION, em: Date.now(), por: (Auth.usuario && Auth.usuario.email) || "" };
+      DB.setVersaoApp(dados);
+      // este aparelho já roda a versão lançada: marca como tratada para não recarregar à toa
+      try { localStorage.setItem(VERSAO_APLICADA_KEY, String(dados.em)); } catch (e) {}
+      msgV("✅ Atualização lançada. Os outros celulares recarregam sozinhos quando receberem.", "var(--green)");
+      toast("🚀 Atualização lançada");
+    };
   }
 
   const msgN = (t, cor) => { const m = $("#nuvemMsg"); if (m) { m.innerHTML = t; m.style.color = cor || "var(--muted)"; } };
@@ -1206,6 +1314,7 @@ function telaAbastecimento() {
       else if (foraMeta) toast(`⚠️ ${equip}: consumo fora da meta`, "err");
       else toast(`✔ ${equip} salvo · ${fmtL(litros)} L`);
       telaAbastecimento();
+      terminouLancamento();
     }
   };
 
@@ -1407,6 +1516,7 @@ function telaViagens() {
     toast(`✔ ${viagensBuffer.length} rota(s) salva(s)`);
     viagensBuffer = [];
     renderBuffer(); renderHoje();
+    terminouLancamento();
   };
 
   renderBuffer(); renderHoje();
@@ -1583,6 +1693,7 @@ function telaManutencao() {
     toast("✔ Manutenção registrada");
     $("#mServico").value = ""; $("#mHorKm").value = ""; $("#mObs").value = "";
     renderRevisoes(); renderHoje(); renderParadas();
+    terminouLancamento();
   };
 
   carregarEquip(); renderRevisoes(); renderHoje(); renderParadas();
@@ -2737,6 +2848,7 @@ function iniciarApp() {
   const rotaInicial = (location.hash || "#home").slice(1);
   navegar(rotas[rotaInicial] && podeVer(rotaInicial) ? rotaInicial : "home");
   avisarDieselBaixo();
+  checarVersaoPublicada();
 }
 
 /* Diesel no mínimo: o gestor vê assim que entra, e não só se for até o Índice.
@@ -2773,6 +2885,7 @@ function ligarNuvem() {
     // ninguém logado (tela de login na frente): não redesenhar nada por cima
     if (typeof Auth !== "undefined" && Auth.configurado() && !Auth.usuario) return;
     if (document.body.classList.contains("sem-login")) return;
+    checarVersaoPublicada();
     const el = document.getElementById("nuvemBadge");
     if (el) pintarBadgeNuvem(el);
     if (TELAS_LEITURA.includes(rotaAtual)) navegar(rotaAtual);

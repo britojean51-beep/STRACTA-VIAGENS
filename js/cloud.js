@@ -178,6 +178,7 @@ const Cloud = {
       if (Array.isArray(d.abastecedores)) db.abastecedores = d.abastecedores;
       if (d.tipoEquip) db.tipoEquip = d.tipoEquip;
       if (d.proximaRevisao) db.proximaRevisao = d.proximaRevisao;
+      if (d.versaoApp) db.versaoApp = d.versaoApp;   // atualização lançada pelo dono
       if (d.config) {
         const cfg = Object.assign({}, d.config);
         delete cfg.nuvem;          // a chave da nuvem é de cada aparelho

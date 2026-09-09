@@ -27,6 +27,9 @@ const DB = {
       status: {},                      // { "CB-17": "operando"|"reserva"|"manutencao"|"final_expediente" }
       operadorEquip: {},               // { "CB-17": "Saulo" } — quem está no equipamento
       proximaRevisao: {},              // { "CB-17": 20000 } — horímetro/KM alvo da próxima revisão
+      /* Versão que o desenvolvedor mandou a frota usar (Configurações → Lançar
+         atualização). Cada celular compara com a que está rodando. */
+      versaoApp: null,                 // { versao, em, por }
       /* Períodos de manutenção: abrem quando o equipamento é apontado em manutenção
          e fecham quando volta. Objeto (e não lista) para a nuvem mesclar chave por
          chave: dois celulares fechando períodos diferentes não se apagam. */
@@ -70,6 +73,7 @@ const DB = {
     this._cache.tipoEquip = data.tipoEquip || {};
     this._cache.operadorEquip = data.operadorEquip || {};
     this._cache.paradas = data.paradas || {};
+    this._cache.versaoApp = data.versaoApp || null;
     // estoque: migra o antigo estoqueTanque (único) para o novo formato por tanque
     if (data.estoque) {
       this._cache.estoque = Object.assign({ s10: 0, s500: 0, arla: 0 }, data.estoque);
@@ -480,6 +484,15 @@ const DB = {
     else db.proximaRevisao[eq] = this.toN(valor);
     this.save();
     this._nuvem(C => C.patch("frota", { proximaRevisao: db.proximaRevisao }));
+  },
+
+  /* Versão que a frota deve rodar. Vai no cadastro/frota — documento que o
+     gestor escreve e todo mundo lê, então não precisa de regra nova. */
+  setVersaoApp(dados) {
+    const db = this.load();
+    db.versaoApp = dados;
+    this.save();
+    this._nuvem(C => C.patch("frota", { versaoApp: dados }));
   },
 
   /* ---- Metas de gestão ---- */
