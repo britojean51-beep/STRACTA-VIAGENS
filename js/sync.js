@@ -138,6 +138,65 @@ const Sync = {
       "Quais operadores": r.operadores.join(", ")
     };
   },
+  /* Uma linha por parada: manutenção (automática, pelo status) e almoço (lançado). */
+  paradaRow(p) {
+    const almoco = (p.tipo || "manutencao") === "almoco";
+    const quem = (typeof usuarioDe === "function" && p.quem) ? usuarioDe(p.quem) : (p.quem || "");
+    return {
+      _id: p.id,
+      "Data": p.entradaDia,
+      "Equipamento": p.equipamento,
+      "Tipo": almoco ? "Almoço" : "Manutenção",
+      "Entrada": p.entradaHora || "",
+      "Saída": p.saidaHora || "",
+      "Tempo parado (h)": p.saidaDia ? this._n((p.minutos || 0) / 60, 2) : "",
+      "Em aberto": p.saidaDia ? "" : "SIM",
+      "Registrado por": quem
+    };
+  },
+  /* Mesmas contas do Resumo por Mês, semana a semana (segunda a domingo). */
+  resumoSemanaRow(sem) {
+    const r = DB.resumoPeriodo(sem.dias);
+    return {
+      _id: sem.chave,
+      "Semana": sem.label,
+      "Início": sem.chave,
+      "Dias com lançamento": r.dias,
+      "Equipamentos": r.operando.length,
+      "Operadores": r.operadores.length,
+      "Consumo total (L)": this._n(r.diesel),
+      "Horas totais": this._n(r.horas, 1),
+      "L/h": this._n(r.lh, 2),
+      "Produção (t)": this._n(r.toneladas),
+      "L/Ton": this._n(r.lton, 2),
+      "Diesel S-10 (L)": this._n(r.dieselS10),
+      "Diesel S-500 (L)": this._n(r.dieselS500),
+      "ARLA (L)": this._n(r.arla),
+      "KM": this._n(r.km),
+      "Média km/L": this._n(r.media, 2),
+      "Viagens": r.viagens,
+      "Quais equipamentos": r.operando.join(", ")
+    };
+  },
+  /* Horas do mês do r44: uma linha por equipamento, com a conta aberta. */
+  horasMesRows(chave) {
+    const h = DB.horasMes(chave);
+    return h.linhas.map(l => ({
+      _id: chave + "|" + l.equip,
+      "Mês": chave,
+      "Equipamento": l.equip,
+      "Turno": `${l.turno.inicio} às ${l.turno.fim}`,
+      "Horas do turno": this._n(l.turnoDia, 1),
+      "Dias contados": this._n(l.dias, 1),
+      "Disponível bruto (h)": this._n(l.bruto, 1),
+      "Manutenção (h)": this._n(l.manutencao, 1),
+      "Almoço (h)": this._n(l.almoco, 1),
+      "Disponíveis (h)": this._n(l.disponiveis, 1),
+      "Trabalhadas (h)": this._n(l.trabalhadas, 1),
+      "Utilização (%)": this._n(l.utilizacao, 1)
+    }));
+  },
+
   equipamentoRow(eq) {
     const u = DB.ultimo(eq);
     return {
@@ -179,6 +238,14 @@ const Sync = {
   pushOperador(nome)       { this._enqueue({ action: "upsert", kind: "operador", row: this.operadorRow(nome) }); },
   pushViagem(iso, reg)     { this._enqueue({ action: "upsert", kind: "viagem", row: this.viagemRow(iso, reg) }); },
   deleteViagem(id)         { this._enqueue({ action: "delete", kind: "viagem", id }); },
+  /* As paradas vão todas de uma vez: são poucas por mês, e assim não é preciso
+     rastrear qual delas mudou a cada aponte de status. */
+  pushParadas() {
+    if (!this.ativo()) return;
+    const rows = DB.paradasDe(null).map(p => this.paradaRow(p));
+    if (rows.length) this._enqueue({ action: "bulk", kind: "parada", rows });
+  },
+  deleteParada(id)         { this._enqueue({ action: "delete", kind: "parada", id }); },
 
   /* Recalcula e regrava os resumos do dia (substitui as linhas daquela data)
      e atualiza a linha do mês a que o dia pertence. */
@@ -187,7 +254,21 @@ const Sync = {
     this._enqueue({ action: "substituirDia", kind: "resumoDia", data: iso, rows: [this.resumoDiaRow(iso)] });
     this._enqueue({ action: "substituirDia", kind: "resumoEquip", data: iso, rows: this.resumoEquipRows(iso) });
     this._enqueue({ action: "substituirDia", kind: "resumoOperador", data: iso, rows: this.resumoOperadorRows(iso) });
-    if (comMes) this.pushResumoMes(iso);
+    if (comMes) { this.pushResumoMes(iso); this.pushResumoSemana(iso); this.pushHorasMes(iso); }
+  },
+
+  /* Uma linha por semana (a semana inteira é recalculada a cada mudança) */
+  pushResumoSemana(iso) {
+    if (!this.ativo()) return;
+    const ini = DB.inicioSemana(iso);
+    const sem = DB.semanasDisponiveis().find(x => x.chave === ini);
+    if (sem) this._enqueue({ action: "upsert", kind: "resumoSemana", row: this.resumoSemanaRow(sem) });
+  },
+  /* Horas do mês: uma linha por equipamento naquele mês */
+  pushHorasMes(iso) {
+    if (!this.ativo()) return;
+    const rows = this.horasMesRows(String(iso).slice(0, 7));
+    if (rows.length) this._enqueue({ action: "bulk", kind: "horasMes", rows });
   },
 
   /* Uma linha por mês (o mês inteiro é recalculado a cada mudança) */
@@ -216,6 +297,12 @@ const Sync = {
     // resumos de todos os dias e de cada mês (o mês vai uma vez só)
     dias.forEach(iso => this.pushResumoDia(iso, false));
     DB.mesesDisponiveis().forEach(m => this._enqueue({ action: "upsert", kind: "resumoMes", row: this.resumoMesRow(m) }));
+    DB.semanasDisponiveis().forEach(w => this._enqueue({ action: "upsert", kind: "resumoSemana", row: this.resumoSemanaRow(w) }));
+    DB.mesesDisponiveis().forEach(m => {
+      const rows = this.horasMesRows(m.chave);
+      if (rows.length) this._enqueue({ action: "bulk", kind: "horasMes", rows });
+    });
+    this.pushParadas();
     const t0 = Date.now();
     const check = () => {
       if (this.pendentes() === 0) { this.testar(cb); }

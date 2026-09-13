@@ -63,6 +63,11 @@ var TABS = {
     nome: "Operadores", dateCols: [],
     colunas: ["Nome", "Função", "Status"]
   },
+  parada: {
+    nome: "Paradas", dateCols: ["Data"],
+    colunas: ["Data", "Equipamento", "Tipo", "Entrada", "Saída", "Tempo parado (h)",
+              "Em aberto", "Registrado por"]
+  },
 
   // ---- abas de resumo (uma linha por dia / dia+equipamento / dia+operador) ----
   resumoDia: {
@@ -81,6 +86,19 @@ var TABS = {
     nome: "Resumo por Operador", dateCols: ["Data"], semId: true,
     colunas: ["Data", "Operador", "Equipamentos", "Consumo (L)", "Horas", "L/h",
               "Produção (t)", "L/Ton", "Viagens"]
+  },
+  resumoSemana: {
+    nome: "Resumo por Semana", dateCols: ["Início"],
+    colunas: ["Semana", "Início", "Dias com lançamento", "Equipamentos", "Operadores",
+              "Consumo total (L)", "Horas totais", "L/h", "Produção (t)", "L/Ton",
+              "Diesel S-10 (L)", "Diesel S-500 (L)", "ARLA (L)", "KM", "Média km/L",
+              "Viagens", "Quais equipamentos"]
+  },
+  horasMes: {
+    nome: "Horas por Mês", dateCols: [],
+    colunas: ["Mês", "Equipamento", "Turno", "Horas do turno", "Dias contados",
+              "Disponível bruto (h)", "Manutenção (h)", "Almoço (h)",
+              "Disponíveis (h)", "Trabalhadas (h)", "Utilização (%)"]
   },
   resumoMes: {
     nome: "Resumo por Mês", dateCols: [],

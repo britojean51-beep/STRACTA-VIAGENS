@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "13/09/2026 · r44 (horas do mês: trabalhadas e disponíveis)";
+const VERSION = "13/09/2026 · r45 (paradas, semana e horas na planilha)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -1346,6 +1346,7 @@ function telaAbastecimento() {
       DB.addAbastecimento(dia, reg);
       Sync.pushLancamento(dia, reg);
       Sync.pushResumoDia(dia);
+      Sync.pushParadas();          // a situação do lançamento abre ou fecha manutenção
       const foraMeta = hor ? (media > db.config.metaLh) : (media > 0 && media < db.config.metaMedia);
       if (reg.situacao === "Final de expediente") toast(`🌙 ${equip}: final de expediente`);
       else if (foraMeta) toast(`⚠️ ${equip}: consumo fora da meta`, "err");
@@ -1735,6 +1736,8 @@ function telaManutencao() {
       const ok = await confirmar("Apagar esta parada? Ela volta a contar como hora disponível.");
       if (!ok) return;
       DB.removerParada(b.dataset.parada);
+      Sync.deleteParada(b.dataset.parada);
+      Sync.pushHorasMes(dia);
       toast("✔ Parada apagada");
       renderParadas();
     });
@@ -1766,6 +1769,8 @@ function telaManutencao() {
       msg("❌ O fim tem que ser depois do início.", "var(--red)"); return;
     }
     const criados = DB.addParadaAlmoco([...marcados], dia, ini, fim);
+    Sync.pushParadas();
+    Sync.pushHorasMes(dia);
     msg(`✅ Almoço lançado para ${criados.length} equipamento(s).`, "var(--green)");
     toast(`✔ Almoço · ${criados.length} equipamento(s)`);
     marcados.clear(); pintarChips();
@@ -1788,6 +1793,7 @@ function telaManutencao() {
     Sync.pushManutencao(dia, mreg);
     Sync.pushEquipamento(eq);
     Sync.pushResumoDia(dia);
+    Sync.pushParadas();
     toast("✔ Manutenção registrada");
     $("#mServico").value = ""; $("#mHorKm").value = ""; $("#mObs").value = "";
     renderRevisoes(); renderHoje(); renderParadas();
@@ -2864,6 +2870,8 @@ function telaFicha() {
     DB.setProximaRevisao(eq, $("#fkRev").value.trim());
     DB.setOperadorEquip(eq, $("#fkOperador").value);
     Sync.pushEquipamento(eq);
+    Sync.pushParadas();
+    Sync.pushHorasMes(DB.garantirDiaAtual());   // o turno novo muda as horas do mês
     toast("✔ Situação salva"); telaFicha();
   };
 
