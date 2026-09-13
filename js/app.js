@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "09/09/2026 · r43 (lançar atualização para todos)";
+const VERSION = "13/09/2026 · r44 (horas do mês: trabalhadas e disponíveis)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -19,6 +19,7 @@ let painelDias = [];        // dias do "Geral do dia" / comparação
 let painelMes = null;       // mês exibido nos chips da comparação
 let trendDias = [];         // dias das Tendências / ranking
 let trendMes = null;        // mês exibido nos chips das Tendências
+let horasMesSel = null;     // mês do cartão "Horas do mês" (Índice e ficha)
 /* Relatório: tipo (diario|semanal|mensal) e período escolhido */
 let relatorioTipo = "diario";
 let relatorioPeriodoSel = null;
@@ -32,6 +33,8 @@ const num = v => { const n = parseFloat(String(v).replace(",", ".")); return isN
 const fmt = (n, d = 0) => Number(n).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 /* Litragem, com o décimo que a bomba marca (120,1) e sem ",0" no número redondo. */
 const fmtL = n => DB.fmtL(n);
+/* Mesma regra, para contagens: 31 dias fica "31", e meio mês fica "12,9". */
+const fmtN1 = n => DB.fmtL(n);
 /* Valor de campo decimal: guardado com ponto, mostrado com vírgula. */
 const dec = v => (v === null || v === undefined || v === "") ? "" : String(v).replace(".", ",");
 
@@ -151,6 +154,36 @@ function checarVersaoPublicada() {
     return;
   }
   aplicarAtualizacao();
+}
+
+/* ============================================================
+   HORAS DO MÊS — trabalhadas pelo horímetro e disponíveis
+   ============================================================ */
+const fmtH = n => fmt(n, 1) + " h";
+
+/* Meses para escolher: os que têm lançamento, mais o mês atual (que pode ainda
+   não ter nenhum e mesmo assim precisa aparecer). */
+function mesesParaHoras() {
+  const chaveAtual = DB.hojeISO().slice(0, 7);
+  const meses = DB.mesesDisponiveis().map(m => ({ chave: m.chave, label: m.label }));
+  if (!meses.some(m => m.chave === chaveAtual)) {
+    const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho",
+                   "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    const [y, mm] = chaveAtual.split("-").map(Number);
+    meses.unshift({ chave: chaveAtual, label: `${MESES[mm - 1]}/${y}` });
+  }
+  return meses;
+}
+function mesDeHoras() {
+  const meses = mesesParaHoras();
+  if (!meses.length) return DB.hojeISO().slice(0, 7);
+  if (horasMesSel && meses.some(m => m.chave === horasMesSel)) return horasMesSel;
+  return meses[0].chave;
+}
+function seletorMesHoras(id) {
+  const atual = mesDeHoras();
+  return `<select id="${id}">${mesesParaHoras().map(m =>
+    `<option value="${m.chave}" ${m.chave === atual ? "selected" : ""}>${m.label}</option>`).join("")}</select>`;
 }
 
 /* ---------- Toast ---------- */
@@ -1555,14 +1588,17 @@ function listaParadas(lista, comEquip) {
   if (!lista.length) return '<p class="empty">Nenhuma parada registrada.</p>';
   const dm = iso => DB.fmtBR(iso).slice(0, 5);
   return `<div class="itemlist">${lista.map(p => {
+    // parada antiga não tem tipo: até o r43 só existia manutenção
+    const almoco = (p.tipo || "manutencao") === "almoco";
     const quem = comEquip ? `<b>${p.equipamento}</b> ` : "";
     if (!p.saidaDia) {
-      return `<div class="itemrow"><div class="info">${quem}<span class="pill pill-red">🔧 em manutenção</span>
+      return `<div class="itemrow"><div class="info">${quem}<span class="pill pill-red">🔴 em manutenção</span>
         <div class="sub">desde ${dm(p.entradaDia)} às ${p.entradaHora} · há ${DB.duracaoParada(p)}</div></div></div>`;
     }
-    return `<div class="itemrow"><div class="info">${quem}<span class="mini">🔧 parada</span>
+    return `<div class="itemrow"><div class="info">${quem}<span class="mini">${almoco ? "⏸️ almoço" : "🔴 manutenção"}</span>
       <div class="sub">${dm(p.entradaDia)} ${p.entradaHora} → ${dm(p.saidaDia)} ${p.saidaHora}
-      · <b>${DB.duracaoParada(p)}</b> parado</div></div></div>`;
+      · <b>${DB.duracaoParada(p)}</b> parado</div></div>
+      <button class="del" data-parada="${p.id}">✕</button></div>`;
   }).join("")}</div>`;
 }
 
@@ -1621,6 +1657,25 @@ function telaManutencao() {
     </div>
 
     <div class="card">
+      <h3>⏸️ Parada de almoço</h3>
+      <p class="hint">Desconta das <b>horas disponíveis</b> do mês, igual à manutenção.
+      Marque todos os equipamentos que pararam — o almoço costuma parar a frota junta.</p>
+      <div class="field-row">
+        <div class="field"><label>Início</label><input id="alIni" type="time" value="11:00"></div>
+        <div class="field"><label>Fim</label><input id="alFim" type="time" value="12:00"></div>
+      </div>
+      <label class="mini">Equipamentos que pararam</label>
+      <div class="chip-row" id="alEquips">${db.equipamentos.map(eq =>
+        `<button class="chip" data-aleq="${eq}">${eq}</button>`).join("")}</div>
+      <div class="spacer"></div>
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-sm" id="btnAlTodos">Marcar todos</button>
+        <button class="btn btn-primary btn-sm" id="btnAlSalvar">⏸️ Lançar almoço</button>
+      </div>
+      <p class="hint" id="alMsg" style="margin-top:8px"></p>
+    </div>
+
+    <div class="card">
       <h3>🕓 Histórico de manutenção</h3>
       <p class="hint">O relógio começa quando alguém aponta <b>Manutenção</b> e para quando aponta
       <b>Operando</b> — não precisa anotar nada.</p>
@@ -1676,7 +1731,46 @@ function telaManutencao() {
 
   function renderParadas() {
     $("#mParadas").innerHTML = listaParadas(DB.paradasDe(null, 20), true);
+    $$("#mParadas [data-parada]").forEach(b => b.onclick = async () => {
+      const ok = await confirmar("Apagar esta parada? Ela volta a contar como hora disponível.");
+      if (!ok) return;
+      DB.removerParada(b.dataset.parada);
+      toast("✔ Parada apagada");
+      renderParadas();
+    });
   }
+
+  // almoço: chips que ligam e desligam
+  const marcados = new Set();
+  function pintarChips() {
+    $$("#alEquips [data-aleq]").forEach(c =>
+      c.classList.toggle("chip-on", marcados.has(c.dataset.aleq)));
+  }
+  $$("#alEquips [data-aleq]").forEach(c => c.onclick = () => {
+    const eq = c.dataset.aleq;
+    marcados.has(eq) ? marcados.delete(eq) : marcados.add(eq);
+    pintarChips();
+  });
+  $("#btnAlTodos").onclick = () => {
+    const todos = marcados.size === db.equipamentos.length;
+    marcados.clear();
+    if (!todos) db.equipamentos.forEach(eq => marcados.add(eq));
+    pintarChips();
+  };
+  $("#btnAlSalvar").onclick = () => {
+    const msg = (t, cor) => { const m = $("#alMsg"); m.innerHTML = t; m.style.color = cor || "var(--muted)"; };
+    if (!marcados.size) { msg("❌ Marque pelo menos um equipamento.", "var(--red)"); return; }
+    const ini = $("#alIni").value, fim = $("#alFim").value;
+    if (!ini || !fim) { msg("❌ Informe o início e o fim.", "var(--red)"); return; }
+    if (DB._minutosEntre(dia, ini, dia, fim) <= 0) {
+      msg("❌ O fim tem que ser depois do início.", "var(--red)"); return;
+    }
+    const criados = DB.addParadaAlmoco([...marcados], dia, ini, fim);
+    msg(`✅ Almoço lançado para ${criados.length} equipamento(s).`, "var(--green)");
+    toast(`✔ Almoço · ${criados.length} equipamento(s)`);
+    marcados.clear(); pintarChips();
+    renderParadas();
+  };
 
   $("#btnSalvar").onclick = async () => {
     const serv = $("#mServico").value.trim();
@@ -2389,6 +2483,8 @@ function telaDashboard() {
     `<div class="itemrow"><div class="info">${i === 0 ? "🥇 " : ""}<b>${x.eq}</b>
       <div class="sub">${fmt(x[painelMetrica], met.dec)}${met.un}</div></div></div>`).join("");
 
+  const hm = DB.horasMes(mesDeHoras());
+
   // ---- status da frota ----
   const statusHtml = db.equipamentos.map(eq => {
     const st = DB.getStatus(eq);
@@ -2429,6 +2525,34 @@ function telaDashboard() {
         <div class="kpi k-red ${painelKpi === "manutencao" ? "kpi-ativo" : ""}" data-kpi="manutencao"><div class="k-label">🔧 Manutenção</div><div class="k-value">${String(r.manutencao.length).padStart(2, "0")}</div></div>
       </div>
       ${detalheHtml}`}
+    </div>
+
+    <div class="card">
+      <h3>⏱️ Horas do mês</h3>
+      <div class="field">
+        <label>Mês</label>
+        ${seletorMesHoras("hmMes")}
+      </div>
+      <p class="hint hint-forte">Trabalhadas = o que o <b>horímetro</b> andou no mês.
+      Disponíveis = o turno de cada máquina em <b>${fmtN1(hm.linhas.length ? hm.linhas[0].dias : 0)} dia(s)</b>,
+      menos manutenção e almoço.${hm.corrente
+        ? " Mês em andamento: conta do dia 1º <b>até agora</b>, e não o mês inteiro." : ""}</p>
+      <div class="kpi-grid">
+        <div class="kpi k-green"><div class="k-label">⏱️ Trabalhadas</div><div class="k-value">${fmt(hm.trabalhadas, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-blue"><div class="k-label">🟦 Disponíveis</div><div class="k-value">${fmt(hm.disponiveis, 1)}<span class="k-unit"> h</span></div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="kpi-grid">
+        <div class="kpi k-yellow"><div class="k-label">📈 Utilização</div><div class="k-value">${fmt(hm.utilizacao, 1)}<span class="k-unit"> %</span></div></div>
+        <div class="kpi k-red"><div class="k-label">🔴 Parado</div><div class="k-value">${fmt(hm.manutencao + hm.almoco, 1)}<span class="k-unit"> h</span></div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="itemlist">${hm.linhas.map(l =>
+        `<div class="itemrow" data-ficha="${l.equip}"><div class="info"><b>${l.equip}</b>
+          <span class="pill ${l.utilizacao >= 75 ? "pill-green" : l.utilizacao >= 50 ? "pill-yellow" : "pill-red"}">${fmt(l.utilizacao, 1)}%</span>
+          <div class="sub">${fmtH(l.trabalhadas)} de ${fmtH(l.disponiveis)}${(l.manutencao + l.almoco) > 0
+            ? ` · parado ${fmtH(l.manutencao + l.almoco)}` : ""}</div></div><span class="mini">ficha ›</span></div>`
+      ).join("") || '<p class="empty">Nenhum equipamento na frota.</p>'}</div>
     </div>
 
     <p class="section-title" style="margin-top:16px">Estoques dos tanques</p>
@@ -2504,6 +2628,8 @@ function telaDashboard() {
     getDias: () => trendDias, setDias: v => { trendDias = v; }
   });
   $("#pnMetrica").onchange = e => { painelMetrica = e.target.value; telaDashboard(); };
+  const selHM = $("#hmMes");
+  if (selHM) selHM.onchange = e => { horasMesSel = e.target.value; telaDashboard(); };
 
   // KPIs do "Geral do dia" abrem o detalhe (tocar de novo fecha)
   $$("[data-kpi]").forEach(el => el.onclick = () => {
@@ -2607,6 +2733,8 @@ function telaFicha() {
   $("#headerSub").textContent = "FICHA DO EQUIPAMENTO";
   const f = DB.fichaEquipamento(eq);
 
+  const hf = DB.horasMesEquip(eq, mesDeHoras());
+
   // série de médias dos abastecimentos (últimos 8)
   const serieMedia = f.abast.slice(-8).map(a => ({ label: DB.fmtBR(a.iso).slice(0, 5), valor: num(a.media), rotulo: a.media }));
 
@@ -2635,6 +2763,18 @@ function telaFicha() {
         <label>Próxima revisão em (horímetro/KM)</label>
         <input id="fkRev" inputmode="decimal" value="${f.proximaRevisao ?? ""}" placeholder="ex: 20000">
       </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Turno entra${hf.turno.padrao ? ' <span class="mini">padrão</span>' : ""}</label>
+          <input id="fkTurnoIni" type="time" value="${hf.turno.inicio}">
+        </div>
+        <div class="field">
+          <label>Turno sai</label>
+          <input id="fkTurnoFim" type="time" value="${hf.turno.fim}">
+        </div>
+      </div>
+      <p class="hint">São <b>${fmtH(hf.turnoDia)}</b> por dia — é o que entra na conta de horas
+      disponíveis. Turno que vira a noite (19:00 às 07:00) também conta certo.</p>
       <button class="btn btn-primary btn-sm" id="btnFkSalvar">💾 Salvar situação</button>
     </div>
 
@@ -2652,6 +2792,33 @@ function telaFicha() {
     </div>
 
     <div class="spacer"></div>
+    <div class="card">
+      <h3>⏱️ Horas do mês</h3>
+      <div class="field">
+        <label>Mês</label>
+        ${seletorMesHoras("fkMes")}
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi k-green"><div class="k-label">⏱️ Trabalhadas</div><div class="k-value">${fmt(hf.trabalhadas, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-blue"><div class="k-label">🟦 Disponíveis</div><div class="k-value">${fmt(hf.disponiveis, 1)}<span class="k-unit"> h</span></div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="kpi-grid">
+        <div class="kpi k-yellow"><div class="k-label">📈 Utilização</div><div class="k-value">${fmt(hf.utilizacao, 1)}<span class="k-unit"> %</span></div></div>
+        <div class="kpi"><div class="k-label">📅 Dias contados</div><div class="k-value">${fmtN1(hf.dias)}</div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="itemlist">
+        <div class="itemrow"><div class="info">Turno · ${hf.turno.inicio} às ${hf.turno.fim}
+          <div class="sub">${fmtH(hf.turnoDia)} por dia × ${fmtN1(hf.dias)} dia(s) = ${fmtH(hf.bruto)}${
+            hf.corrente ? " · mês em andamento, conta até agora" : ""}</div></div></div>
+        <div class="itemrow"><div class="info">🔴 Manutenção no mês
+          <div class="sub">− ${fmtH(hf.manutencao)}</div></div></div>
+        <div class="itemrow"><div class="info">⏸️ Almoço no mês
+          <div class="sub">− ${fmtH(hf.almoco)}</div></div></div>
+      </div>
+    </div>
+
     <div class="card">
       <h3>📈 Evolução da média (${f.unidadeMedia})</h3>
       ${serieMedia.length ? grafico(serieMedia, { tipo: "linha", cor: "#22c55e" }) : '<p class="empty">Sem abastecimentos registrados.</p>'}
@@ -2688,9 +2855,12 @@ function telaFicha() {
     </div>
   `;
 
+  $("#fkMes").onchange = e => { horasMesSel = e.target.value; telaFicha(); };
+
   $("#btnFkSalvar").onclick = () => {
     DB.setStatus(eq, $("#fkStatus").value, { dia: DB.garantirDiaAtual(), origem: "ficha" });
     DB.setTipoEquip(eq, $("#fkTipo").value);
+    DB.setTurnoEquip(eq, $("#fkTurnoIni").value || "07:00", $("#fkTurnoFim").value || "19:00");
     DB.setProximaRevisao(eq, $("#fkRev").value.trim());
     DB.setOperadorEquip(eq, $("#fkOperador").value);
     Sync.pushEquipamento(eq);

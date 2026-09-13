@@ -24,6 +24,7 @@ const DB = {
       estado: {},                      // { "CB-17": { kmFinal, horimetroFinal } } — último acumulado
       estoque: { s10: 4250, s500: 0, arla: 500 }, // litros por tanque
       tipoEquip: {},                   // { "CB-17": "km_horimetro"|"horimetro" }
+      turnoEquip: {},                  // { "CB-17": { inicio: "07:00", fim: "19:00" } }
       status: {},                      // { "CB-17": "operando"|"reserva"|"manutencao"|"final_expediente" }
       operadorEquip: {},               // { "CB-17": "Saulo" } — quem está no equipamento
       proximaRevisao: {},              // { "CB-17": 20000 } — horímetro/KM alvo da próxima revisão
@@ -71,6 +72,7 @@ const DB = {
     this._cache.status = data.status || {};
     this._cache.proximaRevisao = data.proximaRevisao || {};
     this._cache.tipoEquip = data.tipoEquip || {};
+    this._cache.turnoEquip = data.turnoEquip || {};
     this._cache.operadorEquip = data.operadorEquip || {};
     this._cache.paradas = data.paradas || {};
     this._cache.versaoApp = data.versaoApp || null;
@@ -387,6 +389,30 @@ const DB = {
     this._nuvem(C => C.patch("frota", { tipoEquip: { [eq]: tipo } }));
   },
 
+  /* ---- Turno do equipamento: quanto tempo ele fica à disposição por dia ---- */
+  TURNO_PADRAO: { inicio: "07:00", fim: "19:00" },
+  getTurnoEquip(eq) {
+    const t = this.load().turnoEquip[eq];
+    return (t && t.inicio && t.fim) ? t : Object.assign({ padrao: true }, this.TURNO_PADRAO);
+  },
+  setTurnoEquip(eq, inicio, fim) {
+    const db = this.load();
+    db.turnoEquip[eq] = { inicio, fim };
+    this.save();
+    this._nuvem(C => C.patch("frota", { turnoEquip: { [eq]: db.turnoEquip[eq] } }));
+  },
+  /* Horas de turno por dia. Turno da noite (19:00 → 07:00) são 12 h, e não −12. */
+  horasTurnoDia(eq) {
+    const t = this.getTurnoEquip(eq);
+    const min = hm => {
+      const [h, m] = String(hm || "0:0").split(":").map(Number);
+      return (h || 0) * 60 + (m || 0);
+    };
+    let d = min(t.fim) - min(t.inicio);
+    if (d <= 0) d += 24 * 60;                  // atravessa a meia-noite
+    return d / 60;
+  },
+
   /* ---- Status e revisão por equipamento ---- */
   /* "Parado" saiu do app. Normalizo na leitura, e não apagando o que está
      gravado: equipamento antigo — ou vindo da nuvem de um celular que ainda
@@ -409,7 +435,7 @@ const DB = {
     if (st === "manutencao" && anterior !== "manutencao") {
       id = this._novoId();
       parada = {
-        equipamento: eq, entradaDia: dia, entradaHora: hora,
+        equipamento: eq, tipo: "manutencao", entradaDia: dia, entradaHora: hora,
         saidaDia: null, saidaHora: null, minutos: null,
         origem: o.origem || "", quem: this._quem()
       };
@@ -448,11 +474,49 @@ const DB = {
   },
   _idParadaAberta(eq) {
     const p = this.load().paradas;
-    // o mais recente primeiro: se sobrou algum aberto antigo, fecha o certo
+    // o mais recente primeiro: se sobrou algum aberto antigo, fecha o certo.
+    // Só manutenção: o almoço já nasce com início e fim, e não se fecha por status.
     return Object.keys(p)
-      .filter(id => p[id].equipamento === eq && !p[id].saidaDia)
+      .filter(id => p[id].equipamento === eq && !p[id].saidaDia &&
+                    (p[id].tipo || "manutencao") === "manutencao")
       .sort((a, b) => (p[a].entradaDia + p[a].entradaHora < p[b].entradaDia + p[b].entradaHora ? 1 : -1))[0] || null;
   },
+  /* Parada de almoço: nasce fechada, com início e fim, porque é apontada depois
+     que aconteceu. Vários equipamentos de uma vez — o almoço para a frota junta. */
+  addParadaAlmoco(equipamentos, dia, inicio, fim) {
+    const db = this.load();
+    const criados = [];
+    (equipamentos || []).forEach(eq => {
+      const id = this._novoId();
+      const reg = {
+        equipamento: eq, tipo: "almoco",
+        entradaDia: dia, entradaHora: inicio,
+        saidaDia: dia, saidaHora: fim,
+        minutos: this._minutosEntre(dia, inicio, dia, fim),
+        origem: "almoco", quem: this._quem()
+      };
+      db.paradas[id] = reg;
+      criados.push(Object.assign({ id }, reg));
+    });
+    if (!criados.length) return [];
+    this.save();
+    this._nuvem(C => {
+      const dados = {};
+      criados.forEach(c => { dados[c.id] = db.paradas[c.id]; });
+      C.patch("operacao", { paradas: dados });
+    });
+    return criados;
+  },
+  removerParada(id) {
+    const db = this.load();
+    if (!db.paradas[id]) return false;
+    delete db.paradas[id];
+    this.save();
+    // apagar de um mapa na nuvem pede o marcador de exclusão do Firestore
+    this._nuvem(C => C.apagarParada(id));
+    return true;
+  },
+
   paradaAberta(eq) {
     const id = this._idParadaAberta(eq);
     return id ? Object.assign({ id }, this.load().paradas[id]) : null;
@@ -621,6 +685,97 @@ const DB = {
   kmLDoLancamento(a) {
     const km = this.toN(a.kmRodado), litros = this.toN(a.litros);
     return litros > 0 ? km / litros : 0;
+  },
+
+  /* ============================================================
+     HORAS DO MÊS — trabalhadas (pelo horímetro) e disponíveis
+     ============================================================ */
+  _ts(dia, hora) {
+    const [y, m, d] = String(dia || "").split("-").map(Number);
+    const [hh, mm] = String(hora || "00:00").split(":").map(Number);
+    return new Date(y || 1970, (m || 1) - 1, d || 1, hh || 0, mm || 0).getTime();
+  },
+  /* Primeiro e último instante do mês. No mês corrente para em AGORA: num dia 13,
+     contar o mês inteiro inflaria o disponível e faria a máquina parecer pior. */
+  janelaDoMes(chave) {
+    const [y, m] = String(chave).split("-").map(Number);
+    const ini = new Date(y, m - 1, 1, 0, 0).getTime();
+    const fimMes = new Date(y, m, 1, 0, 0).getTime();       // 1º do mês seguinte
+    const agora = Date.now();
+    const fim = Math.min(fimMes, agora);
+    return { ini, fim, corrente: agora < fimMes };
+  },
+  /* Dias contados no mês: todos, inclusive domingo (escolha dele). No mês
+     corrente, só até hoje. */
+  diasDoMes(chave) {
+    const j = this.janelaDoMes(chave);
+    if (j.fim <= j.ini) return 0;
+    return (j.fim - j.ini) / 86400000;
+  },
+  /* Horas pelo horímetro: do primeiro lançamento do mês ao último. NÃO é a soma
+     das horas linha a linha — quando alguém corrige um horímetro à mão, ou a
+     máquina roda sem abastecer, é o horímetro que conta a verdade. */
+  horasHorimetro(eq, chave) {
+    const db = this.load();
+    const leituras = [];
+    Object.keys(db.dias).filter(iso => iso.startsWith(chave)).sort().forEach(iso => {
+      (db.dias[iso].abastecimentos || []).forEach(a => {
+        if (a.equipamento !== eq) return;
+        const ini = this.toN(a.horimetroInicial), fim = this.toN(a.horimetroFinal);
+        if (fim > 0 || ini > 0) leituras.push({ iso, hora: a.hora || "00:00", ini, fim });
+      });
+    });
+    if (!leituras.length) return 0;
+    leituras.sort((a, b) => (a.iso + a.hora < b.iso + b.hora ? -1 : 1));
+    const h = this.toN(leituras[leituras.length - 1].fim) - this.toN(leituras[0].ini);
+    return h > 0 ? h : 0;
+  },
+  /* Horas paradas no mês, por tipo. Conta só o pedaço que cai DENTRO do mês:
+     uma parada que começa dia 31 e acaba dia 1º não pode contar inteira nos dois. */
+  horasParadas(eq, chave, tipo) {
+    const p = this.load().paradas || {};
+    const j = this.janelaDoMes(chave);
+    let min = 0;
+    Object.keys(p).forEach(id => {
+      const x = p[id];
+      if (x.equipamento !== eq) return;
+      // parada antiga não tem tipo: é manutenção (era o único tipo até aqui)
+      if (tipo && (x.tipo || "manutencao") !== tipo) return;
+      const ini = this._ts(x.entradaDia, x.entradaHora);
+      const fim = x.saidaDia ? this._ts(x.saidaDia, x.saidaHora) : Date.now();
+      const a = Math.max(ini, j.ini), b = Math.min(fim, j.fim);
+      if (b > a) min += (b - a) / 60000;
+    });
+    return min / 60;
+  },
+  /* Disponível = turno × dias do mês − manutenção − almoço */
+  horasMesEquip(eq, chave) {
+    const dias = this.diasDoMes(chave);
+    const turnoDia = this.horasTurnoDia(eq);
+    const manutencao = this.horasParadas(eq, chave, "manutencao");
+    const almoco = this.horasParadas(eq, chave, "almoco");
+    const bruto = turnoDia * dias;
+    const disponiveis = Math.max(0, bruto - manutencao - almoco);
+    const trabalhadas = this.horasHorimetro(eq, chave);
+    return {
+      equip: eq, dias, turnoDia, bruto, manutencao, almoco, disponiveis, trabalhadas,
+      utilizacao: disponiveis > 0 ? (trabalhadas / disponiveis) * 100 : 0,
+      turno: this.getTurnoEquip(eq),
+      corrente: this.janelaDoMes(chave).corrente
+    };
+  },
+  /* A frota inteira no mês. Índice e ficha usam esta mesma conta — assim os
+     números não podem discordar entre as duas telas. */
+  horasMes(chave) {
+    const linhas = this.load().equipamentos.map(eq => this.horasMesEquip(eq, chave));
+    const soma = c => linhas.reduce((s, l) => s + l[c], 0);
+    const trabalhadas = soma("trabalhadas"), disponiveis = soma("disponiveis");
+    return {
+      chave, linhas, corrente: this.janelaDoMes(chave).corrente,
+      trabalhadas, disponiveis,
+      manutencao: soma("manutencao"), almoco: soma("almoco"),
+      utilizacao: disponiveis > 0 ? (trabalhadas / disponiveis) * 100 : 0
+    };
   },
 
   /* ---- Ficha completa de um equipamento (todos os dias) ---- */

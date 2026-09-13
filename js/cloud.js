@@ -82,6 +82,7 @@ const Cloud = {
     const inicial = [
       ["frota", { equipamentos: db.equipamentos, motoristas: db.motoristas,
                   abastecedores: db.abastecedores, tipoEquip: db.tipoEquip,
+                  turnoEquip: db.turnoEquip,
                   proximaRevisao: db.proximaRevisao, config: cfg }],
       ["operacao", { estado: db.estado, status: db.status,
                      operadorEquip: db.operadorEquip, paradas: db.paradas }],
@@ -177,6 +178,7 @@ const Cloud = {
       if (Array.isArray(d.motoristas)) db.motoristas = d.motoristas;
       if (Array.isArray(d.abastecedores)) db.abastecedores = d.abastecedores;
       if (d.tipoEquip) db.tipoEquip = d.tipoEquip;
+      if (d.turnoEquip) db.turnoEquip = d.turnoEquip;   // turno de cada equipamento
       if (d.proximaRevisao) db.proximaRevisao = d.proximaRevisao;
       if (d.versaoApp) db.versaoApp = d.versaoApp;   // atualização lançada pelo dono
       if (d.config) {
@@ -226,6 +228,8 @@ const Cloud = {
     if (op.t === "push")    return this._col(op.col).doc(op.id).set(op.dados, { merge: false });
     if (op.t === "remover") return this._col(op.col).doc(op.id).delete();
     if (op.t === "patch")   return this._cad(op.nome).set(op.dados, { merge: true });
+    if (op.t === "apagarParada") return this._cad("operacao").set(
+      { paradas: { [op.id]: firebase.firestore.FieldValue.delete() } }, { merge: true });
     if (op.t === "estoque") return this._cad("estoque").set(
       { [op.tipo]: firebase.firestore.FieldValue.increment(op.delta) }, { merge: true });
     return Promise.resolve();
@@ -255,6 +259,13 @@ const Cloud = {
   patch(nome, dados) {
     this._fazer({ t: "patch", nome, dados }, "gravar cadastro/" + nome);
   },
+  /* Apaga uma parada. Num mapa, gravar undefined não remove nada: o Firestore
+     precisa do marcador de exclusão, senão a parada voltaria na próxima leitura. */
+  apagarParada(id) {
+    if (!id) return;
+    this._fazer({ t: "apagarParada", id }, "apagar a parada");
+  },
+
   /* soma/subtrai no tanque — dois celulares abastecendo junto continuam batendo */
   ajustarEstoque(tipo, delta) {
     if (!delta) return;

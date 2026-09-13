@@ -273,7 +273,9 @@ main { padding: 16px; max-width: 640px; margin: 0 auto; animation: fade .25s eas
 .mini { font-size: 12px; color: var(--muted); }
 .tag-total { font-size: 13px; font-weight: 800; color: var(--brand-2); }
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.chip { font-size: 12px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; cursor: pointer; }
+.chip { font-size: 12px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; cursor: pointer; color: var(--text); font-family: inherit; }
+/* Chip marcado (equipamentos que pararam para o almoço) */
+.chip-on { background: var(--sombra-sel); color: var(--realce); border-color: var(--brand); font-weight: 700; }
 .chip:active { border-color: var(--brand); }
 .spacer { height: 8px; }
 
