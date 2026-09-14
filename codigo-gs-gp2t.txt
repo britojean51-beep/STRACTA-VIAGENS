@@ -98,7 +98,7 @@ var TABS = {
     nome: "Horas por Mês", dateCols: [],
     colunas: ["Mês", "Equipamento", "Turno", "Horas do turno", "Dias contados",
               "Disponível bruto (h)", "Manutenção (h)", "Almoço (h)",
-              "Disponíveis (h)", "Trabalhadas (h)", "Utilização (%)"]
+              "Disponíveis (h)", "Trabalhadas (h)", "Horas do dia (h)", "Utilização (%)"]
   },
   resumoMes: {
     nome: "Resumo por Mês", dateCols: [],

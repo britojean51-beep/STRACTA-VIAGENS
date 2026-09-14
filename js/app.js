@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "13/09/2026 · r45 (paradas, semana e horas na planilha)";
+const VERSION = "13/09/2026 · r46 (as duas medidas de hora juntas)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -2544,19 +2544,24 @@ function telaDashboard() {
       menos manutenção e almoço.${hm.corrente
         ? " Mês em andamento: conta do dia 1º <b>até agora</b>, e não o mês inteiro." : ""}</p>
       <div class="kpi-grid">
-        <div class="kpi k-green"><div class="k-label">⏱️ Trabalhadas</div><div class="k-value">${fmt(hm.trabalhadas, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-green"><div class="k-label">🕐 Horas de horímetro</div><div class="k-value">${fmt(hm.trabalhadas, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-yellow"><div class="k-label">⏱️ Horas do dia</div><div class="k-value">${fmt(hm.horasDia, 1)}<span class="k-unit"> h</span></div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="kpi-grid">
         <div class="kpi k-blue"><div class="k-label">🟦 Disponíveis</div><div class="k-value">${fmt(hm.disponiveis, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-red"><div class="k-label">🔴 Parado</div><div class="k-value">${fmt(hm.manutencao + hm.almoco, 1)}<span class="k-unit"> h</span></div></div>
       </div>
       <div class="spacer"></div>
       <div class="kpi-grid">
         <div class="kpi k-yellow"><div class="k-label">📈 Utilização</div><div class="k-value">${fmt(hm.utilizacao, 1)}<span class="k-unit"> %</span></div></div>
-        <div class="kpi k-red"><div class="k-label">🔴 Parado</div><div class="k-value">${fmt(hm.manutencao + hm.almoco, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi"><div class="k-label">📅 Dias contados</div><div class="k-value">${fmtN1(hm.linhas.length ? hm.linhas[0].dias : 0)}</div></div>
       </div>
       <div class="spacer"></div>
       <div class="itemlist">${hm.linhas.map(l =>
         `<div class="itemrow" data-ficha="${l.equip}"><div class="info"><b>${l.equip}</b>
           <span class="pill ${l.utilizacao >= 75 ? "pill-green" : l.utilizacao >= 50 ? "pill-yellow" : "pill-red"}">${fmt(l.utilizacao, 1)}%</span>
-          <div class="sub">${fmtH(l.trabalhadas)} de ${fmtH(l.disponiveis)}${(l.manutencao + l.almoco) > 0
+          <div class="sub">🕐 ${fmtH(l.trabalhadas)} · ⏱️ ${fmtH(l.horasDia)} · de ${fmtH(l.disponiveis)}${(l.manutencao + l.almoco) > 0
             ? ` · parado ${fmtH(l.manutencao + l.almoco)}` : ""}</div></div><span class="mini">ficha ›</span></div>`
       ).join("") || '<p class="empty">Nenhum equipamento na frota.</p>'}</div>
     </div>
@@ -2791,7 +2796,8 @@ function telaFicha() {
         `<div class="kpi k-yellow"><div class="k-label">📊 Consumo L/h</div><div class="k-value">${fmt(f.lh, 2)}<span class="k-unit"> L/h</span></div></div>`}
       <div class="kpi k-blue"><div class="k-label">🚚 Viagens</div><div class="k-value">${fmt(f.totViag)}</div></div>
       <div class="kpi"><div class="k-label">🛣️ KM total</div><div class="k-value">${fmt(f.totKm)}<span class="k-unit"> km</span></div></div>
-      <div class="kpi k-yellow"><div class="k-label">⏱️ Horas</div><div class="k-value">${fmt(f.totHoras, 1)}<span class="k-unit"> h</span></div></div>
+      <div class="kpi k-yellow"><div class="k-label">⏱️ Horas do dia</div><div class="k-value">${fmt(f.totHoras, 1)}<span class="k-unit"> h</span></div></div>
+      <div class="kpi k-yellow"><div class="k-label">🕐 Horas de horímetro</div><div class="k-value">${fmt(f.totHorimetro, 1)}<span class="k-unit"> h</span></div></div>
       <div class="kpi k-blue"><div class="k-label">🏭 Produção</div><div class="k-value">${fmt(f.totToneladas)}<span class="k-unit"> t</span></div></div>
       <div class="kpi k-yellow"><div class="k-label">🏭 L/Ton</div><div class="k-value">${fmt(f.lton, 2)}<span class="k-unit"> L/t</span></div></div>
       <div class="kpi"><div class="k-label">📍 Horím. atual</div><div class="k-value">${f.ultimo.horimetroFinal ?? "—"}</div></div>
@@ -2805,13 +2811,21 @@ function telaFicha() {
         ${seletorMesHoras("fkMes")}
       </div>
       <div class="kpi-grid">
-        <div class="kpi k-green"><div class="k-label">⏱️ Trabalhadas</div><div class="k-value">${fmt(hf.trabalhadas, 1)}<span class="k-unit"> h</span></div></div>
-        <div class="kpi k-blue"><div class="k-label">🟦 Disponíveis</div><div class="k-value">${fmt(hf.disponiveis, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-green"><div class="k-label">🕐 Horas de horímetro</div><div class="k-value">${fmt(hf.trabalhadas, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-yellow"><div class="k-label">⏱️ Horas do dia</div><div class="k-value">${fmt(hf.horasDia, 1)}<span class="k-unit"> h</span></div></div>
       </div>
       <div class="spacer"></div>
       <div class="kpi-grid">
+        <div class="kpi k-blue"><div class="k-label">🟦 Disponíveis</div><div class="k-value">${fmt(hf.disponiveis, 1)}<span class="k-unit"> h</span></div></div>
         <div class="kpi k-yellow"><div class="k-label">📈 Utilização</div><div class="k-value">${fmt(hf.utilizacao, 1)}<span class="k-unit"> %</span></div></div>
+      </div>
+      <p class="hint">🕐 <b>Horímetro</b>: o que o relógio da máquina andou no mês (último menos o
+      primeiro). ⏱️ <b>Dia</b>: a soma das horas apontadas em cada lançamento. Quando as duas
+      separam, é sinal de horímetro corrigido à mão ou de máquina que rodou sem abastecer.</p>
+      <div class="spacer"></div>
+      <div class="kpi-grid">
         <div class="kpi"><div class="k-label">📅 Dias contados</div><div class="k-value">${fmtN1(hf.dias)}</div></div>
+        <div class="kpi k-red"><div class="k-label">🔴 Parado</div><div class="k-value">${fmt(hf.manutencao + hf.almoco, 1)}<span class="k-unit"> h</span></div></div>
       </div>
       <div class="spacer"></div>
       <div class="itemlist">

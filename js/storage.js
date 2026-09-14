@@ -748,6 +748,21 @@ const DB = {
     });
     return min / 60;
   },
+  /* Horas apontadas no dia: a soma do que foi lançado linha a linha no mês.
+     É outra medida, e não a mesma coisa que o horímetro — por isso as duas
+     aparecem juntas. Quando a corrente está inteira elas batem; quando alguém
+     corrige um horímetro à mão, a diferença entre as duas é o que denuncia. */
+  horasDoDia(eq, chave) {
+    const db = this.load();
+    let t = 0;
+    Object.keys(db.dias).filter(iso => iso.startsWith(chave)).forEach(iso => {
+      (db.dias[iso].abastecimentos || []).forEach(a => {
+        if (a.equipamento === eq) t += this.toN(a.horasTrabalhadas);
+      });
+    });
+    return t;
+  },
+
   /* Disponível = turno × dias do mês − manutenção − almoço */
   horasMesEquip(eq, chave) {
     const dias = this.diasDoMes(chave);
@@ -757,8 +772,9 @@ const DB = {
     const bruto = turnoDia * dias;
     const disponiveis = Math.max(0, bruto - manutencao - almoco);
     const trabalhadas = this.horasHorimetro(eq, chave);
+    const horasDia = this.horasDoDia(eq, chave);
     return {
-      equip: eq, dias, turnoDia, bruto, manutencao, almoco, disponiveis, trabalhadas,
+      equip: eq, dias, turnoDia, bruto, manutencao, almoco, disponiveis, trabalhadas, horasDia,
       utilizacao: disponiveis > 0 ? (trabalhadas / disponiveis) * 100 : 0,
       turno: this.getTurnoEquip(eq),
       corrente: this.janelaDoMes(chave).corrente
@@ -772,7 +788,7 @@ const DB = {
     const trabalhadas = soma("trabalhadas"), disponiveis = soma("disponiveis");
     return {
       chave, linhas, corrente: this.janelaDoMes(chave).corrente,
-      trabalhadas, disponiveis,
+      trabalhadas, disponiveis, horasDia: soma("horasDia"),
       manutencao: soma("manutencao"), almoco: soma("almoco"),
       utilizacao: disponiveis > 0 ? (trabalhadas / disponiveis) * 100 : 0
     };
@@ -800,6 +816,15 @@ const DB = {
       equip: eq, abast, viag, manut,
       totDiesel, totKm, totHoras, totViag, totToneladas,
       lton: totToneladas > 0 ? totDiesel / totToneladas : 0,
+      // as duas medidas de hora do equipamento, desde sempre:
+      // totHoras = somada dos lançamentos · totHorimetro = o que o relógio andou
+      totHorimetro: (() => {
+        if (!abast.length) return 0;
+        const ord = abast.slice().sort((a, b) =>
+          ((a.iso + (a.hora || "")) < (b.iso + (b.hora || "")) ? -1 : 1));
+        const h = this.toN(ord[ord.length - 1].horimetroFinal) - this.toN(ord[0].horimetroInicial);
+        return h > 0 ? h : 0;
+      })(),
       tipo,
       unidadeMedia: tipo === "horimetro" ? "L/h" : "km/L",
       media: tipo === "horimetro"

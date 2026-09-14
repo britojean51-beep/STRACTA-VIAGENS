@@ -193,6 +193,7 @@ const Sync = {
       "Almoço (h)": this._n(l.almoco, 1),
       "Disponíveis (h)": this._n(l.disponiveis, 1),
       "Trabalhadas (h)": this._n(l.trabalhadas, 1),
+      "Horas do dia (h)": this._n(l.horasDia, 1),
       "Utilização (%)": this._n(l.utilizacao, 1)
     }));
   },
