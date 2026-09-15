@@ -274,6 +274,26 @@ main { padding: 16px; max-width: 640px; margin: 0 auto; animation: fade .25s eas
 .tag-total { font-size: 13px; font-weight: 800; color: var(--brand-2); }
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .chip { font-size: 12px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; cursor: pointer; color: var(--text); font-family: inherit; }
+/* ===== Fotos das solicitações ===== */
+.foto-grid { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
+.foto-item { position: relative; }
+.foto-item img {
+  width: 96px; height: 96px; object-fit: cover;
+  border-radius: 10px; border: 1px solid var(--line); display: block;
+}
+/* na tela de detalhe a foto abre grande */
+#sqFotos .foto-item img { width: 100%; max-width: 320px; height: auto; }
+.foto-x {
+  position: absolute; top: -6px; right: -6px;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--red); color: #fff; border: none;
+  font-size: 13px; font-weight: 700; cursor: pointer; line-height: 1;
+}
+.mini-foto {
+  width: 44px; height: 44px; object-fit: cover;
+  border-radius: 8px; border: 1px solid var(--line); flex-shrink: 0;
+}
+
 /* Chip marcado (equipamentos que pararam para o almoço) */
 .chip-on { background: var(--sombra-sel); color: var(--realce); border-color: var(--brand); font-weight: 700; }
 .chip:active { border-color: var(--brand); }

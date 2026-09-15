@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "13/09/2026 · r46 (as duas medidas de hora juntas)";
+const VERSION = "15/09/2026 · r47 (solicitação de manutenção com foto)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -14,6 +14,7 @@ let editando = null;
 let relatorioDiaPre = null;
 /* Equipamento selecionado ao abrir a Ficha */
 let fichaEquip = null;
+let solicitacaoAberta = null;   // id da solicitação em detalhe
 /* Índice: dias selecionados (vazio = dia atual) e janela das tendências (dias) */
 let painelDias = [];        // dias do "Geral do dia" / comparação
 let painelMes = null;       // mês exibido nos chips da comparação
@@ -186,6 +187,56 @@ function seletorMesHoras(id) {
     `<option value="${m.chave}" ${m.chave === atual ? "selected" : ""}>${m.label}</option>`).join("")}</select>`;
 }
 
+/* ============================================================
+   SOLICITAÇÕES DE MANUTENÇÃO — foto
+   A foto sai do celular já reduzida: o documento da nuvem tem 1 MB, e a caixa
+   do app no celular tem ~5 MB. Foto de celular crua não cabe em nenhum dos dois.
+   ============================================================ */
+const FOTO_LADO = 1024, FOTO_Q = 0.5;      // ~118 KB medidos
+const MINI_LADO = 240,  MINI_Q = 0.5;      // ~11 KB, é a que fica no celular
+const MAX_FOTOS = 3;
+
+function _reduzirImagem(img, lado, q) {
+  const e = Math.min(lado / img.width, lado / img.height, 1);
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(img.width * e));
+  c.height = Math.max(1, Math.round(img.height * e));
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", q);
+}
+/* Devolve { foto, miniatura } a partir do arquivo que a câmera entregou. */
+function prepararFoto(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = () => reject(new Error("não deu para ler a foto"));
+    fr.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("arquivo não é uma imagem"));
+      img.onload = () => {
+        try {
+          resolve({ foto: _reduzirImagem(img, FOTO_LADO, FOTO_Q),
+                    miniatura: _reduzirImagem(img, MINI_LADO, MINI_Q) });
+        } catch (e) { reject(e); }
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
+function pillSolicitacao(sit) {
+  if (sit === "Realizado") return '<span class="pill pill-green">🟢 Realizado</span>';
+  if (sit === "Em atendimento") return '<span class="pill pill-blue">🔵 Em atendimento</span>';
+  if (sit === "Cancelado") return '<span class="pill pill-gray">⚪ Cancelado</span>';
+  return '<span class="pill pill-yellow">🟡 Pendente</span>';
+}
+function quandoTexto(ms) {
+  if (!ms) return "";
+  const d = new Date(ms);
+  return DB.fmtBR(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`)
+    + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+
 /* ---------- Toast ---------- */
 function toast(msg, tipo = "ok") {
   const t = $("#toast");
@@ -257,6 +308,8 @@ const rotas = {
   frota:         telaFrota,
   ficha:         telaFicha,
   corrigir:      telaCorrigir,
+  solicitacoes:  telaSolicitacoes,
+  solicitacao:   telaSolicitacao,
   usuarios:      telaUsuarios,
   conta:         telaMinhaConta,
   operadores:    telaOperadores,
@@ -343,6 +396,11 @@ function telaHome() {
         <span class="ico">🔧</span><span class="lbl">Manutenção</span>
         <span class="desc">Preventiva e corretiva</span>
       </button>
+      <button class="menu-card" data-go="solicitacoes">
+        <span class="ico">🛠️</span><span class="lbl">Solicitações</span>
+        <span class="desc">${(() => { const n = DB.solicitacoesAbertas().length;
+          return n ? `<b>${n}</b> em aberto` : "Pedidos de manutenção"; })()}</span>
+      </button>
       <button class="menu-card" data-go="corrigir">
         <span class="ico">✏️</span><span class="lbl">Corrigir Dados</span>
         <span class="desc">Editar ou excluir</span>
@@ -390,6 +448,209 @@ function telaHome() {
     if (typeof Cloud !== "undefined") Cloud.parar();
     await Auth.sair();
   };
+}
+
+/* ============================================================
+   SOLICITAÇÕES DE MANUTENÇÃO (só gestor)
+   ============================================================ */
+let solicFiltro = "";          // "" = todas
+let solicFotos = [];           // fotos da solicitação sendo escrita
+
+function telaSolicitacoes() {
+  $("#headerTitle").textContent = "🛠️ Solicitações";
+  $("#headerSub").textContent = "PEDIDOS DE MANUTENÇÃO";
+  const db = DB.load();
+  const nuvemOn = (typeof Cloud !== "undefined") && Cloud.ligada();
+
+  app.innerHTML = `
+    <div class="card">
+      <h3>➕ Nova solicitação</h3>
+      <div class="field">
+        <label>Equipamento</label>
+        <input id="sqEquip" list="dlSqEquip" placeholder="selecione ou digite"
+               autocapitalize="characters" autocomplete="off">
+        ${opcoesDatalist("dlSqEquip", db.equipamentos)}
+      </div>
+      <div class="field">
+        <label>Parte com problema</label>
+        <input id="sqParte" list="dlSqParte" placeholder="selecione ou digite" autocomplete="off">
+        ${opcoesDatalist("dlSqParte", DB.PARTES_PADRAO)}
+      </div>
+      <div class="field">
+        <label>O que está acontecendo</label>
+        <textarea id="sqDesc" placeholder="Descreva o problema"></textarea>
+      </div>
+      <div class="field">
+        <label>Fotos <span class="mini">até ${MAX_FOTOS} · abre a câmera</span></label>
+        <input id="sqFoto" type="file" accept="image/*" capture="environment" multiple>
+      </div>
+      <div class="foto-grid" id="sqPrevia"></div>
+      ${nuvemOn ? "" : '<p class="hint" style="color:var(--red)">⚠️ A nuvem está desligada neste aparelho: a solicitação é salva, mas <b>sem foto</b> — a foto precisa da nuvem para não encher a memória do celular.</p>'}
+      <button class="btn btn-primary" id="btnSqSalvar">🛠️ Abrir solicitação</button>
+      <p class="hint" id="sqMsg" style="margin-top:8px"></p>
+    </div>
+
+    <div class="card">
+      <h3>📋 Solicitações <span class="mini" id="sqTotal"></span></h3>
+      <div class="chip-row" id="sqFiltros">
+        ${["", "Pendente", "Em atendimento", "Realizado", "Cancelado"].map(f =>
+          `<button class="chip ${solicFiltro === f ? "chip-on" : ""}" data-sqf="${f}">${f || "Todas"}</button>`).join("")}
+      </div>
+      <div class="spacer"></div>
+      <div id="sqLista"></div>
+    </div>
+  `;
+
+  function renderPrevia() {
+    $("#sqPrevia").innerHTML = solicFotos.map((f, i) =>
+      `<div class="foto-item"><img src="${f.miniatura}" alt="foto ${i + 1}">
+        <button class="foto-x" data-sqrm="${i}">✕</button></div>`).join("");
+    $$("#sqPrevia [data-sqrm]").forEach(b => b.onclick = () => {
+      solicFotos.splice(+b.dataset.sqrm, 1); renderPrevia();
+    });
+  }
+
+  function renderLista() {
+    const lista = DB.solicitacoesLista(solicFiltro);
+    $("#sqTotal").textContent = `(${lista.length})`;
+    $("#sqLista").innerHTML = lista.length ? lista.map(x => `
+      <div class="itemrow" data-sqid="${x.id}">
+        ${x.miniatura ? `<img class="mini-foto" src="${x.miniatura}" alt="">` : ""}
+        <div class="info"><b>${x.equipamento}</b> ${pillSolicitacao(x.situacao)}
+          <div class="sub">${x.parte || "—"}${x.descricao ? " · " + x.descricao.slice(0, 44) : ""}
+          <br><span class="mini">${quandoTexto(x.criadoEm)}${x.nFotos ? ` · 📷 ${x.nFotos}` : ""}</span></div>
+        </div><span class="mini">ver ›</span>
+      </div>`).join("") : '<p class="empty">Nenhuma solicitação aqui.</p>';
+    $$("#sqLista [data-sqid]").forEach(el => el.onclick = () => {
+      solicitacaoAberta = el.dataset.sqid; navegar("solicitacao");
+    });
+  }
+
+  $$("#sqFiltros [data-sqf]").forEach(b => b.onclick = () => {
+    solicFiltro = b.dataset.sqf; telaSolicitacoes();
+  });
+
+  $("#sqFoto").onchange = async e => {
+    const msg = (t, cor) => { const m = $("#sqMsg"); m.innerHTML = t; m.style.color = cor || "var(--muted)"; };
+    const arquivos = [...(e.target.files || [])];
+    e.target.value = "";
+    for (const f of arquivos) {
+      if (solicFotos.length >= MAX_FOTOS) { msg(`❌ No máximo ${MAX_FOTOS} fotos.`, "var(--red)"); break; }
+      msg("Preparando a foto…");
+      try { solicFotos.push(await prepararFoto(f)); msg(""); }
+      catch (err) { msg("❌ Não deu para usar essa foto.", "var(--red)"); }
+    }
+    renderPrevia();
+  };
+
+  $("#btnSqSalvar").onclick = async () => {
+    const msg = (t, cor) => { const m = $("#sqMsg"); m.innerHTML = t; m.style.color = cor || "var(--muted)"; };
+    const eq = await garantirEquipamento($("#sqEquip").value);
+    if (!eq) return;
+    $("#sqEquip").value = eq;
+    const parte = $("#sqParte").value.trim();
+    const desc = $("#sqDesc").value.trim();
+    if (!parte) { msg("❌ Diga qual parte está com problema.", "var(--red)"); return; }
+    if (!desc) { msg("❌ Escreva o que está acontecendo.", "var(--red)"); return; }
+    // sem nuvem a foto não tem para onde ir: guardá-la aqui encheria o celular
+    const comFoto = nuvemOn ? solicFotos : [];
+    DB.addSolicitacao({
+      equipamento: eq, parte, descricao: desc,
+      fotos: comFoto.map(f => f.foto),
+      miniatura: comFoto.length ? comFoto[0].miniatura : "",
+      nFotos: comFoto.length
+    });
+    Sync.pushSolicitacoes();
+    solicFotos = [];
+    $("#sqEquip").value = ""; $("#sqParte").value = ""; $("#sqDesc").value = "";
+    toast("✔ Solicitação aberta");
+    telaSolicitacoes();
+  };
+
+  renderPrevia(); renderLista();
+}
+
+function telaSolicitacao() {
+  const x = DB.solicitacao(solicitacaoAberta);
+  if (!x) { navegar("solicitacoes"); return; }
+  $("#headerTitle").textContent = `🛠️ ${x.equipamento}`;
+  $("#headerSub").textContent = "SOLICITAÇÃO DE MANUTENÇÃO";
+
+  app.innerHTML = `
+    <div class="card">
+      <h3>${x.parte || "Manutenção"} ${pillSolicitacao(x.situacao)}</h3>
+      <p class="hint">Aberta em ${quandoTexto(x.criadoEm)}${x.criadoPor ? " por " + usuarioDe(x.criadoPor) : ""}.</p>
+      <div class="itemlist">
+        <div class="itemrow"><div class="info">O que está acontecendo
+          <div class="sub">${x.descricao || "—"}</div></div></div>
+        ${x.conclusao ? `<div class="itemrow"><div class="info">O que foi feito
+          <div class="sub">${x.conclusao}</div></div></div>` : ""}
+      </div>
+    </div>
+
+    ${x.nFotos ? `<div class="card">
+      <h3>📷 Fotos <span class="mini">(${x.nFotos})</span></h3>
+      <div class="foto-grid" id="sqFotos">
+        ${x.miniatura ? `<div class="foto-item"><img src="${x.miniatura}" alt="foto"></div>` : ""}
+      </div>
+      <p class="hint" id="sqFotosMsg">Buscando as fotos…</p>
+    </div>` : ""}
+
+    <div class="card">
+      <h3>🚦 Situação</h3>
+      <div class="field">
+        <label>Mudar para</label>
+        <select id="sqSit">${DB.SITUACOES_SOL.map(v =>
+          `<option ${v === x.situacao ? "selected" : ""}>${v}</option>`).join("")}</select>
+      </div>
+      <div class="field" id="sqConcWrap" style="${x.situacao === "Realizado" ? "" : "display:none"}">
+        <label>O que foi feito</label>
+        <textarea id="sqConc" placeholder="Descreva o serviço">${x.conclusao || ""}</textarea>
+      </div>
+      <button class="btn btn-primary" id="btnSqSit">💾 Salvar situação</button>
+      <div class="spacer"></div>
+      <button class="btn btn-danger btn-sm" id="btnSqDel">🗑️ Excluir solicitação</button>
+    </div>
+  `;
+
+  $("#sqSit").onchange = e => {
+    $("#sqConcWrap").style.display = e.target.value === "Realizado" ? "" : "none";
+  };
+
+  $("#btnSqSit").onclick = () => {
+    const sit = $("#sqSit").value;
+    const patch = { situacao: sit };
+    if (sit === "Realizado") patch.conclusao = $("#sqConc").value.trim();
+    DB.atualizarSolicitacao(x.id, patch);
+    Sync.pushSolicitacoes();
+    toast("✔ Situação salva");
+    telaSolicitacao();
+  };
+
+  $("#btnSqDel").onclick = async () => {
+    const ok = await confirmar(`Excluir a solicitação de ${x.equipamento}? Some para todo mundo.`);
+    if (!ok) return;
+    DB.removerSolicitacao(x.id);
+    Sync.deleteSolicitacao(x.id);
+    toast("✔ Solicitação excluída");
+    navegar("solicitacoes");
+  };
+
+  // as fotos grandes moram só na nuvem: buscadas na hora de abrir
+  if (x.nFotos) {
+    (async () => {
+      const box = $("#sqFotos"), m = $("#sqFotosMsg");
+      if (typeof Cloud === "undefined" || !Cloud.ligada()) {
+        m.textContent = "A nuvem está desligada neste aparelho — aqui fica só a miniatura.";
+        return;
+      }
+      const fotos = await Cloud.fotosDaSolicitacao(x.id);
+      if (fotos === null) { m.textContent = "Sem internet agora — as fotos aparecem quando a rede voltar."; return; }
+      if (!fotos.length) { m.textContent = "As fotos não foram encontradas na nuvem."; return; }
+      box.innerHTML = fotos.map(f => `<div class="foto-item"><img src="${f}" alt="foto"></div>`).join("");
+      m.textContent = "";
+    })();
+  }
 }
 
 /* ============================================================
