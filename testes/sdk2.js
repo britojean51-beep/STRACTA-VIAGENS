@@ -128,7 +128,10 @@ window.__ENVIOS_FS__ = 0;
   Col.prototype.get = async function () {
     rede();
     const itens = await this._ler();
-    return { docs: itens.map(x => ({ id: x.id, data: () => x.dados })) };
+    /* .ref existe no Firestore de verdade e é por onde se apaga um documento
+       que veio de uma consulta. Sem ele aqui, o teste aprovaria um código que
+       quebraria no celular. */
+    return { docs: itens.map(x => ({ id: x.id, data: () => x.dados, ref: this.doc(x.id) })) };
   };
   /* onSnapshot por sondagem: simples e suficiente para o teste ver a mudança
      chegar de um "celular" no outro. */

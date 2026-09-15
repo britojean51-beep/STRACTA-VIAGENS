@@ -66,11 +66,27 @@ const Cloud = {
       await this._pronta;
       this._ouvir();
       await this._enviarPend();          // sobe o que ficou pendente sem sessão
+      this._limparSolicitacoes();        // resto do teste do r47 (uma vez por aparelho)
     } catch (e) {
       // a nuvem nunca pode derrubar o app: sem ela, ele volta a funcionar só no aparelho
       this.parar();
       this._falha(e, "conectar");
     }
+  },
+
+  /* Limpeza única do teste do r47. As regras do Firestore só liberam
+     abastecimentos, viagens e manutencoes, então é provável que nada tenha
+     chegado a ser gravado — mas se chegou, sai aqui. Falha (inclusive
+     "permissão negada") é o resultado esperado e passa em silêncio: isto é
+     faxina, não pode virar erro na tela de ninguém. */
+  async _limparSolicitacoes() {
+    const marca = "gp2t_limpou_solic";
+    try { if (localStorage.getItem(marca)) return; } catch (e) { return; }
+    try {
+      const snap = await this._col("solicitacoes").get();
+      for (const d of snap.docs) await d.ref.delete();
+    } catch (e) { /* sem permissão ou sem rede: nada a fazer */ }
+    try { localStorage.setItem(marca, "1"); } catch (e) {}
   },
 
   /* Primeira vez na nuvem: leva os valores atuais deste celular (tanques,

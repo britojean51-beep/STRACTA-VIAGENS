@@ -87,7 +87,29 @@ const DB = {
       };
     }
     delete this._cache.estoqueTanque;
+    this._limparSolicitacoes(data);
     return this._cache;
+  },
+
+  /* Limpeza única — a tela de Solicitações (r47) foi um teste e saiu no r48.
+     O que ficou gravado sai daqui: são miniaturas em base64, e o app inteiro
+     vive numa caixa de ~5 MB de localStorage. Também tira da fila da nuvem os
+     envios daquela coleção, que as regras do Firestore recusam para sempre —
+     sem isso ficariam eternamente em "x para subir".
+     Depois que todos os celulares abrirem o app uma vez, isto pode sumir. */
+  _limparSolicitacoes(data) {
+    let mexeu = false;
+    if (data && data.solicitacoes) { delete this._cache.solicitacoes; mexeu = true; }
+    if (Array.isArray(this._cache.syncPend)) {
+      const limpa = this._cache.syncPend.filter(op => op && op.kind !== "solicitacao");
+      if (limpa.length !== this._cache.syncPend.length) { this._cache.syncPend = limpa; mexeu = true; }
+    }
+    try {
+      const fila = JSON.parse(localStorage.getItem("gp2t_nuvem_pend") || "[]");
+      const limpa = fila.filter(op => op && op.col !== "solicitacoes");
+      if (limpa.length !== fila.length) localStorage.setItem("gp2t_nuvem_pend", JSON.stringify(limpa));
+    } catch (e) { /* fila ilegível: não é motivo para travar a abertura do app */ }
+    if (mexeu) this.save();
   },
 
   toN(v) { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; },
