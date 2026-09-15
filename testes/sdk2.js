@@ -51,8 +51,8 @@ window.__ENVIOS_FS__ = 0;
     this.id = caminho.split("/").pop();
     this.path = caminho;
   }
-  /* subcoleção: frota/gp2t -> frota/gp2t/solicitacoes. Sem isto, nada abaixo de
-     frota/{id} existe — que é onde moram lançamentos, cadastro e solicitações. */
+  /* subcoleção: frota/gp2t -> frota/gp2t/abastecimentos. Sem isto, nada abaixo de
+     frota/{id} existe — que é onde moram os lançamentos e o cadastro. */
   Doc.prototype.collection = function (nome) { return new Col(this.path + "/" + nome); };
   Doc.prototype.get = async function () {
     rede();

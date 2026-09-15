@@ -154,28 +154,6 @@ const Sync = {
       "Registrado por": quem
     };
   },
-  /* Solicitação de manutenção. A FOTO não vai para a planilha — só quantas são. */
-  solicitacaoRow(x) {
-    const quem = (typeof usuarioDe === "function" && x.criadoPor) ? usuarioDe(x.criadoPor) : (x.criadoPor || "");
-    const dataDe = ms => {
-      if (!ms) return "";
-      const d = new Date(ms);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    };
-    return {
-      _id: x.id,
-      "Data": dataDe(x.criadoEm),
-      "Equipamento": x.equipamento || "",
-      "Parte": x.parte || "",
-      "Problema": x.descricao || "",
-      "Situação": x.situacao || "Pendente",
-      "O que foi feito": x.conclusao || "",
-      "Fotos": x.nFotos || 0,
-      "Aberta por": quem,
-      "Atualizada em": dataDe(x.atualizadoEm)
-    };
-  },
-
   /* Mesmas contas do Resumo por Mês, semana a semana (segunda a domingo). */
   resumoSemanaRow(sem) {
     const r = DB.resumoPeriodo(sem.dias);
@@ -269,13 +247,6 @@ const Sync = {
     if (rows.length) this._enqueue({ action: "bulk", kind: "parada", rows });
   },
   deleteParada(id)         { this._enqueue({ action: "delete", kind: "parada", id }); },
-  /* Como as paradas: poucas, e vão todas juntas a cada mudança. */
-  pushSolicitacoes() {
-    if (!this.ativo()) return;
-    const rows = DB.solicitacoesLista().map(x => this.solicitacaoRow(x));
-    if (rows.length) this._enqueue({ action: "bulk", kind: "solicitacao", rows });
-  },
-  deleteSolicitacao(id)    { this._enqueue({ action: "delete", kind: "solicitacao", id }); },
 
   /* Recalcula e regrava os resumos do dia (substitui as linhas daquela data)
      e atualiza a linha do mês a que o dia pertence. */
@@ -333,7 +304,6 @@ const Sync = {
       if (rows.length) this._enqueue({ action: "bulk", kind: "horasMes", rows });
     });
     this.pushParadas();
-    this.pushSolicitacoes();
     const t0 = Date.now();
     const check = () => {
       if (this.pendentes() === 0) { this.testar(cb); }

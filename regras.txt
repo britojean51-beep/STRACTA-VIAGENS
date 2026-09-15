@@ -49,15 +49,12 @@ service cloud.firestore {
       // (a trava de "só o dia de hoje" fica no app; aqui o que protege é o dono)
       match /{tipo}/{id} {
         allow read: if liberado()
-          && (tipo == 'abastecimentos' || tipo == 'viagens' || tipo == 'manutencoes'
-          || tipo == 'solicitacoes');
+          && (tipo == 'abastecimentos' || tipo == 'viagens' || tipo == 'manutencoes');
         allow create: if liberado()
-          && (tipo == 'abastecimentos' || tipo == 'viagens' || tipo == 'manutencoes'
-          || tipo == 'solicitacoes')
+          && (tipo == 'abastecimentos' || tipo == 'viagens' || tipo == 'manutencoes')
           && request.resource.data.criadoPor == meuEmail();
         allow update, delete: if liberado()
-          && (tipo == 'abastecimentos' || tipo == 'viagens' || tipo == 'manutencoes'
-          || tipo == 'solicitacoes')
+          && (tipo == 'abastecimentos' || tipo == 'viagens' || tipo == 'manutencoes')
           && (ehGestor() || resource.data.criadoPor == meuEmail());
       }
 

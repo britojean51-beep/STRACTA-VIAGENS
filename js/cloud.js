@@ -146,43 +146,6 @@ const Cloud = {
         e => this._falha(e, "ler cadastro/" + nome)
       ));
     });
-    // solicitações não são por dia: ouvinte próprio, sem filtro de data
-    this._unsub.push(this._col("solicitacoes").onSnapshot(
-      snap => this._aplicarSolicitacoes(snap),
-      e => this._falha(e, "consultar solicitações")
-    ));
-  },
-
-  /* Mescla no cache local SEM as fotos grandes. Se elas entrassem aqui, a nuvem
-     recolocaria no localStorage justamente o peso que a gravação local evita —
-     e o app inteiro mora nesses ~5 MB. */
-  _aplicarSolicitacoes(snap) {
-    const db = DB.load();
-    let mudou = false;
-    snap.docChanges().forEach(ch => {
-      const id = ch.doc.id;
-      if (ch.type === "removed") {
-        if (db.solicitacoes[id]) { delete db.solicitacoes[id]; mudou = true; }
-        return;
-      }
-      const d = Object.assign({}, ch.doc.data() || {});
-      delete d.fotos;                                  // ficam só na nuvem
-      if (JSON.stringify(db.solicitacoes[id]) !== JSON.stringify(d)) {
-        db.solicitacoes[id] = d;
-        mudou = true;
-      }
-    });
-    if (mudou) { DB.save(); this._notificar(); }
-  },
-
-  /* Busca as fotos grandes de uma solicitação, só quando alguém abre. */
-  async fotosDaSolicitacao(id) {
-    if (!this.ativa()) return null;                    // sem sessão: nem tenta
-    try {
-      const doc = await this._col("solicitacoes").doc(id).get();
-      if (!doc.exists) return [];
-      return (doc.data() || {}).fotos || [];
-    } catch (e) { this._falha(e, "buscar as fotos"); return null; }
   },
 
   /* Mescla no cache local: nunca apaga dias fora da janela acompanhada */
@@ -265,9 +228,6 @@ const Cloud = {
     if (op.t === "push")    return this._col(op.col).doc(op.id).set(op.dados, { merge: false });
     if (op.t === "remover") return this._col(op.col).doc(op.id).delete();
     if (op.t === "patch")   return this._cad(op.nome).set(op.dados, { merge: true });
-    if (op.t === "solicitacao")      return this._col("solicitacoes").doc(op.id).set(op.dados, { merge: false });
-    if (op.t === "solicitacaoPatch") return this._col("solicitacoes").doc(op.id).set(op.dados, { merge: true });
-    if (op.t === "solicitacaoDel")   return this._col("solicitacoes").doc(op.id).delete();
     if (op.t === "apagarParada") return this._cad("operacao").set(
       { paradas: { [op.id]: firebase.firestore.FieldValue.delete() } }, { merge: true });
     if (op.t === "estoque") return this._cad("estoque").set(
@@ -299,25 +259,6 @@ const Cloud = {
   patch(nome, dados) {
     this._fazer({ t: "patch", nome, dados }, "gravar cadastro/" + nome);
   },
-  pushSolicitacao(id, reg) {
-    if (!id) return;
-    const dados = Object.assign({}, reg, {
-      criadoPor: reg.criadoPor || this._quem(),
-      atualizadoPor: this._quem(),
-      atualizadoEm: Date.now()
-    });
-    delete dados.id;
-    this._fazer({ t: "solicitacao", id, dados }, "gravar a solicitação");
-  },
-  patchSolicitacao(id, dados) {
-    if (!id) return;
-    this._fazer({ t: "solicitacaoPatch", id, dados }, "atualizar a solicitação");
-  },
-  removerSolicitacao(id) {
-    if (!id) return;
-    this._fazer({ t: "solicitacaoDel", id }, "excluir a solicitação");
-  },
-
   /* Apaga uma parada. Num mapa, gravar undefined não remove nada: o Firestore
      precisa do marcador de exclusão, senão a parada voltaria na próxima leitura. */
   apagarParada(id) {

@@ -31,11 +31,6 @@ const DB = {
       /* Versão que o desenvolvedor mandou a frota usar (Configurações → Lançar
          atualização). Cada celular compara com a que está rodando. */
       versaoApp: null,                 // { versao, em, por }
-      /* Solicitações de manutenção. A FOTO GRANDE não mora aqui: só a miniatura.
-         O app inteiro cabe em ~5 MB de localStorage, e 3 fotos por solicitação
-         encheriam isso em umas 15 solicitações — derrubando o app todo, não só
-         esta tela. As fotos ficam na nuvem e são buscadas ao abrir. */
-      solicitacoes: {},                // { "<id>": { equipamento, parte, ... , miniatura } }
       /* Períodos de manutenção: abrem quando o equipamento é apontado em manutenção
          e fecham quando volta. Objeto (e não lista) para a nuvem mesclar chave por
          chave: dois celulares fechando períodos diferentes não se apagam. */
@@ -81,7 +76,6 @@ const DB = {
     this._cache.operadorEquip = data.operadorEquip || {};
     this._cache.paradas = data.paradas || {};
     this._cache.versaoApp = data.versaoApp || null;
-    this._cache.solicitacoes = data.solicitacoes || {};
     // estoque: migra o antigo estoqueTanque (único) para o novo formato por tanque
     if (data.estoque) {
       this._cache.estoque = Object.assign({ s10: 0, s500: 0, arla: 0 }, data.estoque);
@@ -565,74 +559,6 @@ const DB = {
     this._nuvem(C => C.patch("frota", { versaoApp: dados }));
   },
 
-  /* ============================================================
-     SOLICITAÇÕES DE MANUTENÇÃO
-     ============================================================ */
-  SITUACOES_SOL: ["Pendente", "Em atendimento", "Realizado", "Cancelado"],
-  PARTES_PADRAO: ["Motor", "Pneu / rodagem", "Caçamba", "Elétrica", "Hidráulico",
-                  "Freio", "Câmbio / transmissão", "Cabine", "Ar-condicionado"],
-
-  /* Guarda sem as fotos grandes: elas vão só para a nuvem. */
-  _semFotos(reg) {
-    const copia = Object.assign({}, reg);
-    delete copia.fotos;
-    return copia;
-  },
-  addSolicitacao(reg) {
-    const db = this.load();
-    const id = this._novoId();
-    const completo = Object.assign({
-      situacao: "Pendente",
-      criadoEm: Date.now(),
-      criadoPor: this._quem(),
-      nFotos: (reg.fotos || []).length
-    }, reg);
-    db.solicitacoes[id] = this._semFotos(completo);
-    this.save();
-    // na nuvem vai o registro inteiro, com as fotos
-    this._nuvem(C => C.pushSolicitacao(id, completo));
-    return Object.assign({ id }, completo);
-  },
-  atualizarSolicitacao(id, patch) {
-    const db = this.load();
-    const atual = db.solicitacoes[id];
-    if (!atual) return null;
-    const novo = Object.assign({}, atual, patch, {
-      atualizadoEm: Date.now(), atualizadoPor: this._quem()
-    });
-    db.solicitacoes[id] = this._semFotos(novo);
-    this.save();
-    this._nuvem(C => C.patchSolicitacao(id, Object.assign({}, patch, {
-      atualizadoEm: novo.atualizadoEm, atualizadoPor: novo.atualizadoPor
-    })));
-    return Object.assign({ id }, db.solicitacoes[id]);
-  },
-  removerSolicitacao(id) {
-    const db = this.load();
-    if (!db.solicitacoes[id]) return false;
-    delete db.solicitacoes[id];
-    this.save();
-    this._nuvem(C => C.removerSolicitacao(id));
-    return true;
-  },
-  /* Da mais nova para a mais velha. Sem situação, traz todas. */
-  solicitacoesLista(situacao) {
-    const s = this.load().solicitacoes || {};
-    return Object.keys(s)
-      .map(id => Object.assign({ id }, s[id]))
-      .filter(x => !situacao || x.situacao === situacao)
-      .sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0));
-  },
-  solicitacao(id) {
-    const x = this.load().solicitacoes[id];
-    return x ? Object.assign({ id }, x) : null;
-  },
-  /* Pendente e Em atendimento: o que ainda não se resolveu. */
-  solicitacoesAbertas() {
-    return this.solicitacoesLista().filter(x =>
-      x.situacao === "Pendente" || x.situacao === "Em atendimento");
-  },
-
   /* ---- Metas de gestão ---- */
   setConfig(patch) {
     const db = this.load(); Object.assign(db.config, patch); this.save();
@@ -945,14 +871,6 @@ const DB = {
       push("alto", "🛢️", `${t.nome} baixo: ${this.fmtL(t.litros)} L (mínimo ${t.minimo} L)`));
     if (this.tanqueEmUso("arla") && db.estoque.arla <= db.config.estoqueArlaMin)
       push("medio", "💧", `ARLA 32 baixo: ${this.fmtL(db.estoque.arla)} L (mínimo ${db.config.estoqueArlaMin} L)`);
-
-    // solicitação aberta: é o que impede o pedido de morrer esquecido na lista
-    this.solicitacoesAbertas().forEach(s => {
-      const dias = Math.floor((Date.now() - (s.criadoEm || Date.now())) / 86400000);
-      push(dias >= 3 ? "alto" : "medio", "🛠️",
-        `${s.equipamento}: ${s.parte || "manutenção"} ${s.situacao === "Pendente" ? "pendente" : "em atendimento"}` +
-        (dias > 0 ? ` há ${dias} dia(s)` : " hoje"));
-    });
 
     const dia = this.getDia(iso) || { abastecimentos: [] };
     db.equipamentos.forEach(eq => {

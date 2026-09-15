@@ -63,11 +63,6 @@ var TABS = {
     nome: "Operadores", dateCols: [],
     colunas: ["Nome", "Função", "Status"]
   },
-  solicitacao: {
-    nome: "Solicitações", dateCols: ["Data", "Atualizada em"],
-    colunas: ["Data", "Equipamento", "Parte", "Problema", "Situação",
-              "O que foi feito", "Fotos", "Aberta por", "Atualizada em"]
-  },
   parada: {
     nome: "Paradas", dateCols: ["Data"],
     colunas: ["Data", "Equipamento", "Tipo", "Entrada", "Saída", "Tempo parado (h)",

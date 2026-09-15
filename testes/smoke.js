@@ -91,11 +91,9 @@ const CONTRASTE = `(() => {
       quantidade: 8, material: 'Minério', pesoViagem: 30, pesoTotal: 240 });
     DB.setStatus('PC-01', 'manutencao', { dia: iso, hora: '07:00' });
     DB.addParadaAlmoco(['CB-17'], iso, '11:00', '12:00');
-    DB.addSolicitacao({ equipamento: 'CB-17', parte: 'Motor', descricao: 'Fumaça preta',
-      fotos: [], nFotos: 0, miniatura: '' });
   });
 
-  const TELAS = ['home', 'abastecimento', 'viagens', 'manutencao', 'solicitacoes',
+  const TELAS = ['home', 'abastecimento', 'viagens', 'manutencao',
                  'relatorio', 'dashboard', 'frota', 'corrigir', 'operadores',
                  'usuarios', 'conta', 'configuracoes', 'novodia'];
 
@@ -110,18 +108,13 @@ const CONTRASTE = `(() => {
       ok(`tema ${tema} · ${tela}`, ruins.length === 0,
          ruins.slice(0, 2).map(r => `"${r.txt}" ${r.cor} (${r.razao})`).join(' | ') || 'legível');
     }
-    // ficha e detalhe de solicitação não têm rota direta no menu
+    // a ficha do equipamento não tem rota direta no menu
     await p.evaluate(() => abrirFicha('CB-17')); await p.waitForTimeout(500);
     const rf = await p.evaluate(CONTRASTE);
     rf.conhecidos.forEach(x => sabidos.set(x.txt + x.razao, x));
     ok(`tema ${tema} · ficha`, rf.ruins.length === 0, rf.ruins.slice(0, 2).map(r => `"${r.txt}" (${r.razao})`).join(' | ') || 'legível');
     const nSvg = await p.evaluate(() => document.querySelectorAll('#app svg text').length);
     ok(`tema ${tema} · a ficha tem gráfico para conferir`, nSvg > 0, nSvg + ' <text>');
-    await p.evaluate(() => { solicitacaoAberta = DB.solicitacoesLista()[0].id; navegar('solicitacao'); });
-    await p.waitForTimeout(500);
-    const rs = await p.evaluate(CONTRASTE);
-    rs.conhecidos.forEach(x => sabidos.set(x.txt + x.razao, x));
-    ok(`tema ${tema} · solicitação`, rs.ruins.length === 0, rs.ruins.slice(0, 2).map(r => `"${r.txt}" (${r.razao})`).join(' | ') || 'legível');
   }
 
   if (sabidos.size) {
