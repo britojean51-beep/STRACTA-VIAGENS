@@ -214,13 +214,18 @@ const Sync = {
     return { _id: nome, "Nome": nome, "Função": "Operador", "Status": "Ativo" };
   },
   manutencaoRow(iso, m) {
+    const vazioSeNulo = v => (v == null || v === "" ? "" : v);
     return {
       _id: m.id,
       "Data": iso,
       "Equipamento": m.equipamento,
       "Operador/Responsável": m.responsavel || m.motorista || "",
-      "Horímetro": "",
-      "KM": m.horKm || "",
+      /* Antes o formulário tinha um campo só (horKm) e tudo caía na coluna "KM" —
+         inclusive horímetro de escavadeira, que não tem KM nenhum. Agora cada um na
+         sua coluna. Registro antigo segue exatamente onde sempre esteve: mudar isso
+         embaralharia linhas que já estão na planilha dele. */
+      "Horímetro": vazioSeNulo(m.horimetro),
+      "KM": m.horimetro === undefined && m.km === undefined ? (m.horKm || "") : vazioSeNulo(m.km),
       "Tipo": m.tipo || "",
       "Serviço Realizado": m.servico || "",
       "Peças/Trocas": m.pecas || "",

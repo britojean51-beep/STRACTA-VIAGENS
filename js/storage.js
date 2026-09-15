@@ -276,6 +276,22 @@ const DB = {
     this._nuvem(C => C.patch("operacao", { estado: { [equip]: db.estado[equip] } }));
   },
 
+  /* Mexe no medidor gravando SÓ o que veio preenchido, e devolve como estava antes.
+     setUltimo troca os dois de uma vez: quem só tem o horímetro em mãos (a manutenção
+     de uma escavadeira, por exemplo) passaria km = null e APAGARIA o KM do caminhão.
+     O valor anterior volta para quem chamou poder avisar quando o número cair. */
+  atualizarMedidor(equip, valores) {
+    const antes = this.ultimo(equip);
+    const v = valores || {};
+    const pegar = (novo, atual) => {
+      if (novo === undefined || novo === null || novo === "") return atual ?? null;
+      const n = this.toN(novo);
+      return isNaN(n) ? (atual ?? null) : n;
+    };
+    this.setUltimo(equip, pegar(v.km, antes.kmFinal), pegar(v.horimetro, antes.horimetroFinal));
+    return antes;
+  },
+
   /* Situação escolhida no abastecimento → status do equipamento */
   statusDaSituacao(sit) {
     return {

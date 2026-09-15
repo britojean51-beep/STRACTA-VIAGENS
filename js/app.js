@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "15/09/2026 · r49 (apaga o teste do r47)";
+const VERSION = "15/09/2026 · r50 (KM e horímetro atuais)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -214,6 +214,35 @@ function _modal(msg, opcoes) {
 }
 function confirmar(msg) { return _modal(msg, {}); }
 function avisar(msg, html) { return _modal(msg, { aviso: true, html: !!html }); }
+
+/* ---------- Medidores atuais do equipamento ----------
+   O par KM + horímetro aparece na ficha, na Frota, no Índice e no relatório.
+   A regra do que mostrar (quem ainda não tem número, e a máquina de horímetro que
+   não tem KM nenhum) mora aqui uma vez só — em quatro cópias ela divergiria. */
+function medidores(eq) {
+  const u = DB.ultimo(eq);
+  const temKm = DB.getTipoEquip(eq) !== "horimetro";
+  const km = u.kmFinal, hor = u.horimetroFinal;
+  return {
+    temKm,
+    km, hor,
+    // o horímetro marca décimo; o KM, não
+    kmTxt: km == null ? "—" : fmt(km) + " km",
+    horTxt: hor == null ? "—" : fmtN1(hor) + " h",
+    // "12.500 km · 1.200,5 h" — em máquina de horímetro, só a hora
+    linha() { return (this.temKm ? this.kmTxt + " · " : "") + this.horTxt; }
+  };
+}
+
+/* O que a manutenção anotou de medidor. Registro antigo tem um texto livre só
+   (horKm); os novos têm horímetro e KM separados. Os dois continuam aparecendo. */
+function medidorDoRegistro(m) {
+  const p = [];
+  if (m.horimetro != null && m.horimetro !== "") p.push(fmtN1(m.horimetro) + " h");
+  if (m.km != null && m.km !== "") p.push(fmt(m.km) + " km");
+  if (p.length) return p.join(" · ");
+  return m.horKm || "—";
+}
 
 /* ============================================================
    ROTEADOR
@@ -1338,6 +1367,7 @@ function telaAbastecimento() {
     if (editando) {
       DB.atualizarAbastecimento(editando._iso, editando.id, reg);
       Sync.pushLancamento(editando._iso, reg);
+      Sync.pushEquipamento(equip);        // o medidor atual muda: a aba Equipamentos acompanha
       Sync.pushResumoDia(editando._iso);
       editando = null;
       toast("✔ Abastecimento atualizado");
@@ -1345,6 +1375,7 @@ function telaAbastecimento() {
     } else {
       DB.addAbastecimento(dia, reg);
       Sync.pushLancamento(dia, reg);
+      Sync.pushEquipamento(equip);        // o medidor atual muda: a aba Equipamentos acompanha
       Sync.pushResumoDia(dia);
       Sync.pushParadas();          // a situação do lançamento abre ou fecha manutenção
       const foraMeta = hor ? (media > db.config.metaLh) : (media > 0 && media < db.config.metaMedia);
@@ -1628,13 +1659,20 @@ function telaManutencao() {
       </div>
       <div class="field-row">
         <div class="field">
-          <label>Horímetro / KM atual</label>
-          <input id="mHorKm" inputmode="decimal" placeholder="19910">
+          <label>Horímetro atual</label>
+          <input id="mHori" inputmode="decimal" placeholder="19910">
         </div>
-        <div class="field">
-          <label>Situação após o serviço</label>
-          <select id="mStatus">${optsStatus("operando")}</select>
+        <div class="field" id="mKmWrap">
+          <label>KM atual</label>
+          <input id="mKm" inputmode="decimal" placeholder="12500">
         </div>
+      </div>
+      <p class="hint">Vem preenchido com o que está valendo hoje. O que você deixar aqui
+      passa a ser o medidor atual do equipamento — e já entra como inicial no próximo
+      abastecimento.</p>
+      <div class="field">
+        <label>Situação após o serviço</label>
+        <select id="mStatus">${optsStatus("operando")}</select>
       </div>
       <div class="field">
         <label>Próxima revisão em (horímetro/KM) <span class="badge-auto">opcional</span></label>
@@ -1692,6 +1730,11 @@ function telaManutencao() {
     $("#mStatus").value = DB.getStatus(eq);
     const rev = DB.getProximaRevisao(eq);
     $("#mProxRev").value = rev == null ? "" : rev;
+    // os medidores já vêm com o número de hoje, como no abastecimento
+    const m = medidores(eq);
+    $("#mHori").value = m.hor ?? "";
+    $("#mKm").value = m.km ?? "";
+    $("#mKmWrap").style.display = m.temKm ? "" : "none";
   }
   selEquip.oninput = () => {
     const v = selEquip.value.toUpperCase();
@@ -1726,7 +1769,7 @@ function telaManutencao() {
     box.innerHTML = ms.map(m => `
       <div class="itemrow"><div class="info"><b>${m.equipamento}</b>
         <span class="pill pill-red">${m.tipo}</span>
-        <div class="sub">${m.servico || "—"} · ${m.horKm || "—"}</div>
+        <div class="sub">${m.servico || "—"} · ${medidorDoRegistro(m)}</div>
       </div></div>`).join("");
   }
 
@@ -1783,10 +1826,31 @@ function telaManutencao() {
     if (!eq) return;
     selEquip.value = eq;
     if (!serv) { toast("Descreva o serviço", "err"); return; }
+    const med = medidores(eq);
+    const horiTxt = $("#mHori").value.trim();
+    const kmTxt = med.temKm ? $("#mKm").value.trim() : "";
+
+    /* Medidor que CAI é quase sempre dígito a menos — e um horímetro errado aqui
+       vira o inicial do próximo abastecimento, estragando as horas do mês inteiro.
+       Mas horímetro trocado ou zerado existe de verdade, então pergunta em vez de
+       bloquear: ele confirma e passa. */
+    const baixou = [];
+    if (horiTxt !== "" && med.hor != null && num(horiTxt) < med.hor)
+      baixou.push(`o horímetro atual é ${fmtN1(med.hor)} e você digitou ${fmtN1(num(horiTxt))}`);
+    if (kmTxt !== "" && med.km != null && num(kmTxt) < med.km)
+      baixou.push(`o KM atual é ${fmt(med.km)} e você digitou ${fmt(num(kmTxt))}`);
+    if (baixou.length && !await confirmar(
+      `Atenção: ${baixou.join(" e ")}. O número está abaixo do que já foi registrado. Confirma assim mesmo?`)) return;
+
     const mreg = DB.addManutencao(dia, {
       equipamento: eq, tipo: $("#mTipo").value,
-      servico: serv, horKm: $("#mHorKm").value.trim(), observacoes: $("#mObs").value.trim()
+      servico: serv,
+      horimetro: horiTxt === "" ? null : num(horiTxt),
+      km: kmTxt === "" ? null : num(kmTxt),
+      observacoes: $("#mObs").value.trim()
     });
+    // o medidor do equipamento anda junto com a manutenção
+    DB.atualizarMedidor(eq, { horimetro: horiTxt, km: kmTxt });
     // o dia é o dia de operação do app (o mesmo dos lançamentos), o horário é o relógio
     DB.setStatus(eq, $("#mStatus").value, { dia, origem: "manutencao" });
     DB.setProximaRevisao(eq, $("#mProxRev").value.trim());
@@ -1795,7 +1859,8 @@ function telaManutencao() {
     Sync.pushResumoDia(dia);
     Sync.pushParadas();
     toast("✔ Manutenção registrada");
-    $("#mServico").value = ""; $("#mHorKm").value = ""; $("#mObs").value = "";
+    $("#mServico").value = ""; $("#mObs").value = "";
+    carregarEquip();                       // os medidores voltam já com o novo valor
     renderRevisoes(); renderHoje(); renderParadas();
     terminouLancamento();
   };
@@ -1872,6 +1937,14 @@ function gerarRelatorioTexto(iso) {
   if (d.manutencoes.length) {
     txt += `🔧 MANUTENÇÃO\n`;
     d.manutencoes.forEach(m => { txt += `${m.equipamento} · ${m.tipo}: ${m.servico}\n`; });
+    txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+  }
+
+  // medidores de quem apareceu no dia — vai junto no PDF e na mensagem do WhatsApp
+  const noDia = [...new Set([...operando, ...emManut])].sort();
+  if (noDia.length) {
+    txt += `📍 MEDIDORES ATUAIS\n`;
+    noDia.forEach(eq => { txt += `${eq}: ${medidores(eq).linha()}\n`; });
     txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
   }
 
@@ -2507,7 +2580,7 @@ function telaDashboard() {
       ...(f.viagens || []).filter(v => v.equipamento === eq).map(v => v.motorista)
     ].filter(Boolean))].join(", ");
     return `<div class="itemrow" data-ficha="${eq}"><div class="info"><b>${eq}</b> ${pillStatus(st)}
-      <div class="sub">${mots ? `👷 ${mots}<br>` : ""}${fmtL(litros)} L · ${md} · ${viag} viagens${lt > 0 ? ` · ${fmt(lt, 2)} L/t` : ""}</div></div><span class="mini">ficha ›</span></div>`;
+      <div class="sub">${mots ? `👷 ${mots}<br>` : ""}📍 ${medidores(eq).linha()}<br>${fmtL(litros)} L · ${md} · ${viag} viagens${lt > 0 ? ` · ${fmt(lt, 2)} L/t` : ""}</div></div><span class="mini">ficha ›</span></div>`;
   }).join("");
 
   app.innerHTML = `
@@ -2683,7 +2756,7 @@ function telaFrota() {
           : `próxima revisão: ${fmt(rev)}`;
         const und = f.unidadeMedia;
         return `<div class="itemrow" data-ficha="${eq}"><div class="info"><b>${eq}</b> ${pillStatus(f.status)}
-          <div class="sub">${f.tipo === "horimetro" ? "horímetro" : "km"} · ${fmt(f.media, 2)} ${und} · ${revInfo}</div></div><span class="mini">ver ›</span></div>`;
+          <div class="sub">📍 ${medidores(eq).linha()}<br>${fmt(f.media, 2)} ${und} · ${revInfo}</div></div><span class="mini">ver ›</span></div>`;
       }).join("")}</div>
     </div>
 
@@ -2790,6 +2863,15 @@ function telaFicha() {
     </div>
 
     <div class="kpi-grid">
+      <div class="kpi k-blue"><div class="k-label">📍 Horímetro atual</div><div class="k-value">${medidores(eq).horTxt.replace(" h", "")}<span class="k-unit"> h</span></div></div>
+      ${medidores(eq).temKm
+        ? `<div class="kpi k-blue"><div class="k-label">📍 KM atual</div><div class="k-value">${medidores(eq).kmTxt.replace(" km", "")}<span class="k-unit"> km</span></div></div>`
+        : `<div class="kpi"><div class="k-label">📍 KM atual</div><div class="k-value">—<span class="k-unit"> sem odômetro</span></div></div>`}
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="kpi-grid">
       <div class="kpi"><div class="k-label">⛽ Diesel total</div><div class="k-value">${fmt(f.totDiesel)}<span class="k-unit"> L</span></div></div>
       <div class="kpi k-green"><div class="k-label">📈 Média geral</div><div class="k-value">${fmt(f.media, 2)}<span class="k-unit"> ${f.unidadeMedia}</span></div></div>
       ${f.tipo === "horimetro" ? "" :
@@ -2800,7 +2882,6 @@ function telaFicha() {
       <div class="kpi k-yellow"><div class="k-label">🕐 Horas de horímetro</div><div class="k-value">${fmt(f.totHorimetro, 1)}<span class="k-unit"> h</span></div></div>
       <div class="kpi k-blue"><div class="k-label">🏭 Produção</div><div class="k-value">${fmt(f.totToneladas)}<span class="k-unit"> t</span></div></div>
       <div class="kpi k-yellow"><div class="k-label">🏭 L/Ton</div><div class="k-value">${fmt(f.lton, 2)}<span class="k-unit"> L/t</span></div></div>
-      <div class="kpi"><div class="k-label">📍 Horím. atual</div><div class="k-value">${f.ultimo.horimetroFinal ?? "—"}</div></div>
     </div>
 
     <div class="spacer"></div>
