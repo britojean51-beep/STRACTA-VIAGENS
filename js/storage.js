@@ -112,7 +112,21 @@ const DB = {
     if (mexeu) this.save();
   },
 
-  toN(v) { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; },
+  /* Número escrito do jeito brasileiro. O app MOSTRA "4.250 L"; se ele reescreve
+     o que está vendo, o ponto é separador de milhar — e parseFloat("4.250") dá
+     4,25, ou seja, o tanque de quatro mil litros virava quatro litros e meio.
+       "1.500,5" → 1500.5   "3.000" → 3000   "120,1" → 120,1   "1008.5" → 1008,5
+     Com vírgula, ela manda: o ponto só pode ser milhar. Sem vírgula, o ponto só
+     é milhar quando separa grupos exatos de três casas. */
+  toN(v) {
+    if (typeof v === "number") return isFinite(v) ? v : 0;
+    let t = String(v == null ? "" : v).trim().replace(/\s/g, "");
+    if (!t) return 0;
+    if (t.indexOf(",") >= 0) t = t.replace(/\./g, "").replace(",", ".");
+    else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+    const n = parseFloat(t);
+    return isNaN(n) ? 0 : n;
+  },
 
   /* Litragem: a bomba marca décimo, então 120,1 tem que continuar 120,1.
      Número redondo segue sem o ",0" — 120 fica 120, e não "120,0". */
@@ -318,6 +332,27 @@ const DB = {
   },
   _novoId() { return Date.now() + "-" + Math.random().toString(36).slice(2, 7); },
 
+  /* Move os tanques por causa de UM lançamento. sinal -1 consome, +1 devolve.
+     Tudo que mexe em litros passa por aqui: lançar desconta, excluir devolve, e
+     editar devolve o antigo antes de descontar o novo — é isso que faz a troca de
+     S-10 para S-500 mover os litros de um tanque para o outro em vez de sumir.
+     Sem clamp em zero: a nuvem soma com increment e não clampa, então clampar só
+     aqui faria o celular e a nuvem discordarem. Tanque negativo é informação —
+     quer dizer que entrou diesel que ninguém registrou. */
+  _moverTanques(reg, sinal) {
+    if (!reg) return;
+    const db = this.load();
+    const tanque = reg.combustivel === "S-500" ? "s500" : "s10";
+    const litros = this.toN(reg.litros) * sinal;
+    const arla = this.toN(reg.litrosArla) * sinal;
+    if (litros) db.estoque[tanque] = (db.estoque[tanque] || 0) + litros;
+    if (arla) db.estoque.arla = (db.estoque.arla || 0) + arla;
+    this._nuvem(C => {
+      if (litros) C.ajustarEstoque(tanque, litros);
+      if (arla) C.ajustarEstoque("arla", arla);
+    });
+  },
+
   /* ---- Abastecimento ---- */
   addAbastecimento(iso, reg) {
     const db = this.load();
@@ -327,24 +362,14 @@ const DB = {
     db.dias[iso].abastecimentos.push(reg);
     // atualiza acumulado (KM pode ser nulo em equipamento de horímetro)
     this.setUltimo(reg.equipamento, reg.kmFinal, reg.horimetroFinal);
-    // desconta o tanque de diesel correto
-    const tanque = reg.combustivel === "S-500" ? "s500" : "s10";
-    const litros = Number(reg.litros) || 0;
-    db.estoque[tanque] = Math.max(0, (db.estoque[tanque] || 0) - litros);
-    // desconta o ARLA 32
-    const arla = Number(reg.litrosArla) || 0;
-    if (arla) db.estoque.arla = Math.max(0, (db.estoque.arla || 0) - arla);
+    this._moverTanques(reg, -1);          // desconta diesel e ARLA dos tanques
     this.save();
     // aplica o status conforme a situação — o horário é o que a pessoa digitou no lançamento
     if (reg.situacao) {
       this.setStatus(reg.equipamento, this.statusDaSituacao(reg.situacao),
                      { dia: iso, hora: reg.hora, origem: "abastecimento" });
     }
-    this._nuvem(C => {
-      C.push("abastecimentos", iso, reg);
-      if (litros) C.ajustarEstoque(tanque, -litros);
-      if (arla) C.ajustarEstoque("arla", -arla);
-    });
+    this._nuvem(C => C.push("abastecimentos", iso, reg));
     return reg;
   },
 
@@ -377,6 +402,11 @@ const DB = {
     const db = this.load();
     const dia = db.dias[iso];
     if (!dia || !dia[tipo]) return;
+    // abastecimento excluído devolve o diesel e o ARLA ao tanque
+    if (tipo === "abastecimentos") {
+      const reg = dia.abastecimentos.find(r => r.id === id);
+      if (reg) this._moverTanques(reg, +1);
+    }
     dia[tipo] = dia[tipo].filter(r => r.id !== id);
     this.save();
     this._nuvem(C => C.remover(tipo, id));
@@ -389,9 +419,13 @@ const DB = {
     if (!dia) return;
     const idx = dia.abastecimentos.findIndex(r => r.id === id);
     if (idx >= 0) {
+      const antigo = dia.abastecimentos[idx];
       reg.id = id;
-      reg.criadoPor = reg.criadoPor || dia.abastecimentos[idx].criadoPor || this._quem();
+      reg.criadoPor = reg.criadoPor || antigo.criadoPor || this._quem();
       dia.abastecimentos[idx] = reg;
+      // o tanque acompanha a correção: volta o que foi lançado, desconta o que ficou
+      this._moverTanques(antigo, +1);
+      this._moverTanques(reg, -1);
       this.setUltimo(reg.equipamento, reg.kmFinal, reg.horimetroFinal);
       this.save();
       this._nuvem(C => C.push("abastecimentos", iso, reg));

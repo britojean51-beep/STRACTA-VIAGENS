@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "15/09/2026 · r50 (KM e horímetro atuais)";
+const VERSION = "16/09/2026 · r51 (litros do tanque)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -29,7 +29,9 @@ let painelKpi = null;
 let painelMetrica = "diesel";
 
 /* ---------- Utilidades numéricas ---------- */
-const num = v => { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; };
+/* Uma leitura de número só para o app inteiro (ver DB.toN): "4.250" é quatro mil
+   duzentos e cinquenta, do jeito que o próprio app escreve na tela. */
+const num = v => DB.toN(v);
 const fmt = (n, d = 0) => Number(n).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 /* Litragem, com o décimo que a bomba marca (120,1) e sem ",0" no número redondo. */
 const fmtL = n => DB.fmtL(n);
