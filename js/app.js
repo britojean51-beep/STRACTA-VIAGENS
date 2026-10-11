@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "16/09/2026 · r51 (litros do tanque)";
+const VERSION = "11/10/2026 · r52 (editar horímetro e KM na ficha)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -234,6 +234,24 @@ function medidores(eq) {
     // "12.500 km · 1.200,5 h" — em máquina de horímetro, só a hora
     linha() { return (this.temKm ? this.kmTxt + " · " : "") + this.horTxt; }
   };
+}
+
+/* Medidor que CAI é quase sempre dígito a menos — e um horímetro errado vira o
+   inicial do próximo abastecimento, estragando as horas do mês inteiro. Mas medidor
+   trocado ou zerado existe de verdade, então pergunta em vez de bloquear.
+   Mora aqui porque a manutenção e a ficha cobram a mesma coisa: em duas cópias, a
+   regra divergiria na primeira vez que uma delas fosse ajustada.
+   Devolve true quando pode gravar. */
+async function confirmarMedidorMenor(eq, horiTxt, kmTxt) {
+  const med = medidores(eq);
+  const baixou = [];
+  if (horiTxt !== "" && med.hor != null && num(horiTxt) < med.hor)
+    baixou.push(`o horímetro atual é ${fmtN1(med.hor)} e você digitou ${fmtN1(num(horiTxt))}`);
+  if (kmTxt !== "" && med.km != null && num(kmTxt) < med.km)
+    baixou.push(`o KM atual é ${fmt(med.km)} e você digitou ${fmt(num(kmTxt))}`);
+  if (!baixou.length) return true;
+  return confirmar(`Atenção: ${baixou.join(" e ")}. O número está abaixo do que já foi ` +
+    `registrado. Confirma assim mesmo?`);
 }
 
 /* O que a manutenção anotou de medidor. Registro antigo tem um texto livre só
@@ -1828,21 +1846,9 @@ function telaManutencao() {
     if (!eq) return;
     selEquip.value = eq;
     if (!serv) { toast("Descreva o serviço", "err"); return; }
-    const med = medidores(eq);
     const horiTxt = $("#mHori").value.trim();
-    const kmTxt = med.temKm ? $("#mKm").value.trim() : "";
-
-    /* Medidor que CAI é quase sempre dígito a menos — e um horímetro errado aqui
-       vira o inicial do próximo abastecimento, estragando as horas do mês inteiro.
-       Mas horímetro trocado ou zerado existe de verdade, então pergunta em vez de
-       bloquear: ele confirma e passa. */
-    const baixou = [];
-    if (horiTxt !== "" && med.hor != null && num(horiTxt) < med.hor)
-      baixou.push(`o horímetro atual é ${fmtN1(med.hor)} e você digitou ${fmtN1(num(horiTxt))}`);
-    if (kmTxt !== "" && med.km != null && num(kmTxt) < med.km)
-      baixou.push(`o KM atual é ${fmt(med.km)} e você digitou ${fmt(num(kmTxt))}`);
-    if (baixou.length && !await confirmar(
-      `Atenção: ${baixou.join(" e ")}. O número está abaixo do que já foi registrado. Confirma assim mesmo?`)) return;
+    const kmTxt = medidores(eq).temKm ? $("#mKm").value.trim() : "";
+    if (!await confirmarMedidorMenor(eq, horiTxt, kmTxt)) return;
 
     const mreg = DB.addManutencao(dia, {
       equipamento: eq, tipo: $("#mTipo").value,
@@ -2838,6 +2844,19 @@ function telaFicha() {
           <option value="horimetro" ${f.tipo === "horimetro" ? "selected" : ""}>🚜 Somente Horímetro (L/h)</option>
         </select>
       </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Horímetro atual</label>
+          <input id="fkHori" inputmode="decimal" value="${medidores(eq).hor ?? ""}" placeholder="ex: 19910">
+        </div>
+        <div class="field" id="fkKmWrap" style="${medidores(eq).temKm ? "" : "display:none"}">
+          <label>KM atual</label>
+          <input id="fkKm" inputmode="decimal" value="${medidores(eq).km ?? ""}" placeholder="ex: 12500">
+        </div>
+      </div>
+      <p class="hint">É aqui que se acerta o medidor sem precisar de lançamento — horímetro
+      trocado, máquina nova, número digitado errado. Campo deixado <b>em branco não apaga</b> o
+      que já está gravado. O número que ficar aqui já entra como inicial no próximo abastecimento.</p>
       <div class="field">
         <label>Operador atual <span class="mini">preenche sozinho ao lançar</span></label>
         <select id="fkOperador">
@@ -2960,12 +2979,25 @@ function telaFicha() {
 
   $("#fkMes").onchange = e => { horasMesSel = e.target.value; telaFicha(); };
 
-  $("#btnFkSalvar").onclick = () => {
+  /* O KM segue o SELECT, não o tipo gravado: promover a máquina para "KM + Horímetro"
+     tem de abrir o campo na hora, senão ele troca a medição e não acha onde digitar. */
+  $("#fkTipo").onchange = e => {
+    $("#fkKmWrap").style.display = e.target.value === "horimetro" ? "none" : "";
+  };
+
+  $("#btnFkSalvar").onclick = async () => {
+    const horiTxt = $("#fkHori").value.trim();
+    // medição em horímetro não tem KM para gravar; o valor guardado fica onde está
+    const kmTxt = $("#fkTipo").value === "horimetro" ? "" : $("#fkKm").value.trim();
+    // pergunta ANTES de gravar: no meio, cancelar deixaria status e turno salvos pela metade
+    if (!await confirmarMedidorMenor(eq, horiTxt, kmTxt)) return;
+
     DB.setStatus(eq, $("#fkStatus").value, { dia: DB.garantirDiaAtual(), origem: "ficha" });
     DB.setTipoEquip(eq, $("#fkTipo").value);
     DB.setTurnoEquip(eq, $("#fkTurnoIni").value || "07:00", $("#fkTurnoFim").value || "19:00");
     DB.setProximaRevisao(eq, $("#fkRev").value.trim());
     DB.setOperadorEquip(eq, $("#fkOperador").value);
+    DB.atualizarMedidor(eq, { horimetro: horiTxt, km: kmTxt });
     Sync.pushEquipamento(eq);
     Sync.pushParadas();
     Sync.pushHorasMes(DB.garantirDiaAtual());   // o turno novo muda as horas do mês
