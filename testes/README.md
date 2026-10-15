@@ -15,6 +15,7 @@ python3 -m http.server 8130
 NODE_PATH=/opt/node22/lib/node_modules node smoke.js
 NODE_PATH=/opt/node22/lib/node_modules node test40.js
 NODE_PATH=/opt/node22/lib/node_modules node test41.js
+NODE_PATH=/opt/node22/lib/node_modules node test-checklist.js   # app /checklist (porta 8131)
 node simgs.js "Solicitações"      # roda o Codigo.gs de verdade sobre o que o app mandou
 ```
 
@@ -27,6 +28,8 @@ node simgs.js "Solicitações"      # roda o Codigo.gs de verdade sobre o que o 
 | `fetchstub.js` | Intercepta o envio para a planilha e guarda o payload. |
 | `simgs.js` | Roda o `google-sheets/Codigo.gs` **de verdade** fora do Google e imprime as abas. |
 | `smoke.js` | Passa por todas as telas nos dois temas: erro de JavaScript e contraste. |
+| `ck-sdk.js` | Firebase de mentira (Auth, Firestore com fila sem sinal, Storage) para o app `/checklist`. |
+| `test-checklist.js` | App `/checklist` de ponta a ponta: login, cadastros, checklist com foto, sem sinal, painel. Sirva em 8131. |
 | `test40.js` | Solicitações de manutenção com foto (r47). |
 | `test41.js` | A aba Solicitações na planilha (r47). |
 

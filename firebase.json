@@ -11,7 +11,9 @@
         "google-sheets/**",
         "firebase/**",
         "README.md",
-        "redirecionar/**"
+        "redirecionar/**",
+        "checklist/*.md",
+        "checklist/regras-storage.txt"
       ],
       "headers": [
         {
@@ -38,6 +40,50 @@
             {
               "key": "Cache-Control",
               "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/checklist/sw.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/checklist/index.html",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/checklist/manifest.json",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/checklist/**",
+          "headers": [
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            },
+            {
+              "key": "Permissions-Policy",
+              "value": "camera=(self), microphone=(self), geolocation=(self)"
             }
           ]
         }
