@@ -10,6 +10,7 @@ name: Publicar Checklist
 on:
   push:
     branches:
+      - claude/stracta-fleet-mobile-v1-nj63nl
       - main
     paths:
       - "checklist/**"
