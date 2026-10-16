@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck1";
+const VERSAO = "ck2";
 const RASCUNHO_KEY = "ck_rascunho";
 const HISTORICO_KEY = "ck_historico";
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
@@ -338,7 +338,7 @@ Render.checklist = function () {
           ${resp.st === "nok" ? `<textarea class="ck-obs" placeholder="O que está errado? (obrigatório)" rows="2">${h(resp.obs || "")}</textarea>` : ""}
           <div class="midias">${miniaturas(it.id)}
             <button class="add-midia" data-foto="${h(it.id)}">📷</button>
-            <button class="add-midia" data-video="${h(it.id)}">🎥</button>
+            ${Midia.video() ? `<button class="add-midia" data-video="${h(it.id)}">🎥</button>` : ""}
           </div>
         </div>`;
       }).join("")}
@@ -348,7 +348,7 @@ Render.checklist = function () {
       <p class="muted mini">Frente, traseira, laterais, painel…</p>
       <div class="midias">${miniaturas("geral")}
         <button class="add-midia" data-foto="geral">📷</button>
-        <button class="add-midia" data-video="geral">🎥</button>
+        ${Midia.video() ? `<button class="add-midia" data-video="geral">🎥</button>` : ""}
       </div>
       <textarea id="ckObs" rows="3" placeholder="Observação geral (opcional)">${h(r.obs)}</textarea>
     </div>
@@ -408,6 +408,9 @@ function capturar(tipo, item) {
     const arq = inp.files && inp.files[0];
     if (!arq) return;
     const r = Estado.rascunho;
+    if (Object.keys(r.midias).length >= Midia.limiteFotos) {
+      return toast("Limite de " + Midia.limiteFotos + " fotos por checklist. Tire uma para pôr outra.", "erro");
+    }
     toast(tipo === "foto" ? "Processando foto…" : "Guardando vídeo…");
     try {
       const carimbo = (nomeEquip(r.equip) || "") + " · " + dataHora(Date.now()) + " · " + (Dados.usuario.usuario || "");
@@ -460,7 +463,7 @@ async function finalizar() {
   const agora = Date.now();
   const midias = {};
   Object.entries(r.midias).forEach(([mid, m]) => {
-    midias[mid] = { item: m.item, tipo: m.tipo, path: "checklist/" + r.id + "/" + mid + "." + m.ext, ok: false,
+    midias[mid] = { item: m.item, tipo: m.tipo, path: Midia.caminho(r.id, mid, m.ext), ok: false,
       dur: m.dur || null, tam: m.tam || null };
   });
   const insp = {
@@ -660,6 +663,7 @@ Render.detalhe = async function (id) {
   $("#dtApagar").onclick = async () => {
     if (!(await confirmar("Apagar este checklist? Não tem como desfazer."))) return;
     Dados.col("inspecoes").doc(i.id).delete().catch(() => toast("Não deu para apagar.", "erro"));
+    Midia.apagarRemotas(i.midias);
     Painel.lista = (Painel.lista || []).filter(x => x.id !== i.id);
     toast("Apagado.", "ok"); Telas.voltar();
   };

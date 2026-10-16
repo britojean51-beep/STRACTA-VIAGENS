@@ -1,6 +1,6 @@
 # ✅ Checklist de Máquinas e Caminhões — como ligar
 
-App para motoristas e operadores fazerem o checklist no celular, com **foto e vídeo**,
+App para motoristas e operadores fazerem o checklist no celular, com **foto** (e vídeo, quando ligar o Storage),
 funcionando **sem sinal** no pátio. O gestor acompanha tudo no **Painel**.
 
 **Endereço:** o seu próprio, por exemplo **https://gp2t-checklist.web.app** (passo 4 abaixo).
@@ -24,7 +24,8 @@ e usar como aplicativo.
 | Site (o app) | Firebase Hosting (Google) | HTTPS sempre, servido pela rede de entrega do Google |
 | Login | Firebase Authentication | senha guardada pelo Google; bloqueio automático contra tentativas em massa |
 | Checklists, equipamentos, modelos, usuários | Firestore (`checklist_*`) | regras: só quem foi liberado lê e grava; o inspetor só vê o que ele mesmo fez |
-| Fotos e vídeos | Firebase Storage (`checklist/…`) | regras: só liberados enviam/veem; só imagem e vídeo, até 60 MB; ninguém apaga pelo app |
+| Fotos | Firestore (`checklist_fotos`) | regras: só liberados enviam; o inspetor vê só as suas; só JPEG até 950 KB; só admin apaga |
+| Vídeos *(quando ligar)* | Firebase Storage (`checklist/…`) | regras: só liberados enviam/veem; só imagem e vídeo, até 60 MB; ninguém apaga pelo app |
 
 Depois de enviado, o checklist **não pode ser alterado** pelo inspetor (só a marcação de
 foto enviada). A foto leva **carimbo** com equipamento, data, hora e usuário.
@@ -33,14 +34,20 @@ foto enviada). A foto leva **carimbo** com equipamento, data, hora e usuário.
 
 ## Configurar (uma vez só)
 
-### 1. Ligar o Storage (fotos e vídeos)
-Firebase → **Storage** → **Começar**.
+### 1. Fotos: já funcionam, sem cartão
+Hoje as fotos ficam no **Firestore** (`checklist_fotos`, uma foto por documento),
+dentro do plano grátis. Cada foto tem ~100–200 KB. O Firestore grátis guarda 1 GB,
+o que dá **umas 5 mil fotos**. O uso aparece em Firestore → **Uso**.
 
-> ⚠️ Desde 2024 o Google exige o plano **Blaze** (pago por uso) para usar o Storage.
-> Mesmo no Blaze há uma **cota grátis** (por exemplo 5 GB guardados em região dos EUA).
-> Uma foto do app tem ~100–300 KB; um vídeo de 30 s tem ~10–40 MB.
-> **Recomendado:** em Google Cloud → Faturamento → **Orçamentos e alertas**, crie um
-> alerta de R$ 50 para receber aviso por e-mail antes de qualquer surpresa.
+- Até **12 fotos** por checklist.
+- **Sem vídeo** por enquanto: vídeo não cabe num documento do Firestore.
+
+**Para ligar o vídeo depois** (plano Blaze):
+1. Faça o upgrade, com um alerta de orçamento (ex.: R$ 50).
+2. **Storage → Começar**, local **`US-CENTRAL1`** (só as regiões `US-` têm 5 GB grátis), modo de produção.
+3. Cole as regras do passo 3.
+4. Peça para trocar `USAR_STORAGE = false` para `true` em `checklist/js/midia.js`.
+   Os checklists antigos continuam abrindo as fotos de onde estão.
 
 ### 2. Colar as regras do Firestore
 Firebase → **Firestore Database** → **Regras** → apague tudo → cole o conteúdo de
@@ -49,7 +56,7 @@ Firebase → **Firestore Database** → **Regras** → apague tudo → cole o co
 O arquivo é o mesmo do app de frota, com o bloco do checklist acrescentado — por isso
 colar ele inteiro não estraga nada do que já funciona.
 
-### 3. Colar as regras do Storage
+### 3. Colar as regras do Storage *(só quando ligar o vídeo)*
 Firebase → **Storage** → **Regras** → apague tudo → cole
 [`regras-storage.txt`](regras-storage.txt) → **Publicar**.
 Se aparecer um pedido para o Storage **acessar o Firestore**, aceite (é assim que ele
@@ -98,6 +105,6 @@ Item **crítico** com defeito = equipamento **BLOQUEADO**. Defeito em item comum
 - Se fechar o app no meio do checklist, ele continua de onde parou.
 - O **primeiro login** em cada celular precisa de internet.
 
-## Vídeo
+## Vídeo (quando ligar o Storage)
 Até **60 segundos** (o navegador não consegue comprimir vídeo; o limite evita arquivos
 enormes e conta alta no Storage).

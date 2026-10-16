@@ -106,6 +106,7 @@ async function sair(page) {
   await shot(page, '02-escolher');
   await page.click('.equip:has-text("CB-12")');
   await page.waitForSelector('.ck-item');
+  ok(!(await page.$('[data-video]')), 'sem Storage não oferece vídeo');
   const nItens = await page.$$eval('.ck-item', l => l.length);
   ok(nItens === 18, 'modelo padrão de caminhão (' + nItens + ' itens)');
   await page.fill('#ckKm', '152340');
@@ -130,15 +131,18 @@ async function sair(page) {
   await page.waitForSelector('.resultado');
   ok((await page.textContent('.resultado h2')).includes('BLOQUEADO'), 'defeito crítico = BLOQUEADO');
   await shot(page, '04-resultado');
-  await page.waitForFunction(() => Object.keys(window.__STORAGE__).length === 1);
+  await page.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('__ck_banco__') || '{}')).filter(k => k.startsWith('checklist_fotos/')).length === 1);
   await page.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem('__ck_banco__')))
     .some(d => d.resultado && d.pendentes === 0));
   const b3 = await banco(page);
   const insp = Object.values(b3).find(d => d.resultado);
   const [mid, m] = Object.entries(insp.midias)[0];
-  ok(m.ok && m.item === 'i1' && m.path === 'checklist/' + insp.id + '/' + mid + '.jpg', 'foto subiu e foi marcada no checklist');
-  const st = await page.evaluate(() => { const x = Object.values(window.__STORAGE__)[0]; return { t: x.blob.type, s: x.blob.size }; });
-  ok(st.t === 'image/jpeg' && st.s < 400000, 'foto reduzida antes de subir (' + Math.round(st.s / 1024) + ' KB, jpeg)');
+  ok(m.ok && m.item === 'i1' && m.path === 'checklist_fotos/' + mid, 'foto subiu (Firestore) e foi marcada no checklist');
+  const fdoc = b3['checklist_fotos/' + mid];
+  ok(fdoc && fdoc.inspecao === insp.id && fdoc.criadoPor === 'ze@gp2t.local', 'documento da foto ligado ao checklist e ao autor');
+  ok(fdoc.dados.startsWith('data:image/jpeg;base64,') && fdoc.dados.length < 950000,
+    'foto reduzida antes de subir (' + Math.round(fdoc.dados.length / 1024) + ' KB, jpeg; regra aceita até 950 KB)');
+  ok(Object.keys(await page.evaluate(() => window.__STORAGE__)).length === 0, 'nada vai para o Storage (desligado)');
   ok(insp.km === 152340 && insp.criadoPor === 'ze@gp2t.local' && insp.criticos === 1 && insp.tratativa.status === 'aberto',
     'checklist gravado com KM, autor e tratativa aberta');
 
@@ -161,7 +165,7 @@ async function sair(page) {
   ok((await page.textContent('.resultado h2')).includes('RESTRIÇÃO'), 'defeito não crítico = LIBERADO COM RESTRIÇÃO');
   ok((await page.textContent('.resultado + p')).includes('Sem sinal'), 'avisa que ficou guardado');
   await page.waitForTimeout(300);
-  ok(await page.evaluate(() => Object.keys(window.__STORAGE__).length) === 1, 'sem sinal a foto não sobe');
+  ok(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('__ck_banco__') || '{}')).filter(k => k.startsWith('checklist_fotos/')).length) === 1, 'sem sinal a foto não sobe');
   ok((await page.textContent('#rede')).includes('sem sinal · 1'), 'topo mostra "sem sinal · 1" pendente');
   await page.click('#rsInicio');
   ok((await page.textContent('#app')).includes('⏳ na fila'), 'início mostra o checklist "na fila"');
@@ -169,7 +173,7 @@ async function sair(page) {
   // rede volta
   await page.context().setOffline(false);
   await page.evaluate(() => window.__redeVoltou());
-  await page.waitForFunction(() => Object.keys(window.__STORAGE__).length === 2);
+  await page.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('__ck_banco__') || '{}')).filter(k => k.startsWith('checklist_fotos/')).length === 2);
   await page.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem('__ck_banco__')))
     .filter(d => d.resultado && d.pendentes === 0).length === 2);
   ok(true, 'rede voltou: foto subiu sozinha e o checklist foi marcado');
@@ -190,8 +194,8 @@ async function sair(page) {
   ok(await page.$$eval('#pLista .item', l => l.length) === 1, 'filtro de bloqueados');
   await page.click('#pLista .item');
   await page.waitForSelector('.remota img');
-  await page.waitForFunction(() => document.querySelector('.remota img').src.startsWith('blob:'));
-  ok(true, 'foto do Storage aparece no detalhe');
+  await page.waitForFunction(() => document.querySelector('.remota img').src.startsWith('data:image/jpeg'));
+  ok(true, 'foto aparece no detalhe do admin');
   ok((await page.textContent('#app')).includes('Pneu dianteiro esquerdo com corte'), 'observação do defeito aparece');
   await shot(page, '07-detalhe');
   await page.fill('#dtNota', 'Pneu trocado');

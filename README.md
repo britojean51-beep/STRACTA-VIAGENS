@@ -33,7 +33,7 @@ Sistema **web** de controle de frota da **STRACTA Mineração**, projetado para 
 
 App **separado**, para os operadores, em [`checklist/`](checklist/), com endereço e publicação próprios
 (ex.: **https://gp2t-checklist.web.app**) — quem tem acesso só ao checklist não entra no app de frota:
-checklist diário com **foto e vídeo**, funciona **sem sinal**, login rápido que fica salvo,
+checklist diário com **foto** (vídeo quando ligar o Storage), funciona **sem sinal**, login rápido que fica salvo,
 item crítico com defeito **bloqueia** o equipamento e o gestor acompanha no **Painel**
 (filtros, tratativa, WhatsApp, planilha CSV). Como ligar: [`checklist/COMO-CONFIGURAR.md`](checklist/COMO-CONFIGURAR.md).
 

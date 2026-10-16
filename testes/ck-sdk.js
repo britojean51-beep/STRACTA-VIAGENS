@@ -118,7 +118,7 @@
     ouvintes.add(f); setTimeout(f, 5);
     return () => ouvintes.delete(f);
   };
-  const fsInst = { enablePersistence: async () => {}, collection: n => new Col(n) };
+  const fsInst = { enablePersistence: async () => {}, collection: n => new Col(n), doc: p => new Doc(p) };
   function firestore() { return fsInst; }
   firestore.FieldValue = { increment: n => ({ __inc__: n }) };
 

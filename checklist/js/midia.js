@@ -7,13 +7,26 @@
      Só sai de lá depois que o Storage confirmou o envio — sem sinal no
      pátio, nada se perde; a fila esvazia sozinha quando a rede volta.
    ============================================================ */
-const FOTO_LADO = 1600;
-const FOTO_QUALIDADE = 0.72;
+/* ONDE FICAM AS FOTOS
+   false (hoje): cada foto vira um documento em checklist_fotos no Firestore,
+     que é grátis no plano atual. Sem vídeo: vídeo não cabe num documento.
+   true: fotos e vídeos vão para o Firebase Storage. Exige o plano Blaze e as
+     regras de checklist/regras-storage.txt. Os checklists antigos continuam
+     abrindo, cada foto sabe onde mora. */
+const USAR_STORAGE = false;
+
+const FOTO_LADO = USAR_STORAGE ? 1600 : 1280;
+const FOTO_QUALIDADE = USAR_STORAGE ? 0.72 : 0.6;
+const FOTO_MAX_BYTES = 700 * 1024;  // documento do Firestore tem limite de 1 MiB (e base64 cresce 1/3)
+const FOTOS_POR_CHECKLIST = USAR_STORAGE ? 40 : 12;
 const VIDEO_MAX_MB = 60;          // tem que bater com a regra do Storage
 const VIDEO_MAX_SEG = 60;
 
 const Midia = {
   _db: null,
+  video() { return USAR_STORAGE; },
+  limiteFotos: FOTOS_POR_CHECKLIST,
+  caminho(inspId, mid, ext) { return USAR_STORAGE ? "checklist/" + inspId + "/" + mid + "." + ext : "checklist_fotos/" + mid; },
 
   /* ---- IndexedDB: uma "gaveta" com os arquivos do aparelho ---- */
   _abrir() {
@@ -70,8 +83,15 @@ const Midia = {
       ctx.textBaseline = "bottom";
       ctx.fillText(carimbo, pad, h - pad);
     }
-    const blob = await new Promise(ok => cv.toBlob(ok, "image/jpeg", FOTO_QUALIDADE));
+    let q = FOTO_QUALIDADE, blob = null;
+    // foto de muito detalhe (cascalho, grade) comprime mal: baixa a qualidade até caber
+    for (let i = 0; i < 5; i++) {
+      blob = await new Promise(ok => cv.toBlob(ok, "image/jpeg", q));
+      if (!blob || USAR_STORAGE || blob.size <= FOTO_MAX_BYTES) break;
+      q -= 0.12;
+    }
     if (!blob) throw new Error("Não deu para processar a foto.");
+    if (!USAR_STORAGE && blob.size > FOTO_MAX_BYTES) throw new Error("Foto grande demais. Tire de novo, mais de perto.");
     return { blob, tipo: "foto", ext: "jpg", w, h };
   },
   _carregarImagem(arquivo) {
@@ -150,6 +170,7 @@ const Midia = {
   },
 
   async _enviarUm(reg) {
+    if (!reg.path.startsWith("checklist/")) return this._enviarFirestore(reg);
     const ref = firebase.storage().ref(reg.path);
     // já subiu numa tentativa anterior (caiu antes de marcar)? não manda de novo
     let existe = false;
@@ -169,9 +190,35 @@ const Midia = {
     await Dados.marcarMidiaEnviada(reg.inspId, reg.mid);
   },
 
+  /* Foto sem Storage: um documento por foto (cabe folgado no 1 MiB). O set
+     repetido grava o mesmo conteúdo, então tentar de novo não duplica. */
+  async _enviarFirestore(reg) {
+    const dados = await new Promise((ok, falha) => {
+      const fr = new FileReader();
+      fr.onload = () => ok(fr.result);
+      fr.onerror = () => falha(fr.error);
+      fr.readAsDataURL(reg.blob);
+    });
+    await firebase.firestore().doc(reg.path).set({
+      inspecao: reg.inspId, item: reg.item || "geral", criadoPor: Dados.usuario.email,
+      criadoEm: Date.now(), dados
+    });
+    await Dados.marcarMidiaEnviada(reg.inspId, reg.mid);
+  },
+
   /* endereço para ver o arquivo (só quem está logado e liberado consegue) */
   async url(path) {
+    if (!path.startsWith("checklist/")) {
+      const d = await firebase.firestore().doc(path).get();
+      if (!d.exists) throw new Error("foto não encontrada");
+      return d.data().dados;
+    }
     return firebase.storage().ref(path).getDownloadURL();
+  },
+  /* apagar o checklist leva as fotos do Firestore junto (as do Storage ficam: a regra não deixa apagar) */
+  apagarRemotas(midias) {
+    return Promise.all(Object.values(midias || {}).filter(m => m.path && !m.path.startsWith("checklist/"))
+      .map(m => firebase.firestore().doc(m.path).delete().catch(() => {})));
   }
 };
 

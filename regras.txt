@@ -112,6 +112,18 @@ service cloud.firestore {
       allow delete: if ckAdmin();
     }
 
+    // Fotos do checklist (enquanto o Storage não estiver ligado): um documento
+    // por foto. Mesma regra de quem vê o checklist; só imagem JPEG, até ~950 KB.
+    match /checklist_fotos/{id} {
+      allow read: if ckAdmin() || (ckLiberado() && resource.data.criadoPor == meuEmail());
+      allow create, update: if ckLiberado()
+        && request.resource.data.criadoPor == meuEmail()
+        && request.resource.data.dados is string
+        && request.resource.data.dados.size() < 950000
+        && request.resource.data.dados.matches('data:image/jpeg;base64,.*');
+      allow delete: if ckAdmin();
+    }
+
     // Nada além disso.
     match /{document=**} {
       allow read, write: if false;
