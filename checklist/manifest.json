@@ -1,0 +1,15 @@
+{
+  "name": "GP2T · Checklist de Máquinas e Caminhões",
+  "short_name": "Checklist",
+  "description": "Checklist de máquinas e caminhões com foto e vídeo, funciona sem sinal.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1220",
+  "theme_color": "#0f172a",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

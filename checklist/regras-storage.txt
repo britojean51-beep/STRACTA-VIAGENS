@@ -1,0 +1,34 @@
+rules_version = '2';
+// Regras do Firebase STORAGE (fotos e vídeos do checklist).
+// Cole em: Firebase -> Storage -> Regras -> Publicar.
+// Ao publicar, o console pede para dar ao Storage permissão de ler o Firestore:
+// aceite — é assim que ele confere se a pessoa está liberada.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function meuEmail() { return request.auth.token.email.lower(); }
+    function ckCadastrado() {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/checklist_usuarios/$(meuEmail()))
+        && firestore.get(/databases/(default)/documents/checklist_usuarios/$(meuEmail())).data.get('ativo', true) != false;
+    }
+    function gestorFrota() {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/usuarios/$(meuEmail()))
+        && firestore.get(/databases/(default)/documents/usuarios/$(meuEmail())).data.get('perfil', '') == 'gestor';
+    }
+    function liberado() { return ckCadastrado() || gestorFrota(); }
+
+    // checklist/{id do checklist}/{arquivo}: só foto e vídeo, até 60 MB.
+    // Ninguém apaga pelo app: a foto é a prova do checklist.
+    match /checklist/{inspecao}/{arquivo} {
+      allow read: if liberado();
+      allow create, update: if liberado()
+        && request.resource.size < 60 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|video/.*');
+    }
+
+    match /{tudo=**} {
+      allow read, write: if false;
+    }
+  }
+}

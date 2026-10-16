@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>GP2T · Checklist</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="css/style.css?v=ck2" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+</head>
+<body>
+  <header class="topo" id="topo">
+    <button class="voltar" id="btnVoltar" aria-label="Voltar">‹</button>
+    <div class="titulos">
+      <h1 id="titulo">✅ CHECKLIST</h1>
+      <p id="subtitulo">MÁQUINAS E CAMINHÕES</p>
+    </div>
+    <span class="rede" id="rede" title="Conexão">●</span>
+  </header>
+
+  <main id="app"><p class="carregando">Carregando…</p></main>
+
+  <nav class="abas" id="abas" hidden>
+    <button class="aba" data-ir="inicio"><span>🏠</span>Início</button>
+    <button class="aba" data-ir="novo"><span>➕</span>Checklist</button>
+    <button class="aba so-admin" data-ir="painel"><span>📊</span>Painel</button>
+    <button class="aba so-admin" data-ir="cadastros"><span>🗂️</span>Cadastros</button>
+    <button class="aba" data-ir="conta"><span>👤</span>Conta</button>
+  </nav>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- Firebase. Sem internet o app abre pela cópia salva e guarda tudo para enviar depois. -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+  <script src="js/firebase-config.js?v=ck2"></script>
+  <script src="js/midia.js?v=ck2"></script>
+  <script src="js/dados.js?v=ck2"></script>
+  <script src="js/app.js?v=ck2"></script>
+</body>
+</html>

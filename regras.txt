@@ -72,6 +72,58 @@ service cloud.firestore {
       }
     }
 
+    // ---- Checklist de máquinas e caminhões (app em /checklist) ----
+    // Quem entra: documento ativo em checklist_usuarios. O gestor do app de
+    // frota também entra, como admin — é ele quem libera os primeiros.
+    function ckDoc() {
+      return get(/databases/$(database)/documents/checklist_usuarios/$(meuEmail())).data;
+    }
+    function ckCadastrado() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/checklist_usuarios/$(meuEmail()))
+        && ckDoc().get('ativo', true) != false;
+    }
+    function ckLiberado() { return ckCadastrado() || ehGestor(); }
+    function ckAdmin() {
+      return (ckCadastrado() && ckDoc().get('perfil', '') == 'admin') || ehGestor();
+    }
+
+    match /checklist_usuarios/{email} {
+      allow get: if request.auth != null && (meuEmail() == email || ckAdmin());
+      allow list, create, update, delete: if ckAdmin();
+    }
+    match /checklist_equipamentos/{id} {
+      allow read: if ckLiberado();
+      allow write: if ckAdmin();
+    }
+    match /checklist_modelos/{id} {
+      allow read: if ckLiberado();
+      allow write: if ckAdmin();
+    }
+    // O checklist feito: quem fez lê o seu; o admin lê todos.
+    // Depois de enviado, quem fez só mexe em "midias" e "pendentes" (marcar a
+    // foto como enviada) — as respostas não mudam mais. Tratativa e apagar: admin.
+    match /checklist_inspecoes/{id} {
+      allow read: if ckAdmin() || (ckLiberado() && resource.data.criadoPor == meuEmail());
+      allow create: if ckLiberado() && request.resource.data.criadoPor == meuEmail();
+      allow update: if ckAdmin()
+        || (ckLiberado() && resource.data.criadoPor == meuEmail()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['midias', 'pendentes']));
+      allow delete: if ckAdmin();
+    }
+
+    // Fotos do checklist (enquanto o Storage não estiver ligado): um documento
+    // por foto. Mesma regra de quem vê o checklist; só imagem JPEG, até ~950 KB.
+    match /checklist_fotos/{id} {
+      allow read: if ckAdmin() || (ckLiberado() && resource.data.criadoPor == meuEmail());
+      allow create, update: if ckLiberado()
+        && request.resource.data.criadoPor == meuEmail()
+        && request.resource.data.dados is string
+        && request.resource.data.dados.size() < 950000
+        && request.resource.data.dados.matches('data:image/jpeg;base64,.*');
+      allow delete: if ckAdmin();
+    }
+
     // Nada além disso.
     match /{document=**} {
       allow read, write: if false;

@@ -11,7 +11,8 @@
         "google-sheets/**",
         "firebase/**",
         "README.md",
-        "redirecionar/**"
+        "redirecionar/**",
+        "checklist/**"
       ],
       "headers": [
         {

@@ -29,6 +29,14 @@ Sistema **web** de controle de frota da **STRACTA Mineração**, projetado para 
 - **PDF**: relatório diário formatado, via impressão do navegador (Salvar como PDF).
 - **Layout responsivo**: celular, tablet e computador.
 
+## ✅ App de Checklist (máquinas e caminhões)
+
+App **separado**, para os operadores, em [`checklist/`](checklist/), com endereço e publicação próprios
+(ex.: **https://gp2t-checklist.web.app**) — quem tem acesso só ao checklist não entra no app de frota:
+checklist diário com **foto** (vídeo quando ligar o Storage), funciona **sem sinal**, login rápido que fica salvo,
+item crítico com defeito **bloqueia** o equipamento e o gestor acompanha no **Painel**
+(filtros, tratativa, WhatsApp, planilha CSV). Como ligar: [`checklist/COMO-CONFIGURAR.md`](checklist/COMO-CONFIGURAR.md).
+
 ## 📱 Como usar no celular
 
 1. Hospede a pasta em qualquer servidor estático (ex.: **GitHub Pages**) ou abra o `index.html`.

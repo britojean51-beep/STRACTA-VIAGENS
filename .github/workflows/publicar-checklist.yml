@@ -1,0 +1,31 @@
+# Publica o app de Checklist (pasta checklist/) no SEU PRÓPRIO site do Firebase
+# Hosting (gp2t-checklist.web.app, definido em checklist/firebase.json),
+# separado do app de frota: os operadores só recebem este endereço.
+# Se este falhar, o app de frota continua publicando normalmente.
+name: Publicar Checklist
+
+on:
+  push:
+    branches:
+      - claude/stracta-fleet-mobile-v1-nj63nl
+      - main
+    paths:
+      - "checklist/**"
+      - ".github/workflows/publicar-checklist.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hosting:
+    name: Firebase Hosting (checklist)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_GP2T }}
+          projectId: gp2t-gestaodefrota
+          channelId: live
+          entryPoint: checklist
