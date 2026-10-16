@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "site": "SITE_DO_CHECKLIST",
+    "site": "gp2t-checklist",
     "public": ".",
     "ignore": [
       "firebase.json",

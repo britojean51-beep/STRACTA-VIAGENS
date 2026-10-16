@@ -63,15 +63,11 @@ Se aparecer um pedido para o Storage **acessar o Firestore**, aceite (é assim q
 confere quem está liberado).
 
 ### 4. Criar o endereço do checklist
-1. Firebase → **Hosting** → **Adicionar outro site** → ID: `gp2t-checklist`
-   (se já estiver em uso, escolha outro: só letras minúsculas, números e hífen).
+1. Firebase → **Hosting** → **Adicionar outro site** → ID: `gp2t-checklist` *(feito)*.
+   Se um dia usar outro ID, troque o `site` em `checklist/firebase.json`.
 2. Firebase → **Authentication** → **Configurações** → **Domínios autorizados** →
    **Adicionar** `gp2t-checklist.web.app` (o ID que você escolheu + `.web.app`).
-3. GitHub → repositório → **Settings** → **Secrets and variables** → **Actions** →
-   aba **Variables** → **New repository variable**:
-   - **Name:** `CHECKLIST_SITE`
-   - **Value:** `gp2t-checklist` (o mesmo ID)
-4. GitHub → **Actions** → **Publicar Checklist** → **Run workflow**. Ficou verde ✅?
+3. Junte o PR no branch principal (a publicação roda sozinha) ou vá em GitHub → **Actions** → **Publicar Checklist** → **Run workflow**. Ficou verde ✅?
    Abra `https://gp2t-checklist.web.app`.
 
 Daí em diante, cada mudança na pasta `checklist/` publica sozinha. A publicação é

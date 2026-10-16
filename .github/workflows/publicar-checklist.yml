@@ -1,10 +1,7 @@
 # Publica o app de Checklist (pasta checklist/) no SEU PRÓPRIO site do Firebase
-# Hosting, separado do app de frota: os operadores só recebem este endereço.
-#
-# Fica desligado até existir a variável CHECKLIST_SITE (Settings -> Secrets and
-# variables -> Actions -> Variables) com o ID do site criado no console
-# (Hosting -> Adicionar outro site). Assim, antes de configurar, nada falha, e
-# se este falhar o app de frota continua publicando normalmente.
+# Hosting (gp2t-checklist.web.app, definido em checklist/firebase.json),
+# separado do app de frota: os operadores só recebem este endereço.
+# Se este falhar, o app de frota continua publicando normalmente.
 name: Publicar Checklist
 
 on:
@@ -23,16 +20,9 @@ permissions:
 jobs:
   hosting:
     name: Firebase Hosting (checklist)
-    if: ${{ vars.CHECKLIST_SITE != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Usar o site configurado
-        env:
-          SITE: ${{ vars.CHECKLIST_SITE }}
-        run: |
-          echo "$SITE" | grep -Eq '^[a-z0-9-]+$' || { echo "CHECKLIST_SITE inválido: use só letras minúsculas, números e hífen"; exit 1; }
-          sed -i "s/SITE_DO_CHECKLIST/$SITE/" checklist/firebase.json
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_GP2T }}
