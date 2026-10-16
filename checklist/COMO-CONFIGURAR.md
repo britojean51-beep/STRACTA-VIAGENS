@@ -3,11 +3,17 @@
 App para motoristas e operadores fazerem o checklist no celular, com **foto e vídeo**,
 funcionando **sem sinal** no pátio. O gestor acompanha tudo no **Painel**.
 
-**Endereço:** https://gestaofrotaapp.web.app/checklist/
+**Endereço:** o seu próprio, por exemplo **https://gp2t-checklist.web.app** (passo 4 abaixo).
 
-Ele é publicado junto com o app de frota (mesmo projeto Firebase `gp2t-gestaodefrota`,
-mesmo envio automático do GitHub). Nada precisa ser instalado: abre no navegador e dá
-para **"Adicionar à tela inicial"** e usar como aplicativo.
+É um app **separado** do de frota: endereço próprio, ícone próprio, publicação própria.
+Os operadores recebem só este link e só têm acesso ao checklist — mesmo que alguém
+abra o app de frota e digite o usuário e a senha do checklist, ele recusa
+("Acesso não liberado"), e as regras do Firestore também barram os dados da frota.
+Os dois apps só dividem o projeto Firebase `gp2t-gestaodefrota` (a conta do Google),
+o que permite ao gestor da frota administrar o checklist sem um segundo login.
+
+Nada precisa ser instalado: abre no navegador e dá para **"Adicionar à tela inicial"**
+e usar como aplicativo.
 
 ---
 
@@ -49,7 +55,23 @@ Firebase → **Storage** → **Regras** → apague tudo → cole
 Se aparecer um pedido para o Storage **acessar o Firestore**, aceite (é assim que ele
 confere quem está liberado).
 
-### 4. Primeiro acesso
+### 4. Criar o endereço do checklist
+1. Firebase → **Hosting** → **Adicionar outro site** → ID: `gp2t-checklist`
+   (se já estiver em uso, escolha outro: só letras minúsculas, números e hífen).
+2. Firebase → **Authentication** → **Configurações** → **Domínios autorizados** →
+   **Adicionar** `gp2t-checklist.web.app` (o ID que você escolheu + `.web.app`).
+3. GitHub → repositório → **Settings** → **Secrets and variables** → **Actions** →
+   aba **Variables** → **New repository variable**:
+   - **Name:** `CHECKLIST_SITE`
+   - **Value:** `gp2t-checklist` (o mesmo ID)
+4. GitHub → **Actions** → **Publicar Checklist** → **Run workflow**. Ficou verde ✅?
+   Abra `https://gp2t-checklist.web.app`.
+
+Daí em diante, cada mudança na pasta `checklist/` publica sozinha. A publicação é
+**independente** da do app de frota: se uma falhar, a outra segue funcionando.
+A chave usada é a mesma que o app de frota já usa (`FIREBASE_SERVICE_ACCOUNT_GP2T`).
+
+### 5. Primeiro acesso
 Quem é **gestor** no app de frota já entra no checklist como **administrador**.
 Abra o endereço, entre com o mesmo usuário e senha e vá em:
 
@@ -79,9 +101,3 @@ Item **crítico** com defeito = equipamento **BLOQUEADO**. Defeito em item comum
 ## Vídeo
 Até **60 segundos** (o navegador não consegue comprimir vídeo; o limite evita arquivos
 enormes e conta alta no Storage).
-
-## Endereço próprio (opcional)
-Para ter um endereço só do checklist (ex.: `gp2t-checklist.web.app`):
-Firebase → Hosting → **Adicionar outro site**, e então peça para incluir esse site no
-`firebase.json` apontando para a pasta `checklist`. **Não** inclua antes de criar o site
-no console: a publicação automática falharia para os dois apps.
