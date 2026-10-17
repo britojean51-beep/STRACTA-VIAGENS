@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck8";
+const VERSAO = "ck9";
 const RASCUNHO_KEY = "ck_rascunho";
 const HISTORICO_KEY = "ck_historico";
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
@@ -44,7 +44,8 @@ function situacaoDe(e) {
 /* Onde o checklist aparece no Painel: o resolvido conta como Operando
    (o resultado original continua guardado e aparece no detalhe). */
 function statusPainel(i) {
-  return i.tratativa && i.tratativa.status === "resolvido" ? "liberado" : i.resultado;
+  // i.resolvido: o resumo guardado no aparelho (lista do Início)
+  return (i.tratativa && i.tratativa.status === "resolvido") || i.resolvido ? "liberado" : i.resultado;
 }
 /* o checklist em aberto mais recente que deixou o equipamento nessa situação */
 function pendenciaMaisRecente(e) {
@@ -121,14 +122,20 @@ const Historico = {
     const pend = this.lista().filter(x => !x.enviado);
     for (const r of pend) if (await Dados.confirmada(r.id)) this.marcar(r.id, { enviado: true });
   },
-  /* Checklist apagado no Painel (neste ou em outro celular) sai da lista.
-     Só confere o que já tinha chegado ao servidor: o que está na fila ainda
-     não existe lá e não pode sumir. */
-  async conferirApagados() {
+  /* Acompanha o que o Painel fez com os checklists deste aparelho:
+     apagado (neste ou em outro celular) sai da lista; resolvido passa a
+     Operando. Só confere o que já chegou ao servidor — o que está na fila
+     ainda não existe lá e não pode sumir. Sem sinal, nada muda. */
+  _sincronizadoEm: 0,
+  async sincronizar() {
     if (!navigator.onLine) return false;
+    this._sincronizadoEm = Date.now();
     let mudou = false;
     for (const r of this.lista().filter(x => x.enviado).slice(0, 30)) {
-      if (await Dados.existe(r.id) === false) { this.remover(r.id); mudou = true; }
+      const st = await Dados.estado(r.id);
+      if (!st) continue;
+      if (!st.existe) { this.remover(r.id); mudou = true; }
+      else if (!!r.resolvido !== st.resolvido) { this.marcar(r.id, { resolvido: st.resolvido }); mudou = true; }
     }
     return mudou;
   }
@@ -239,17 +246,17 @@ Render.inicio = function () {
     <button class="btn btn-grande btn-novo" id="btnNovo">➕ Novo checklist</button>
     <div class="kpis">
       <div class="kpi"><b>${deHoje.length}</b><span>hoje</span></div>
-      <div class="kpi"><b>${deHoje.filter(x => x.resultado !== "liberado").length}</b><span>não conformes</span></div>
+      <div class="kpi"><b>${deHoje.filter(x => statusPainel(x) !== "liberado").length}</b><span>não conformes</span></div>
       <div class="kpi"><b>${hist.filter(x => !x.enviado).length}</b><span>na fila</span></div>
     </div>
     <p class="muted mini" data-pendentes></p>
     <h3 class="secao">Meus últimos checklists</h3>
     ${hist.length ? hist.slice(0, 20).map(x => {
-      const R = RESULTADOS[x.resultado] || RESULTADOS.liberado;
+      const R = RESULTADOS[statusPainel(x)] || RESULTADOS.liberado;
       return `<div class="item ${R.cls}">
-        <div><b>${h(x.equip)}</b><small>${dataHora(x.criadoEm)} · ${x.defeitos || 0} não conforme(s)</small></div>
+        <div><b>${h(x.equip)}</b><small>${dataHora(x.criadoEm)} · ${x.defeitos || 0} não conforme(s)${x.resolvido ? " · era " + ((RESULTADOS[x.resultado] || R).txt.toLowerCase()) : ""}</small></div>
         <div class="dir"><span class="tag ${R.cls}">${R.ico} ${R.txt}</span>
-        <small>${x.enviado ? "✔ enviado" : "⏳ na fila"}</small></div></div>`;
+        <small>${x.resolvido ? "✔ resolvido" : x.enviado ? "✔ enviado" : "⏳ na fila"}</small></div></div>`;
     }).join("") : `<p class="vazio">Nenhum checklist feito neste aparelho ainda.</p>`}`;
   $("#btnNovo").onclick = () => r ? Telas.ir("checklist") : Telas.ir("novo");
   if (r) {
@@ -261,6 +268,11 @@ Render.inicio = function () {
     };
   }
   atualizarRede();
+  // voltando ao Início: confere no servidor o que o Painel resolveu (no máx. 1x por minuto)
+  // (a primeira conferência, ao abrir o app, é feita em entrouNoApp)
+  if (Historico._sincronizadoEm && Date.now() - Historico._sincronizadoEm > 60000) {
+    Historico.sincronizar().then(m => { if (m) Telas.atualizarSeVisivel(["inicio"]); });
+  }
 };
 
 /* ---------- novo: escolher o equipamento ---------- */
@@ -603,9 +615,9 @@ Render.painel = async function () {
       <div id="pLista">${l.map(i => {
         const R = RESULTADOS[statusPainel(i)] || RESULTADOS.liberado;
         return `<div class="item ${R.cls}" data-abrir="${h(i.id)}">
-          <div><b>${h(nomeEquip(i.equipamento))}</b><small>${dataHora(i.criadoEm)} · ${h(i.criadoNome)}${PERFIS[i.criadoPerfil] ? " (" + PERFIS[i.criadoPerfil].toLowerCase() + ")" : ""}</small></div>
+          <div><b>${h(nomeEquip(i.equipamento))}</b><small>${dataHora(i.criadoEm)} · ${h(i.criadoNome)}${PERFIS[i.criadoPerfil] ? " (" + PERFIS[i.criadoPerfil].toLowerCase() + ")" : ""}${i.tratativa && i.tratativa.status === "resolvido" ? " · era " + RESULTADOS[i.resultado].txt.toLowerCase() : ""}</small></div>
           <div class="dir">${Dados.ehAdmin() ? `<button class="apagar" data-apagar="${h(i.id)}" aria-label="Apagar checklist">🗑</button>` : ""}<span class="tag ${R.cls}">${R.ico} ${i.defeitos || 0}</span>
-          <small>${i.tratativa && i.tratativa.status === "resolvido" ? "resolvido (era " + RESULTADOS[i.resultado].txt.toLowerCase() + ")" : i.tratativa ? "⏳ aberto" : ""}
+          <small>${i.tratativa && i.tratativa.status === "resolvido" ? "✔ resolvido" : i.tratativa ? "⏳ aberto" : ""}
           ${Object.keys(i.midias || {}).length ? " · 📎" + Object.keys(i.midias).length : ""}</small></div></div>`;
       }).join("")}</div>
       ${p.lista && !l.length ? `<p class="vazio">Nenhum checklist neste filtro.</p>` : ""}
@@ -712,6 +724,7 @@ Render.detalhe = async function (id) {
     const nova = { status, nota: status === "resolvido" ? ($("#dtNota") ? $("#dtNota").value.trim() : "") : "",
       por: Dados.usuario.nome || Dados.usuario.usuario, em: Date.now() };
     Dados.tratar(i.id, nova).catch(() => toast("Não deu para salvar.", "erro"));
+    Historico.marcar(i.id, { resolvido: status === "resolvido" });
     const eid = (i.equipamento || {}).id;
     if (status === "resolvido") Dados.fecharPendencia(eid, i.id);
     else Dados.abrirPendencia(eid, i.id, i.resultado);
@@ -999,7 +1012,7 @@ function entrouNoApp() {
   Midia.aoMudar = atualizarRede;
   Midia.processar();
   Historico.conferirPendentes()
-    .then(() => Historico.conferirApagados())
+    .then(() => Historico.sincronizar())
     .then(() => Telas.atualizarSeVisivel(["inicio"]));
 }
 

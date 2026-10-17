@@ -193,11 +193,14 @@ const Dados = {
       return d.exists;
     } catch (e) { return false; }
   },
-  /* true/false = o servidor respondeu; null = não deu para saber (sem sinal) */
-  async existe(inspId) {
+  /* Como o checklist está no servidor: { existe, resolvido }.
+     null = não deu para saber (sem sinal) — aí nada muda no aparelho. */
+  async estado(inspId) {
     try {
       const d = await this.col("inspecoes").doc(inspId).get({ source: "server" });
-      return d.exists;
+      if (!d.exists) return { existe: false, resolvido: false };
+      const t = (d.data() || {}).tratativa;
+      return { existe: true, resolvido: !!(t && t.status === "resolvido") };
     } catch (e) { return null; }
   },
   async inspecoes(desdeMs) {
