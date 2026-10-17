@@ -98,9 +98,18 @@ service cloud.firestore {
       allow get: if request.auth != null && (meuEmail() == email || ckAdmin());
       allow list, create, update, delete: if ckAdmin();
     }
+    // Equipamento: o cadastro é do admin. O campo "pendencias" (defeitos em
+    // aberto, de onde sai a situação Operacional/Restrição/Manutenção):
+    // quem faz checklist só ACRESCENTA; tirar (resolvido -> volta a operar)
+    // é do gestor e do admin.
     match /checklist_equipamentos/{id} {
       allow read: if ckLiberado();
-      allow write: if ckAdmin();
+      allow create, delete: if ckAdmin();
+      allow update: if ckAdmin()
+        || (ckGestao() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendencias']))
+        || (ckLiberado()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendencias'])
+            && request.resource.data.get('pendencias', {}).keys().hasAll(resource.data.get('pendencias', {}).keys()));
     }
     match /checklist_modelos/{id} {
       allow read: if ckLiberado();

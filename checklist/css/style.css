@@ -136,6 +136,11 @@ textarea { resize: vertical; }
 .equip b { font-size: 15px; }
 .equip small { font-size: 11px; color: var(--muted); text-align: center; }
 .equip:active { border-color: var(--brand); }
+.equip em { font-style: normal; margin-top: 4px; font-size: 10px; }
+.equip.sit-perigo { border: 2px solid var(--perigo); background: var(--perigo-bg); }
+.equip.sit-alerta { border: 2px solid var(--alerta); }
+.frota .sit { margin: 8px 0; }
+.frota .sit .link { padding: 6px 4px; }
 
 .seg, .chips { display: flex; gap: 6px; margin-bottom: 10px; overflow-x: auto; }
 .seg button, .chips button { flex: 1; white-space: nowrap; background: var(--card); border: 1px solid var(--line); border-radius: 99px; padding: 8px 12px; font-size: 13px; cursor: pointer; }
@@ -190,8 +195,10 @@ textarea { resize: vertical; }
 .resultado a { color: var(--brand-forte); font-weight: 700; }
 
 /* ---- modelo ---- */
-.md-item { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
-.md-item .md-txt { flex: 1; margin: 0; padding: 10px; }
+.md-item { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.md-item .md-txt { flex: 1 1 100%; margin: 0; padding: 10px; }
+.md-nivel { flex: 1; width: auto; margin: 0; padding: 10px 6px; font-size: 15px; }
+#mdNovoNivel { flex: 1; width: auto; margin: 0; }
 .toggle { display: flex; align-items: center; gap: 4px; margin: 0; font-size: 12px; white-space: nowrap; }
 .toggle input { width: auto; margin: 0; }
 
