@@ -274,6 +274,7 @@ async function sair(page) {
   await page.waitForFunction(() => document.querySelectorAll('#pLista .item').length === 1);
   const depois = await banco(page);
   ok(!depois['checklist_inspecoes/' + escav.id] && !depois[fotoEscav], 'admin apagou o checklist e a foto dele');
+  ok(!(await page.evaluate(() => Historico.lista().map(x => x.id))).includes(escav.id), 'apagado sai na hora de "Meus últimos checklists"');
   ok(Object.keys(await pendencias(page, 'ESC-03')).length === 0, 'apagar o checklist tira a restrição do ESC-03');
   page.once('dialog', d => d.dismiss());
   await page.click('[data-apagar]');
@@ -318,6 +319,23 @@ async function sair(page) {
     .some(d => d.prefixo === 'CB-12' && Object.values(d.pendencias || {}).join() === 'restricao'));
   ok(true, 'CB-12 passa a "Com restrição"');
   await shot(page, '08-modelos');
+
+  console.log('7. checklist apagado em OUTRO celular some do Início ao abrir o app');
+  await page.click('[data-ir="inicio"]');
+  const hist = await page.evaluate(() => Historico.lista().filter(x => x.enviado).map(x => x.id));
+  ok(hist.length >= 2, 'Início tem ' + hist.length + ' checklists enviados');
+  const alvo = hist[hist.length - 1];
+  // "outro celular" apaga direto no servidor
+  await page.evaluate(id => { const b = JSON.parse(localStorage.getItem('__ck_banco__')); delete b['checklist_inspecoes/' + id];
+    localStorage.setItem('__ck_banco__', JSON.stringify(b)); }, alvo);
+  await page.reload();
+  await page.waitForSelector('#btnNovo');
+  await page.waitForFunction(id => !Historico.lista().some(x => x.id === id), alvo);
+  const resto = await page.evaluate(() => Historico.lista().map(x => x.id));
+  ok(resto.length === hist.length - 1, 'ao abrir, o apagado sumiu e os outros ficaram');
+  await page.evaluate(() => { window.__SEM_REDE__ = true; });
+  ok(await page.evaluate(() => Dados.existe('qualquer')) === null, 'sem sinal não apaga nada da lista (não dá para saber)');
+  await page.evaluate(() => { window.__SEM_REDE__ = false; });
 
   ok(await page.evaluate(() => getComputedStyle(document.body).backgroundColor) === 'rgb(255, 255, 255)',
     'fundo branco mesmo com o celular em modo escuro');

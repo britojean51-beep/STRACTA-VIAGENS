@@ -193,6 +193,13 @@ const Dados = {
       return d.exists;
     } catch (e) { return false; }
   },
+  /* true/false = o servidor respondeu; null = não deu para saber (sem sinal) */
+  async existe(inspId) {
+    try {
+      const d = await this.col("inspecoes").doc(inspId).get({ source: "server" });
+      return d.exists;
+    } catch (e) { return null; }
+  },
   async inspecoes(desdeMs) {
     const snap = await this.col("inspecoes").where("criadoEm", ">=", desdeMs)
       .orderBy("criadoEm", "desc").limit(1000).get();
