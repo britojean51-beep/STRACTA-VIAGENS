@@ -139,7 +139,10 @@ async function sair(page) {
   ok(nItens === 18, 'modelo padrão de caminhão (' + nItens + ' itens)');
   await page.fill('#ckKm', '152340');
   // pneu com defeito (crítico) + foto
+  ok((await page.textContent('.ck-item:nth-child(1) [data-st="nok"]')).includes('Não conforme'), 'botão "Não conforme"');
   await page.click('.ck-item:nth-child(1) [data-st="nok"]');
+  ok((await page.textContent('.ck-item:nth-child(1) .aviso-critico')) === '🔧 Acione a manutenção'
+    && (await page.textContent('#toast')).includes('Acione a manutenção'), 'item crítico não conforme: "Acione a manutenção" no item e no aviso');
   await page.fill('.ck-item:nth-child(1) .ck-obs', 'Pneu dianteiro esquerdo com corte');
   page.once('filechooser', async fc => fc.setFiles(await foto(page)));
   await page.click('.ck-item:nth-child(1) [data-foto]');
@@ -158,6 +161,7 @@ async function sair(page) {
   await page.click('#ckFinalizar');
   await page.waitForSelector('.resultado');
   ok((await page.textContent('.resultado h2')).includes('MANUTENÇÃO'), 'defeito crítico = MANUTENÇÃO');
+  ok((await page.textContent('.resultado .aviso-critico')).includes('Acione a manutenção'), 'tela final repete "Acione a manutenção"');
   await shot(page, '04-resultado');
   await page.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('__ck_banco__') || '{}')).filter(k => k.startsWith('checklist_fotos/')).length === 1);
   await page.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem('__ck_banco__')))
@@ -186,6 +190,7 @@ async function sair(page) {
   ok(await page.$$eval('.ck-item', l => l.length) === 17, 'escavadeira usa o modelo de máquina');
   await page.click('.ck-item:nth-child(12) [data-st="nok"]');
   await page.fill('.ck-item:nth-child(12) .ck-obs', 'Dente da caçamba quebrado');
+  ok(!(await page.$('.ck-item:nth-child(12) .aviso-critico')), 'item com observação não conforme: sem "Acione a manutenção"');
   page.once('filechooser', async fc => fc.setFiles(await foto(page)));
   await page.click('[data-foto="geral"]');
   await page.waitForSelector('.card .mini-midia img[src^="blob:"]');
@@ -193,7 +198,7 @@ async function sair(page) {
   page.once('dialog', d => d.accept());
   await page.click('#ckFinalizar');
   await page.waitForSelector('.resultado');
-  ok((await page.textContent('.resultado h2')).includes('RESTRIÇÃO'), 'defeito não crítico = LIBERADO COM RESTRIÇÃO');
+  ok((await page.textContent('.resultado h2')).includes('OPERACIONAL COM OBSERVAÇÃO'), 'defeito não crítico = OPERACIONAL COM OBSERVAÇÃO');
   ok((await page.textContent('.resultado + p')).includes('Sem sinal'), 'avisa que ficou guardado');
   await page.waitForTimeout(300);
   ok(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('__ck_banco__') || '{}')).filter(k => k.startsWith('checklist_fotos/')).length) === 1, 'sem sinal a foto não sobe');
@@ -308,7 +313,7 @@ async function sair(page) {
   page.once('dialog', d => d.accept());
   await page.click('#ckFinalizar');
   await page.waitForSelector('.resultado');
-  ok((await page.textContent('.resultado h2')).includes('RESTRIÇÃO'), 'defeito em item Operacional = RESTRIÇÃO (segue operando)');
+  ok((await page.textContent('.resultado h2')).includes('OPERACIONAL COM OBSERVAÇÃO'), 'defeito em item "com observação" = OPERACIONAL COM OBSERVAÇÃO (segue operando)');
   await page.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem('__ck_banco__')))
     .some(d => d.prefixo === 'CB-12' && Object.values(d.pendencias || {}).join() === 'restricao'));
   ok(true, 'CB-12 passa a "Com restrição"');

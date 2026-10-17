@@ -109,8 +109,8 @@ Em **Cadastros → Modelos**, cada item tem um nível:
 
 | Nível | Defeito nesse item | Equipamento fica |
 |---|---|---|
-| **Crítico** | resultado **MANUTENÇÃO** | 🔧 **Em manutenção** (não opera) |
-| **Operacional** | resultado **LIBERADO COM RESTRIÇÃO** (observação obrigatória) | ⚠️ **Com restrição** (segue operando) |
+| **Crítico** | resultado **MANUTENÇÃO**; quem faz o checklist vê **"Acione a manutenção"** | 🔧 **Em manutenção** (não opera) |
+| **Operacional com observação** | resultado **OPERACIONAL COM OBSERVAÇÃO** (observação obrigatória) | ⚠️ **Com restrição** (segue operando) |
 
 Quando o gestor ou o administrador abre o checklist e toca em **"Resolvido — volta a operar"**,
 o equipamento volta para ✅ **Operacional** (se não tiver outro defeito em aberto).

@@ -1,13 +1,13 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck5";
+const VERSAO = "ck6";
 const RASCUNHO_KEY = "ck_rascunho";
 const HISTORICO_KEY = "ck_historico";
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
 const RESULTADOS = {
   liberado: { txt: "LIBERADO", ico: "✅", cls: "ok" },
-  restricao: { txt: "LIBERADO COM RESTRIÇÃO", ico: "⚠️", cls: "alerta" },
+  restricao: { txt: "OPERACIONAL COM OBSERVAÇÃO", ico: "⚠️", cls: "alerta" },
   bloqueado: { txt: "MANUTENÇÃO", ico: "🔧", cls: "perigo" }   // a chave segue "bloqueado" nos dados
 };
 
@@ -48,7 +48,7 @@ function pendenciaMaisRecente(e) {
 }
 const NIVEIS = {
   critico: "Crítico — defeito põe em manutenção",
-  operacional: "Operacional — defeito com observação, segue operando (restrição)"
+  operacional: "Operacional com observação — defeito anotado, segue operando (restrição)"
 };
 
 /* ---------- utilidades ---------- */
@@ -343,7 +343,7 @@ Render.checklist = function () {
   const feitos = Object.keys(r.respostas).length, total = r.modelo.itens.length;
   app().innerHTML = `
     <div class="progresso"><div style="width:${Math.round(feitos / total * 100)}%"></div></div>
-    <p class="muted mini">${feitos} de ${total} itens · toque em ✔ OK, ✖ Defeito ou N/A</p>
+    <p class="muted mini">${feitos} de ${total} itens · toque em ✔ OK, ✖ Não conforme ou N/A</p>
     <div class="card linha2">
       <label>KM atual<input id="ckKm" inputmode="decimal" value="${h(r.km)}" placeholder="opcional" /></label>
       <label>Horímetro<input id="ckHor" inputmode="decimal" value="${h(r.horimetro)}" placeholder="opcional" /></label>
@@ -356,9 +356,10 @@ Render.checklist = function () {
           <div class="ck-txt"><span class="num">${n + 1}</span>${h(it.texto)}${it.critico ? ' <span class="critico" title="Item crítico: defeito põe o equipamento em manutenção">CRÍTICO</span>' : ""}</div>
           <div class="ck-bts">
             <button class="st ok ${resp.st === "ok" ? "on" : ""}" data-st="ok">✔ OK</button>
-            <button class="st nok ${resp.st === "nok" ? "on" : ""}" data-st="nok">✖ Defeito</button>
+            <button class="st nok ${resp.st === "nok" ? "on" : ""}" data-st="nok">✖ Não conforme</button>
             <button class="st na ${resp.st === "na" ? "on" : ""}" data-st="na">N/A</button>
           </div>
+          ${resp.st === "nok" && it.critico ? `<div class="aviso-critico" role="alert">🔧 Acione a manutenção</div>` : ""}
           ${resp.st === "nok" ? `<textarea class="ck-obs" placeholder="O que está errado? (obrigatório)" rows="2">${h(resp.obs || "")}</textarea>` : ""}
           <div class="midias">${miniaturas(it.id)}
             <button class="add-midia" data-foto="${h(it.id)}">📷</button>
@@ -402,6 +403,11 @@ Render.checklist = function () {
       salvarRascunho();
       const y = window.scrollY; Telas.render(); window.scrollTo(0, y);
       if (st.dataset.st === "nok") {
+        const item = r.modelo.itens.find(x => x.id === id);
+        if (item && item.critico) {
+          toast("🔧 Acione a manutenção", "erro");
+          try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {}
+        }
         const ta = document.querySelector(`[data-item="${CSS.escape(id)}"] .ck-obs`);
         if (ta) ta.focus();
       }
@@ -527,7 +533,7 @@ Render.resultado = function (a) {
       <h2>${R.txt}</h2>
       <p>${h(a.equip)}</p>
       ${a.defeitos.length ? `<ul>${a.defeitos.map(d => `<li>${h(d)}</li>`).join("")}</ul>` : ""}
-      ${a.resultado === "bloqueado" ? `<p><b>Equipamento em manutenção: não opere.</b> Avise a manutenção.</p>` : ""}
+      ${a.resultado === "bloqueado" ? `<div class="aviso-critico forte">🔧 Acione a manutenção</div><p>Item crítico não conforme: não opere o equipamento.</p>` : ""}
       ${a.resultado === "restricao" ? `<p>Pode operar, com atenção aos itens acima. A manutenção foi avisada.</p>` : ""}
     </div>
     <p class="muted mini">${a.online ? "Enviando agora. Fotos e vídeos sobem em segundo plano." :
@@ -620,7 +626,7 @@ Render.painel = async function () {
 };
 
 function baixarCSV(lista) {
-  const cab = ["Data", "Equipamento", "Tipo", "Inspetor", "Resultado", "Defeitos", "Itens com defeito", "KM", "Horímetro", "Observação", "Tratativa", "Fotos/vídeos", "ID"];
+  const cab = ["Data", "Equipamento", "Tipo", "Quem fez", "Resultado", "Não conformes", "Itens não conformes", "KM", "Horímetro", "Observação", "Tratativa", "Fotos/vídeos", "ID"];
   const linhas = lista.map(i => [dataHora(i.criadoEm), nomeEquip(i.equipamento), TIPOS[(i.equipamento || {}).tipo] || "",
     i.criadoNome, (RESULTADOS[i.resultado] || {}).txt, i.defeitos,
     (i.itens || []).filter(x => x.st === "nok").map(x => x.texto + (x.obs ? ": " + x.obs : "")).join(" | "),
@@ -789,7 +795,7 @@ Render["cad-modelos"] = function () {
       <p class="mini">Caminhão e Máquina já vêm prontos. Para mudar os itens, copie-os para a nuvem e edite.</p>
       <button class="btn" id="mdCopiar">Copiar modelos padrão para editar</button></div>` : ""}
     ${Estado.modelosEfetivos().map(m => `<div class="item" ${m.padrao ? "" : `data-md="${h(m.id)}"`}>
-      <div><b>${h(m.nome)}</b><small>${h(TIPOS[m.tipo] || "")} · ${m.itens.length} itens · ${m.itens.filter(x => x.critico).length} críticos · ${m.itens.filter(x => !x.critico).length} operacionais</small></div>
+      <div><b>${h(m.nome)}</b><small>${h(TIPOS[m.tipo] || "")} · ${m.itens.length} itens · ${m.itens.filter(x => x.critico).length} críticos · ${m.itens.filter(x => !x.critico).length} com observação</small></div>
       <div class="dir"><small>${m.padrao ? "padrão" : "editar ›"}</small></div></div>`).join("")}
     <button class="btn" id="mdNovo">➕ Novo modelo</button>`;
   if ($("#mdCopiar")) $("#mdCopiar").onclick = () => {
@@ -816,8 +822,8 @@ Render["cad-modelo"] = function (id) {
     </div>
     <div class="card mini">
       <b>Nível de cada item</b>
-      <p><span class="critico">CRÍTICO</span> defeito põe o equipamento <b>em manutenção</b> (não opera até resolver).</p>
-      <p><b>Operacional</b>: defeito com observação; o equipamento <b>segue operando</b> e aparece em <b>Restrição</b>.</p>
+      <p><span class="critico">CRÍTICO</span> não conforme põe o equipamento <b>em manutenção</b> e mostra <b>"Acione a manutenção"</b> para quem faz o checklist.</p>
+      <p><b>Operacional com observação</b>: não conforme com observação; o equipamento <b>segue operando</b> e aparece em <b>Restrição</b>.</p>
       <p class="muted">Quando o gestor marca o defeito como resolvido, o equipamento volta a Operacional.</p>
     </div>
     <h3 class="secao">${m.itens.length} itens</h3>
@@ -825,12 +831,12 @@ Render["cad-modelo"] = function (id) {
       <input class="md-txt" value="${h(it.texto)}" />
       <select class="md-nivel" aria-label="Nível">
         <option value="critico" ${it.critico ? "selected" : ""}>Crítico</option>
-        <option value="operacional" ${it.critico ? "" : "selected"}>Operacional</option></select>
+        <option value="operacional" ${it.critico ? "" : "selected"}>Operacional com observação</option></select>
       <button class="mini-bt" data-acao="sobe">↑</button><button class="mini-bt" data-acao="tira">✕</button></div>`).join("")}</div>
     <div class="card"><b>Novo item</b>
       <input id="mdNovoItem" placeholder="ex.: Pneus" />
       <div class="linha"><select id="mdNovoNivel" aria-label="Nível do item novo">
-        <option value="critico">Crítico (manutenção)</option><option value="operacional" selected>Operacional (restrição)</option></select>
+        <option value="critico">Crítico (manutenção)</option><option value="operacional" selected>Operacional com observação</option></select>
       <button class="btn" id="mdAdd">Adicionar</button></div></div>
     <button class="btn btn-grande" id="mdSalvar">Salvar modelo</button>
     ${base ? `<button class="btn btn-ghost perigo" id="mdApagar">Apagar modelo</button>` : ""}`;
