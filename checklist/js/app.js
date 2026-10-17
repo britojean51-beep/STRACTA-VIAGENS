@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck2";
+const VERSAO = "ck3";
 const RASCUNHO_KEY = "ck_rascunho";
 const HISTORICO_KEY = "ck_historico";
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
@@ -83,7 +83,7 @@ const Estado = {
   parar() { this._ouvintes.forEach(f => { try { f(); } catch (e) {} }); this._ouvintes = []; }
 };
 
-/* histórico do próprio aparelho: o inspetor vê o que fez mesmo sem sinal */
+/* histórico do próprio aparelho: quem fez vê o que fez mesmo sem sinal */
 const Historico = {
   lista() { return lerJSON(HISTORICO_KEY, []); },
   adicionar(r) { const l = this.lista(); l.unshift(r); gravarJSON(HISTORICO_KEY, l.slice(0, 60)); },
@@ -102,6 +102,8 @@ const Telas = {
   atual: null,
   pilha: [],
   ir(nome, arg, semPilha) {
+    const soGestao = ["painel", "detalhe"], soAdmin = ["cadastros", "cad-equip", "cad-modelos", "cad-modelo", "cad-usuarios"];
+    if ((soGestao.includes(nome) && !Dados.ehGestao()) || (soAdmin.includes(nome) && !Dados.ehAdmin())) nome = "inicio";
     if (!semPilha && this.atual && this.atual.nome !== nome) this.pilha.push(this.atual);
     if (["inicio", "painel", "cadastros", "conta"].includes(nome)) this.pilha = [];
     this.atual = { nome, arg };
@@ -471,7 +473,7 @@ async function finalizar() {
     km: numero(r.km), horimetro: numero(r.horimetro), obs: String(r.obs || "").trim(),
     resultado, defeitos: defeitos.length, criticos: criticos.length,
     midias, pendentes: Object.keys(midias).length,
-    criadoPor: Dados.usuario.email, criadoNome: Dados.usuario.nome || Dados.usuario.usuario,
+    criadoPor: Dados.usuario.email, criadoNome: Dados.usuario.nome || Dados.usuario.usuario, criadoPerfil: Dados.usuario.perfil,
     criadoEm: agora, dia: diaDe(agora), duracaoSeg: Math.round((agora - r.inicio) / 1000),
     geo: r.geo || null, tratativa: resultado === "liberado" ? null : { status: "aberto" }, app: VERSAO
   };
@@ -541,7 +543,7 @@ Render.painel = async function () {
       </div>
       ${bloqueados.length ? `<div class="card perigo-borda"><b>⛔ Parados por checklist</b>
         ${bloqueados.map(i => `<div class="link" data-abrir="${h(i.id)}">${h(nomeEquip(i.equipamento))} — ${dataHora(i.criadoEm)}</div>`).join("")}</div>` : ""}
-      <input class="busca" id="pBusca" type="search" placeholder="🔎 Equipamento ou inspetor" value="${h(p.busca)}" />
+      <input class="busca" id="pBusca" type="search" placeholder="🔎 Equipamento ou nome" value="${h(p.busca)}" />
       <div class="chips" id="pFiltro">
         ${[["todos", "Todos"], ["bloqueado", "⛔ Bloqueados"], ["restricao", "⚠️ Restrição"], ["liberado", "✅ Liberados"], ["aberto", "🔧 Em aberto"]]
           .map(([k, t]) => `<button data-f="${k}" class="${p.filtro === k ? "on" : ""}">${t}</button>`).join("")}
@@ -551,8 +553,8 @@ Render.painel = async function () {
       <div id="pLista">${l.map(i => {
         const R = RESULTADOS[i.resultado] || RESULTADOS.liberado;
         return `<div class="item ${R.cls}" data-abrir="${h(i.id)}">
-          <div><b>${h(nomeEquip(i.equipamento))}</b><small>${dataHora(i.criadoEm)} · ${h(i.criadoNome)}</small></div>
-          <div class="dir"><span class="tag ${R.cls}">${R.ico} ${i.defeitos || 0}</span>
+          <div><b>${h(nomeEquip(i.equipamento))}</b><small>${dataHora(i.criadoEm)} · ${h(i.criadoNome)}${PERFIS[i.criadoPerfil] ? " (" + PERFIS[i.criadoPerfil].toLowerCase() + ")" : ""}</small></div>
+          <div class="dir">${Dados.ehAdmin() ? `<button class="apagar" data-apagar="${h(i.id)}" aria-label="Apagar checklist">🗑</button>` : ""}<span class="tag ${R.cls}">${R.ico} ${i.defeitos || 0}</span>
           <small>${i.tratativa && i.tratativa.status === "resolvido" ? "🔧 resolvido" : i.tratativa ? "🔧 aberto" : ""}
           ${Object.keys(i.midias || {}).length ? " · 📎" + Object.keys(i.midias).length : ""}</small></div></div>`;
       }).join("")}</div>
@@ -562,7 +564,15 @@ Render.painel = async function () {
     $("#pFiltro").onclick = ev => { const b = ev.target.closest("[data-f]"); if (b) { p.filtro = b.dataset.f; desenhar(); } };
     const busca = $("#pBusca");
     busca.oninput = () => { p.busca = busca.value; const pos = busca.selectionStart; desenhar(); const nb = $("#pBusca"); nb.focus(); nb.setSelectionRange(pos, pos); };
-    app().onclick = ev => { const a = ev.target.closest("[data-abrir]"); if (a) Telas.ir("detalhe", a.dataset.abrir); };
+    app().onclick = async ev => {
+      const del = ev.target.closest("[data-apagar]");
+      if (del) {
+        const i = (p.lista || []).find(x => x.id === del.dataset.apagar);
+        if (i && await apagarInspecao(i)) desenhar();
+        return;
+      }
+      const a = ev.target.closest("[data-abrir]"); if (a) Telas.ir("detalhe", a.dataset.abrir);
+    };
     if ($("#pCsv")) $("#pCsv").onclick = () => baixarCSV(l);
   };
   const carregar = async () => {
@@ -612,7 +622,7 @@ Render.detalhe = async function (id) {
       <p>${h(i.criadoNome)} · ${h((i.modelo || {}).nome)}${i.duracaoSeg ? " · " + Math.max(1, Math.round(i.duracaoSeg / 60)) + " min" : ""}</p>
       <p>${i.km != null ? "KM " + i.km.toLocaleString("pt-BR") : ""}${i.km != null && i.horimetro != null ? " · " : ""}${i.horimetro != null ? "Horímetro " + i.horimetro.toLocaleString("pt-BR") : ""}</p>
       ${i.geo ? `<p><a href="https://maps.google.com/?q=${i.geo.lat},${i.geo.lng}" target="_blank" rel="noopener">📍 ver no mapa</a></p>` : ""}
-      ${i.pendentes > 0 ? `<p class="mini">⏳ ${i.pendentes} arquivo(s) ainda subindo do celular do inspetor</p>` : ""}
+      ${i.pendentes > 0 ? `<p class="mini">⏳ ${i.pendentes} arquivo(s) ainda subindo do celular de quem fez</p>` : ""}
     </div>
     ${t ? `<div class="card ${t.status === "resolvido" ? "" : "alerta-borda"}">
       <b>🔧 Tratativa: ${t.status === "resolvido" ? "resolvido" : "em aberto"}</b>
@@ -629,7 +639,7 @@ Render.detalhe = async function (id) {
     ${Object.values(i.midias || {}).some(m => m.item === "geral") || i.obs ? `<h3 class="secao">Geral</h3>
       <div class="card">${i.obs ? `<p>${h(i.obs)}</p>` : ""}<div class="midias">${midiasDe("geral")}</div></div>` : ""}
     <button class="btn" id="dtZap">📲 Enviar resumo pelo WhatsApp</button>
-    <button class="btn btn-ghost perigo" id="dtApagar">Apagar este checklist</button>`;
+    ${Dados.ehAdmin() ? `<button class="btn btn-ghost perigo" id="dtApagar">🗑 Apagar este checklist</button>` : ""}`;
 
   // miniaturas vêm do Storage (só quem está logado e liberado consegue)
   app().querySelectorAll("[data-thumb]").forEach(async img => {
@@ -660,14 +670,20 @@ Render.detalhe = async function (id) {
       + (i.obs ? `\n\nObs.: ${i.obs}` : "");
     window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
   };
-  $("#dtApagar").onclick = async () => {
-    if (!(await confirmar("Apagar este checklist? Não tem como desfazer."))) return;
-    Dados.col("inspecoes").doc(i.id).delete().catch(() => toast("Não deu para apagar.", "erro"));
-    Midia.apagarRemotas(i.midias);
-    Painel.lista = (Painel.lista || []).filter(x => x.id !== i.id);
-    toast("Apagado.", "ok"); Telas.voltar();
-  };
+  if ($("#dtApagar")) $("#dtApagar").onclick = async () => { if (await apagarInspecao(i)) Telas.voltar(); };
 };
+
+/* Só o administrador apaga (a regra do Firestore também barra os outros).
+   As fotos vão junto. */
+async function apagarInspecao(i) {
+  if (!Dados.ehAdmin()) return false;
+  if (!(await confirmar("Apagar o checklist de " + nomeEquip(i.equipamento) + " (" + dataHora(i.criadoEm) + ")?\nAs fotos vão junto. Não tem como desfazer."))) return false;
+  Dados.col("inspecoes").doc(i.id).delete().catch(() => toast("Não deu para apagar.", "erro"));
+  Midia.apagarRemotas(i.midias);
+  Painel.lista = (Painel.lista || []).filter(x => x.id !== i.id);
+  toast("Checklist apagado.", "ok");
+  return true;
+}
 
 /* ---------- cadastros (admin) ---------- */
 Render.cadastros = function () {
@@ -817,8 +833,10 @@ Render["cad-usuarios"] = async function () {
       </div>
       <div class="linha2">
         <label>Senha inicial<input name="senha" type="text" placeholder="mín. 6 caracteres" autocomplete="new-password" /></label>
-        <label>Perfil<select name="perfil"><option value="inspetor">Inspetor (faz checklist)</option><option value="admin">Administrador</option></select></label>
+        <label>Função<select name="perfil">${Object.entries(PERFIS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
       </div>
+      <p class="muted mini"><b>Motorista</b> e <b>Operador</b> fazem checklist. <b>Gestor</b> também vê o Painel e resolve os defeitos.
+        <b>Administrador</b> também apaga checklists e mexe em Cadastros.</p>
       <p class="muted mini">A pessoa entra com <b>usuário</b> e senha — não precisa ter e-mail. Cada um troca a própria senha em Conta; esqueceu, redefina no console do Firebase (Authentication).</p>
       <button class="btn" id="usCriar">Criar e liberar</button>
     </form>
@@ -837,16 +855,21 @@ Render["cad-usuarios"] = async function () {
     const l = (await Dados.usuarios()).sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR"));
     if (Telas.atual.nome !== "cad-usuarios") return;
     $("#usLista").innerHTML = `<h3 class="secao">${l.length} usuário(s)</h3>` + l.map(u => `<div class="item ${u.ativo === false ? "apagado" : ""}">
-      <div><b>${h(u.nome || u.usuario)}</b><small>${h(u.usuario)} · ${u.perfil === "admin" ? "administrador" : "inspetor"}${u.ativo === false ? " · bloqueado" : ""}</small></div>
+      <div><b>${h(u.nome || u.usuario)}</b><small>${h(u.usuario)}${u.ativo === false ? " · bloqueado" : ""}</small></div>
       <div class="dir linha">
-        <button class="mini-bt" data-perfil="${h(u.email)}" data-v="${u.perfil === "admin" ? "inspetor" : "admin"}">${u.perfil === "admin" ? "→ inspetor" : "→ admin"}</button>
+        <select class="mini-sel" data-perfil="${h(u.email)}" aria-label="Função">${Object.entries(PERFIS).map(([k, v]) =>
+          `<option value="${k}" ${(PERFIS[u.perfil] ? u.perfil : "motorista") === k ? "selected" : ""}>${v}</option>`).join("")}</select>
         <button class="mini-bt" data-ativo="${h(u.email)}" data-v="${u.ativo === false ? "1" : "0"}">${u.ativo === false ? "desbloquear" : "bloquear"}</button>
       </div></div>`).join("");
+    $("#usLista").onchange = async ev => {
+      const s = ev.target.closest("[data-perfil]"); if (!s) return;
+      const r = await Dados.salvarUsuario(s.dataset.perfil, { perfil: s.value });
+      toast(r.ok ? "Função alterada: " + PERFIS[s.value] : r.erro, r.ok ? "ok" : "erro");
+      Telas.render();
+    };
     $("#usLista").onclick = async ev => {
-      const b = ev.target.closest("[data-perfil],[data-ativo]"); if (!b) return;
-      const email = b.dataset.perfil || b.dataset.ativo;
-      const dados = b.dataset.perfil ? { perfil: b.dataset.v } : { ativo: b.dataset.v === "1" };
-      const r = await Dados.salvarUsuario(email, dados);
+      const b = ev.target.closest("[data-ativo]"); if (!b) return;
+      const r = await Dados.salvarUsuario(b.dataset.ativo, { ativo: b.dataset.v === "1" });
       if (!r.ok) return toast(r.erro, "erro");
       Telas.render();
     };
@@ -860,7 +883,7 @@ Render.conta = function () {
   const u = Dados.usuario;
   titulo("MINHA CONTA", "");
   app().innerHTML = `
-    <div class="card"><b>${h(u.nome)}</b><p class="muted">${h(u.usuario)} · ${u.perfil === "admin" ? "administrador" : "inspetor"}</p>
+    <div class="card"><b>${h(u.nome)}</b><p class="muted">${h(u.usuario)} · ${PERFIS[u.perfil] || ""}</p>
       <p class="muted mini" data-pendentes></p>
       <button class="btn btn-ghost" id="ctEnviar">⬆ Enviar pendentes agora</button></div>
     <form class="card" id="fSenha">
@@ -893,6 +916,7 @@ Render.conta = function () {
    ============================================================ */
 function entrouNoApp() {
   document.body.classList.toggle("admin", Dados.ehAdmin());
+  document.body.classList.toggle("gestao", Dados.ehGestao());
   $("#abas").hidden = false;
   Estado.rascunho = lerJSON(RASCUNHO_KEY, null);
   if (Estado.rascunho && !Estado.rascunho.modelo) Estado.rascunho = null;

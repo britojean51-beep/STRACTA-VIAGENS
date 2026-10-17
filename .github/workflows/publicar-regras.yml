@@ -1,0 +1,41 @@
+# Publica as regras do Firestore (regras.txt) sozinho a cada mudança.
+# Não precisa mais colar no console. Usa a mesma chave da publicação do site
+# (FIREBASE_SERVICE_ACCOUNT_GP2T), que precisa do papel "Administrador do
+# Firebase" no Google Cloud (IAM) — sem ele este fluxo fica vermelho e as
+# regras ficam como estavam (os apps continuam funcionando).
+name: Publicar Regras
+
+on:
+  push:
+    branches:
+      - claude/stracta-fleet-mobile-v1-nj63nl
+      - main
+    paths:
+      - "regras.txt"
+      - "firebase.json"
+      - ".github/workflows/publicar-regras.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regras:
+    name: Regras do Firestore
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Chave da conta de serviço
+        env:
+          CHAVE: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_GP2T }}
+        run: printf '%s' "$CHAVE" > "$RUNNER_TEMP/chave.json"
+      - name: Publicar regras
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/chave.json
+        run: npx --yes firebase-tools@13 deploy --only firestore:rules --project gp2t-gestaodefrota --non-interactive
+      - name: Apagar a chave
+        if: always()
+        run: rm -f "$RUNNER_TEMP/chave.json"

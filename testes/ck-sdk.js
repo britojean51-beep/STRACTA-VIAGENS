@@ -7,10 +7,14 @@
   const BANCO = "__ck_banco__", SESSAO = "__ck_sessao__";
   window.__SEM_REDE__ = false;
   window.__STORAGE__ = {};          // path -> { blob, contentType }
-  window.__USERS__ = window.__USERS__ || [
+  // as contas sobrevivem ao reload, como no Firebase de verdade
+  let salvas = null;
+  try { salvas = JSON.parse(localStorage.getItem("__ck_users__") || "null"); } catch (e) {}
+  window.__USERS__ = salvas || window.__USERS__ || [
     { email: "jean@gp2t.local", senha: "123456" },
     { email: "ze@gp2t.local", senha: "123456" }
   ];
+  const guardarContas = () => localStorage.setItem("__ck_users__", JSON.stringify(window.__USERS__));
   const ler = () => { try { return JSON.parse(localStorage.getItem(BANCO) || "{}"); } catch (e) { return {}; } };
   const gravar = b => localStorage.setItem(BANCO, JSON.stringify(b));
   const erro = (code) => { const e = new Error(code); e.code = code; return e; };
@@ -53,6 +57,7 @@
       async createUserWithEmailAndPassword(email, senha) {
         if (window.__USERS__.some(a => a.email === email)) throw erro("auth/email-already-in-use");
         window.__USERS__.push({ email, senha });
+        guardarContas();
         proprio = { email };
         return { user: { email } };
       },

@@ -23,11 +23,11 @@ e usar como aplicativo.
 |---|---|---|
 | Site (o app) | Firebase Hosting (Google) | HTTPS sempre, servido pela rede de entrega do Google |
 | Login | Firebase Authentication | senha guardada pelo Google; bloqueio automático contra tentativas em massa |
-| Checklists, equipamentos, modelos, usuários | Firestore (`checklist_*`) | regras: só quem foi liberado lê e grava; o inspetor só vê o que ele mesmo fez |
-| Fotos | Firestore (`checklist_fotos`) | regras: só liberados enviam; o inspetor vê só as suas; só JPEG até 950 KB; só admin apaga |
+| Checklists, equipamentos, modelos, usuários | Firestore (`checklist_*`) | regras: só quem foi liberado lê e grava; motorista e operador só veem o que eles mesmos fizeram |
+| Fotos | Firestore (`checklist_fotos`) | regras: só liberados enviam; motorista e operador veem só as suas; só JPEG até 950 KB; só admin apaga |
 | Vídeos *(quando ligar)* | Firebase Storage (`checklist/…`) | regras: só liberados enviam/veem; só imagem e vídeo, até 60 MB; ninguém apaga pelo app |
 
-Depois de enviado, o checklist **não pode ser alterado** pelo inspetor (só a marcação de
+Depois de enviado, o checklist **não pode ser alterado** por quem fez (só a marcação de
 foto enviada). A foto leva **carimbo** com equipamento, data, hora e usuário.
 
 ---
@@ -49,12 +49,18 @@ o que dá **umas 5 mil fotos**. O uso aparece em Firestore → **Uso**.
 4. Peça para trocar `USAR_STORAGE = false` para `true` em `checklist/js/midia.js`.
    Os checklists antigos continuam abrindo as fotos de onde estão.
 
-### 2. Colar as regras do Firestore
-Firebase → **Firestore Database** → **Regras** → apague tudo → cole o conteúdo de
-[`regras.txt`](../regras.txt) (na raiz do repositório) → **Publicar**.
+### 2. Regras do Firestore: publicam sozinhas
+O arquivo [`regras.txt`](../regras.txt) (frota + checklist) é publicado no Firestore
+a cada atualização, pelo fluxo **Publicar Regras** do GitHub. Não precisa colar no console.
 
-O arquivo é o mesmo do app de frota, com o bloco do checklist acrescentado — por isso
-colar ele inteiro não estraga nada do que já funciona.
+Uma vez só, dê à chave do GitHub permissão para publicar regras:
+Firebase → ⚙️ **Configurações do projeto** → **Contas de serviço** →
+**Gerenciar permissões da conta de serviço** (abre o Google Cloud) → na linha
+`firebase-adminsdk-…@gp2t-gestaodefrota.iam.gserviceaccount.com` toque no lápis ✏️ →
+**Adicionar outro papel** → **Administrador do Firebase** → **Salvar**.
+
+Sem esse papel o fluxo fica vermelho e as regras continuam como estavam (os apps
+seguem funcionando); dá para colar o `regras.txt` à mão no console como antes.
 
 ### 3. Colar as regras do Storage *(só quando ligar o vídeo)*
 Firebase → **Storage** → **Regras** → apague tudo → cole
@@ -79,10 +85,23 @@ Quem é **gestor** no app de frota já entra no checklist como **administrador**
 Abra o endereço, entre com o mesmo usuário e senha e vá em:
 
 1. **Cadastros → Equipamentos**: prefixo, placa e tipo (caminhão, máquina…)
-2. **Cadastros → Usuários**: crie motoristas/operadores (usuário + senha inicial).
+2. **Cadastros → Usuários**: crie motoristas, operadores e gestores (usuário + senha inicial + função).
    Ninguém precisa ter e-mail: a pessoa digita só `joao.silva`.
 3. **Cadastros → Modelos** *(opcional)*: os modelos de Caminhão e Máquina já vêm prontos.
    Para mudar itens ou marcar o que é **crítico**, toque em *Copiar modelos padrão* e edite.
+
+## Funções
+
+| Função | Faz checklist | Painel e resolver defeito | Apagar checklist | Cadastros |
+|---|---|---|---|---|
+| **Motorista** | ✅ | — | — | — |
+| **Operador** | ✅ | — | — | — |
+| **Gestor** | ✅ | ✅ | — | — |
+| **Administrador** | ✅ | ✅ | ✅ | ✅ |
+
+A função é escolhida ao criar o acesso e pode ser trocada na lista de **Usuários**.
+Quem é gestor no app de frota entra aqui como **Administrador**.
+As regras do Firestore conferem a mesma coisa no servidor: não adianta "forçar" pela tela.
 
 Item **crítico** com defeito = equipamento **BLOQUEADO**. Defeito em item comum =
 **LIBERADO COM RESTRIÇÃO**.

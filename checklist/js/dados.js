@@ -2,7 +2,10 @@
    Checklist · Login e dados (Firebase Auth + Firestore)
    ------------------------------------------------------------
    Coleções (todas com prefixo checklist_, separadas do app de frota):
-     checklist_usuarios/{email}   quem entra: nome, perfil (admin|inspetor), ativo
+     checklist_usuarios/{email}   quem entra: nome, perfil, ativo
+                                  perfil: motorista | operador  -> fazem checklist
+                                          gestor               -> + Painel e tratativa
+                                          admin                -> + apagar e Cadastros
      checklist_equipamentos/{id}  prefixo, placa, tipo, modeloId
      checklist_modelos/{id}       nome, tipo, itens [{id, texto, critico}]
      checklist_inspecoes/{id}     o checklist feito, com respostas e mídias
@@ -15,6 +18,9 @@
 const DOMINIO = "gp2t.local";
 const PERFIL_KEY = "ck_perfil";
 const ULTIMO_USUARIO_KEY = "ck_ultimo_usuario";
+const PERFIS = { motorista: "Motorista", operador: "Operador", gestor: "Gestor", admin: "Administrador" };
+// "inspetor" era o nome da primeira versão: quem ficou com ele vira motorista
+const perfilValido = p => PERFIS[p] ? p : "motorista";
 
 function normalizarUsuario(v) {
   return String(v || "").trim().toLowerCase()
@@ -41,6 +47,8 @@ const Dados = {
   sdk() { return typeof firebase !== "undefined" && !!firebase.initializeApp; },
   online() { return this._ok && !!(this.sdk() && firebase.auth().currentUser); },
   ehAdmin() { return !!(this.usuario && this.usuario.perfil === "admin"); },
+  /* gestor e administrador: veem o Painel e resolvem os defeitos */
+  ehGestao() { return !!(this.usuario && (this.usuario.perfil === "admin" || this.usuario.perfil === "gestor")); },
   fs() { return firebase.firestore(); },
   col(nome) { return this.fs().collection("checklist_" + nome); },
 
@@ -82,7 +90,7 @@ const Dados = {
         if (d.ativo === false) return { ok: false, erro: "Acesso bloqueado. Fale com o administrador." };
         return { ok: true, dados: this._guardarPerfil({
           email: id, usuario: usuarioDe(id), nome: d.nome || usuarioDe(id),
-          perfil: d.perfil === "admin" ? "admin" : "inspetor" }) };
+          perfil: perfilValido(d.perfil) }) };
       }
       // gestor do app de frota administra o checklist (é quem libera os primeiros)
       const frota = await this.fs().collection("usuarios").doc(id).get().catch(() => null);
@@ -228,6 +236,7 @@ const Dados = {
     if (this.usuario && id === this.usuario.email && (dados.ativo === false || (dados.perfil && dados.perfil !== "admin"))) {
       return { ok: false, erro: "Você não pode tirar o seu próprio acesso." };
     }
+    if (dados.perfil && !PERFIS[dados.perfil]) return { ok: false, erro: "Função inválida." };
     try {
       await this.col("usuarios").doc(id).set(dados, { merge: true });
       return { ok: true };
@@ -237,6 +246,7 @@ const Dados = {
 
 if (typeof window !== "undefined") {
   window.Dados = Dados;
+  window.PERFIS = PERFIS;
   window.emailDe = emailDe;
   window.usuarioDe = usuarioDe;
 }

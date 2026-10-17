@@ -1,5 +1,5 @@
 /* App de Checklist (/checklist), de ponta a ponta, num navegador de verdade:
-   admin cadastra equipamento e inspetor -> inspetor faz checklist com foto ->
+   admin cadastra equipamento, motorista, operador e gestor -> motorista faz checklist com foto ->
    checklist sem sinal fica na fila e sobe quando a rede volta -> admin vê no
    painel, abre a foto e dá a tratativa. Cobra também: nenhum erro de JS. */
 const { chromium } = require('playwright');
@@ -71,7 +71,7 @@ async function sair(page) {
   await page.waitForSelector('#btnNovo');
   ok(true, 'continua logado depois de fechar e abrir');
 
-  console.log('2. admin cadastra equipamento e inspetor');
+  console.log('2. admin cadastra equipamento e as funções');
   await page.click('[data-ir="cadastros"]');
   await page.click('[data-ir="cad-equip"]');
   await page.fill('[name=prefixo]', 'cb-12'); await page.fill('[name=placa]', 'abc1d23');
@@ -92,15 +92,35 @@ async function sair(page) {
   await page.fill('[name=senha]', '123456');
   await page.click('#usCriar');
   await page.waitForFunction(() => /1 usuário/.test(document.querySelector('#usLista').textContent));
+  ok(await page.$$eval('[name=perfil] option', o => o.map(x => x.textContent).join(',')) === 'Motorista,Operador,Gestor,Administrador',
+    'funções: Motorista, Operador, Gestor, Administrador');
+  let qtd = 1;
+  for (const [u, n, f] of [['ana', 'Ana Gestora', 'gestor'], ['beto', 'Beto Operador', 'operador']]) {
+    await page.fill('[name=usuario]', u); await page.fill('[name=nome]', n);
+    await page.fill('[name=senha]', '123456'); await page.selectOption('[name=perfil]', f);
+    await page.click('#usCriar');
+    qtd++;
+    await page.waitForFunction(q => new RegExp(q + ' usuário').test(document.querySelector('#usLista').textContent), qtd);
+  }
+  await page.waitForFunction(() => /3 usuário/.test(document.querySelector('#usLista').textContent));
   const b2 = await banco(page);
-  ok(b2['checklist_usuarios/ze@gp2t.local'] && b2['checklist_usuarios/ze@gp2t.local'].perfil === 'inspetor',
-    'inspetor liberado ("Zé" vira ze@gp2t.local; senha já existente continua)');
+  ok(b2['checklist_usuarios/ze@gp2t.local'] && b2['checklist_usuarios/ze@gp2t.local'].perfil === 'motorista',
+    'motorista liberado ("Zé" vira ze@gp2t.local; senha já existente continua)');
+  ok(b2['checklist_usuarios/ana@gp2t.local'].perfil === 'gestor' && b2['checklist_usuarios/beto@gp2t.local'].perfil === 'operador',
+    'gestor e operador liberados');
+  // trocar a função pela lista
+  await page.selectOption('[data-perfil="beto@gp2t.local"]', 'motorista');
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('__ck_banco__'))['checklist_usuarios/beto@gp2t.local'].perfil === 'motorista');
+  await page.selectOption('[data-perfil="beto@gp2t.local"]', 'operador');
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('__ck_banco__'))['checklist_usuarios/beto@gp2t.local'].perfil === 'operador');
+  ok(true, 'função muda pela lista de usuários');
+  await shot(page, '09-usuarios');
   ok(await page.evaluate(() => firebase.auth().currentUser.email) === 'jean@gp2t.local', 'admin não caiu ao criar usuário');
   await sair(page);
 
-  console.log('3. inspetor faz checklist com foto (com sinal)');
+  console.log('3. motorista faz checklist com foto (com sinal)');
   await entrar(page, 'ze');
-  ok(!(await page.isVisible('[data-ir="painel"]')), 'inspetor não vê o Painel');
+  ok(!(await page.isVisible('[data-ir="painel"]')) && !(await page.isVisible('[data-ir="cadastros"]')), 'motorista não vê Painel nem Cadastros');
   await page.click('#btnNovo');
   await page.waitForSelector('.equip');
   await shot(page, '02-escolher');
@@ -183,8 +203,9 @@ async function sair(page) {
   ok(filaIDB === 0, 'gaveta do aparelho esvaziou depois do envio');
   await sair(page);
 
-  console.log('5. admin no painel');
-  await entrar(page, 'jean');
+  console.log('5. gestor no painel: vê tudo e resolve, mas não apaga');
+  await entrar(page, 'ana');
+  ok(await page.isVisible('[data-ir="painel"]') && !(await page.isVisible('[data-ir="cadastros"]')), 'gestor vê Painel, não vê Cadastros');
   await page.click('[data-ir="painel"]');
   await page.waitForSelector('[data-abrir]');
   ok(await page.$$eval('#pLista .item', l => l.length) === 2, 'painel mostra os 2 checklists de hoje');
@@ -195,19 +216,44 @@ async function sair(page) {
   await page.click('#pLista .item');
   await page.waitForSelector('.remota img');
   await page.waitForFunction(() => document.querySelector('.remota img').src.startsWith('data:image/jpeg'));
-  ok(true, 'foto aparece no detalhe do admin');
+  ok(true, 'foto aparece no detalhe do gestor');
+  ok(!(await page.$('#dtApagar')), 'gestor não tem o botão de apagar');
   ok((await page.textContent('#app')).includes('Pneu dianteiro esquerdo com corte'), 'observação do defeito aparece');
   await shot(page, '07-detalhe');
   await page.fill('#dtNota', 'Pneu trocado');
   await page.click('#dtResolver');
   await page.waitForSelector('#dtReabrir');
   const b5 = await banco(page);
-  ok(Object.values(b5).some(d => d.tratativa && d.tratativa.status === 'resolvido' && d.tratativa.nota === 'Pneu trocado'), 'tratativa resolvida gravada');
+  ok(Object.values(b5).some(d => d.tratativa && d.tratativa.status === 'resolvido' && d.tratativa.nota === 'Pneu trocado'
+    && d.tratativa.por === 'Ana Gestora'), 'gestor resolveu (tratativa gravada com o nome dele)');
   await page.click('#btnVoltar');
   await page.click('[data-f="todos"]');
   ok(!(await page.$('.perigo-borda')), 'resolvido sai de "Parados por checklist"');
+  ok(!(await page.$('[data-apagar]')), 'gestor não tem lixeira na lista');
+  ok((await page.textContent('#pLista')).includes('(motorista)'), 'lista mostra a função de quem fez');
+  await page.evaluate(() => Telas.ir('cad-usuarios'));
+  ok(!(await page.$('#fUs')), 'gestor não abre Cadastros nem forçando');
+  await sair(page);
 
-  console.log('6. modelos editáveis');
+  console.log('6. admin: apagar e modelos');
+  await entrar(page, 'jean');
+  await page.click('[data-ir="painel"]');
+  await page.waitForSelector('[data-apagar]');
+  ok(await page.$$eval('[data-apagar]', l => l.length) === 2, 'admin tem lixeira em cada checklist');
+  const antes = await banco(page);
+  const escav = Object.values(antes).find(d => d.resultado && d.equipamento.prefixo === 'ESC-03');
+  const fotoEscav = Object.values(escav.midias)[0].path;
+  page.once('dialog', d => d.accept());
+  await page.click(`[data-apagar="${escav.id}"]`);
+  await page.waitForFunction(() => document.querySelectorAll('#pLista .item').length === 1);
+  const depois = await banco(page);
+  ok(!depois['checklist_inspecoes/' + escav.id] && !depois[fotoEscav], 'admin apagou o checklist e a foto dele');
+  page.once('dialog', d => d.dismiss());
+  await page.click('[data-apagar]');
+  ok(await page.$$eval('#pLista .item', l => l.length) === 1, 'cancelar não apaga');
+  await page.click('#pLista .item');
+  await page.waitForSelector('#dtApagar');
+  ok(true, 'admin também apaga pelo detalhe');
   await page.click('[data-ir="cadastros"]');
   await page.click('[data-ir="cad-modelos"]');
   await page.click('#mdCopiar');
