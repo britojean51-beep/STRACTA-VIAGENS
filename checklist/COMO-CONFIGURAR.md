@@ -49,12 +49,18 @@ o que dá **umas 5 mil fotos**. O uso aparece em Firestore → **Uso**.
 4. Peça para trocar `USAR_STORAGE = false` para `true` em `checklist/js/midia.js`.
    Os checklists antigos continuam abrindo as fotos de onde estão.
 
-### 2. Colar as regras do Firestore
-Firebase → **Firestore Database** → **Regras** → apague tudo → cole o conteúdo de
-[`regras.txt`](../regras.txt) (na raiz do repositório) → **Publicar**.
+### 2. Regras do Firestore: publicam sozinhas
+O arquivo [`regras.txt`](../regras.txt) (frota + checklist) é publicado no Firestore
+a cada atualização, pelo fluxo **Publicar Regras** do GitHub. Não precisa colar no console.
 
-O arquivo é o mesmo do app de frota, com o bloco do checklist acrescentado — por isso
-colar ele inteiro não estraga nada do que já funciona.
+Uma vez só, dê à chave do GitHub permissão para publicar regras:
+Firebase → ⚙️ **Configurações do projeto** → **Contas de serviço** →
+**Gerenciar permissões da conta de serviço** (abre o Google Cloud) → na linha
+`firebase-adminsdk-…@gp2t-gestaodefrota.iam.gserviceaccount.com` toque no lápis ✏️ →
+**Adicionar outro papel** → **Administrador do Firebase** → **Salvar**.
+
+Sem esse papel o fluxo fica vermelho e as regras continuam como estavam (os apps
+seguem funcionando); dá para colar o `regras.txt` à mão no console como antes.
 
 ### 3. Colar as regras do Storage *(só quando ligar o vídeo)*
 Firebase → **Storage** → **Regras** → apague tudo → cole

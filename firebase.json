@@ -1,4 +1,7 @@
 {
+  "firestore": {
+    "rules": "regras.txt"
+  },
   "hosting": [
     {
       "site": "gestaofrotaapp",
@@ -12,7 +15,8 @@
         "firebase/**",
         "README.md",
         "redirecionar/**",
-        "checklist/**"
+        "checklist/**",
+        "regras*.txt"
       ],
       "headers": [
         {
