@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck10";
+const VERSAO = "ck11";
 const RASCUNHO_KEY = "ck_rascunho";
 const HISTORICO_KEY = "ck_historico";
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
@@ -43,9 +43,22 @@ function situacaoDe(e) {
 }
 /* Onde o checklist aparece no Painel: o resolvido conta como Operando
    (o resultado original continua guardado e aparece no detalhe). */
+/* Itens não conformes ainda sem resolução. O resolvido pelo botão geral da
+   versão anterior (tratativa resolvida, sem resoluções por item) conta como tudo resolvido. */
+function itensAbertos(i) {
+  if (i.tratativa && i.tratativa.status === "resolvido" && !i.resolucoes) return [];
+  const res = i.resolucoes || {};
+  return (i.itens || []).filter(x => x.st === "nok" && !res[x.id]);
+}
+/* Situação atual do checklist pelos itens em aberto */
+function statusAtual(i) {
+  const ab = itensAbertos(i);
+  return ab.some(x => x.critico) ? "bloqueado" : ab.length ? "restricao" : "liberado";
+}
 function statusPainel(i) {
-  // i.resolvido: o resumo guardado no aparelho (lista do Início)
-  return (i.tratativa && i.tratativa.status === "resolvido") || i.resolvido ? "liberado" : i.resultado;
+  if (i.itens) return statusAtual(i);
+  // resumo guardado no aparelho (lista do Início)
+  return i.atual || (i.resolvido ? "liberado" : i.resultado);
 }
 /* o checklist em aberto mais recente que deixou o equipamento nessa situação */
 function pendenciaMaisRecente(e) {
@@ -155,8 +168,9 @@ const Historico = {
     for (const r of this.lista().filter(x => x.enviado).slice(0, 30)) {
       const st = await Dados.estado(r.id);
       if (!st) continue;
-      if (!st.existe) { this.remover(r.id); mudou = true; }
-      else if (!!r.resolvido !== st.resolvido) { this.marcar(r.id, { resolvido: st.resolvido }); mudou = true; }
+      if (!st.existe) { this.remover(r.id); mudou = true; continue; }
+      const atual = statusAtual(st.dados);
+      if (r.atual !== atual) { this.marcar(r.id, { atual, resolvido: atual === "liberado" }); mudou = true; }
     }
     return mudou;
   }
@@ -275,9 +289,9 @@ Render.inicio = function () {
     ${hist.length ? hist.slice(0, 20).map(x => {
       const R = RESULTADOS[statusPainel(x)] || RESULTADOS.liberado;
       return `<div class="item ${R.cls}">
-        <div><b>${h(x.equip)}</b><small>${dataHora(x.criadoEm)} · ${x.defeitos || 0} não conforme(s)${x.resolvido ? " · era " + ((RESULTADOS[x.resultado] || R).txt.toLowerCase()) : ""}</small></div>
+        <div><b>${h(x.equip)}</b><small>${dataHora(x.criadoEm)} · ${x.defeitos || 0} não conforme(s)${statusPainel(x) !== x.resultado ? " · era " + ((RESULTADOS[x.resultado] || R).txt.toLowerCase()) : ""}</small></div>
         <div class="dir"><span class="tag ${R.cls}">${R.ico} ${R.txt}</span>
-        <small>${x.resolvido ? "✔ resolvido" : x.enviado ? "✔ enviado" : "⏳ na fila"}</small></div></div>`;
+        <small>${statusPainel(x) === "liberado" && x.resultado !== "liberado" ? "✔ resolvido" : statusPainel(x) !== x.resultado ? "◐ em andamento" : x.enviado ? "✔ enviado" : "⏳ na fila"}</small></div></div>`;
     }).join("") : `<p class="vazio">Nenhum checklist feito neste aparelho ainda.</p>`}`;
   $("#btnNovo").onclick = () => r ? Telas.ir("checklist") : Telas.ir("novo");
   if (r) {
@@ -640,9 +654,9 @@ Render.painel = async function () {
       <div id="pLista">${l.map(i => {
         const R = RESULTADOS[statusPainel(i)] || RESULTADOS.liberado;
         return `<div class="item ${R.cls}" data-abrir="${h(i.id)}">
-          <div><b>${h(nomeEquip(i.equipamento))}</b><small>${dataHora(i.criadoEm)} · ${h(i.criadoNome)}${PERFIS[i.criadoPerfil] ? " (" + PERFIS[i.criadoPerfil].toLowerCase() + ")" : ""}${i.tratativa && i.tratativa.status === "resolvido" ? " · era " + RESULTADOS[i.resultado].txt.toLowerCase() : ""}</small></div>
+          <div><b>${h(nomeEquip(i.equipamento))}</b><small>${dataHora(i.criadoEm)} · ${h(i.criadoNome)}${PERFIS[i.criadoPerfil] ? " (" + PERFIS[i.criadoPerfil].toLowerCase() + ")" : ""}${statusPainel(i) !== i.resultado ? " · era " + RESULTADOS[i.resultado].txt.toLowerCase() : ""}</small></div>
           <div class="dir">${Dados.ehAdmin() ? `<button class="apagar" data-apagar="${h(i.id)}" aria-label="Apagar checklist">🗑</button>` : ""}<span class="tag ${R.cls}">${R.ico} ${i.defeitos || 0}</span>
-          <small>${i.tratativa && i.tratativa.status === "resolvido" ? "✔ resolvido" : i.tratativa ? "⏳ aberto" : ""}
+          <small>${statusPainel(i) === "liberado" && i.resultado !== "liberado" ? "✔ resolvido" : statusPainel(i) !== i.resultado ? "◐ em andamento" : i.tratativa ? "⏳ aberto" : ""}
           ${Object.keys(i.midias || {}).length ? " · 📎" + Object.keys(i.midias).length : ""}</small></div></div>`;
       }).join("")}</div>
       ${p.lista && !l.length ? `<p class="vazio">Nenhum checklist neste filtro.</p>` : ""}
@@ -669,7 +683,7 @@ Render.painel = async function () {
       p.lista = await Dados.inspecoes(ini.getTime());
       p.lista.forEach(i => {
         const eid = (i.equipamento || {}).id, e = Estado.equipamentos.find(x => x.id === eid);
-        if (e && i.tratativa && i.tratativa.status === "aberto" && !(e.pendencias || {})[i.id]) Dados.abrirPendencia(eid, i.id, i.resultado);
+        if (e && statusAtual(i) !== "liberado" && !(e.pendencias || {})[i.id]) Dados.abrirPendencia(eid, i.id, statusAtual(i));
       });
     }
     catch (e) { p.lista = p.lista || []; p.erro = "Não deu para carregar (" + ((e && e.code) || "sem sinal") + ")."; }
@@ -696,6 +710,9 @@ function baixarCSV(lista) {
 }
 
 /* ---------- detalhe de um checklist (admin) ---------- */
+/* Resolução por item: o que está sendo resolvido agora (nota + fotos ainda no aparelho) */
+const Resolver = { inspId: "", itemId: "", nota: "", mids: [] };
+
 Render.detalhe = async function (id) {
   titulo("CHECKLIST", "");
   app().innerHTML = `<p class="carregando">Carregando…</p>`;
@@ -703,72 +720,223 @@ Render.detalhe = async function (id) {
   try { i = (await Dados.inspecao(id)) || i; } catch (e) {}
   if (!i) { app().innerHTML = `<p class="erro">Checklist não encontrado.</p>`; return; }
   if (Telas.atual.nome !== "detalhe" || Telas.atual.arg !== id) return;
+  if (Resolver.inspId !== i.id) await cancelarResolucao();
+  desenharDetalhe(i);
+};
+
+function desenharDetalhe(i) {
+  Estado.detalhe = i;
   const R = RESULTADOS[i.resultado] || RESULTADOS.liberado;
+  const A = RESULTADOS[statusAtual(i)];
+  const res = i.resolucoes || {};
+  const legado = i.tratativa && i.tratativa.status === "resolvido" && !i.resolucoes;   // resolvido pelo botão geral antigo
+  const nok = (i.itens || []).filter(x => x.st === "nok");
+  const resolvidos = nok.filter(x => legado || res[x.id]).length;
   titulo(nomeEquip(i.equipamento), dataHora(i.criadoEm));
   const midiasDe = item => Object.entries(i.midias || {}).filter(([, m]) => m.item === item).map(([mid, m]) =>
     `<button class="mini-midia remota" data-path="${h(m.path)}" data-tipo="${m.tipo}" ${m.ok ? "" : "disabled"}>
       ${m.ok ? (m.tipo === "video" ? `<span class="play">▶</span>` : `<img data-thumb="${h(m.path)}" alt="foto" />`)
         : `<span class="espera">⏳<small>enviando</small></span>`}</button>`).join("");
-  const t = i.tratativa;
+  const blocoItem = it => {
+    if (it.st !== "nok") return "";
+    const r = res[it.id];
+    if (r || legado) return `<div class="resolvido">
+        <b>✅ Resolvido</b>${r ? ` <span class="muted mini">· ${h(r.por)} · ${dataHora(r.em)}</span>` : ` <span class="muted mini">(tratativa geral)</span>`}
+        ${r && r.nota ? `<p>${h(r.nota)}</p>` : ""}
+        <div class="midias">${midiasDe("res:" + it.id)}</div>
+        ${r ? `<button class="mini-bt" data-reabrir="${h(it.id)}">Reabrir item</button>` : ""}
+      </div>`;
+    if (Resolver.inspId === i.id && Resolver.itemId === it.id) return `<div class="resolvendo">
+        <b>🔧 Resolver: ${h(it.texto)}</b>
+        <textarea id="rsNota" rows="2" placeholder="O que foi feito? (obrigatório)">${h(Resolver.nota)}</textarea>
+        <div class="midias">${Resolver.mids.map(mid => `<div class="mini-midia"><img data-mid="${mid}" alt="foto" />
+          <button class="tirar" data-rs-tirar="${mid}" aria-label="Remover">✕</button></div>`).join("")}
+          <button class="add-midia" id="rsFoto" aria-label="Tirar foto da correção">📷</button></div>
+        <div class="linha"><button class="btn btn-ghost" id="rsCancelar">Cancelar</button>
+          <button class="btn" id="rsConfirmar">✅ Confirmar</button></div>
+      </div>`;
+    return `<button class="btn btn-resolver" data-resolver="${h(it.id)}">🔧 Resolver este item</button>`;
+  };
   app().innerHTML = `
     <div class="card resultado ${R.cls} compacto"><h2>${R.ico} ${R.txt}</h2>
       <p>${h(i.criadoNome)} · ${h((i.modelo || {}).nome)}${i.duracaoSeg ? " · " + Math.max(1, Math.round(i.duracaoSeg / 60)) + " min" : ""}</p>
       <p>${i.km != null ? "KM " + i.km.toLocaleString("pt-BR") : ""}${i.km != null && i.horimetro != null ? " · " : ""}${i.horimetro != null ? "Horímetro " + i.horimetro.toLocaleString("pt-BR") : ""}</p>
       ${i.geo ? `<p><a href="https://maps.google.com/?q=${i.geo.lat},${i.geo.lng}" target="_blank" rel="noopener">📍 ver no mapa</a></p>` : ""}
-      ${i.pendentes > 0 ? `<p class="mini">⏳ ${i.pendentes} arquivo(s) ainda subindo do celular de quem fez</p>` : ""}
+      ${i.pendentes > 0 ? `<p class="mini">⏳ ${i.pendentes} foto(s) ainda subindo</p>` : ""}
     </div>
-    ${t ? `<div class="card ${t.status === "resolvido" ? "" : "alerta-borda"}">
-      <b>🔧 Tratativa: ${t.status === "resolvido" ? "resolvido" : "em aberto"}</b>
-      ${t.nota ? `<p>${h(t.nota)}</p>` : ""}${t.por ? `<p class="muted mini">${h(t.por)} · ${dataHora(t.em)}</p>` : ""}
-      ${t.status !== "resolvido" ? `<textarea id="dtNota" rows="2" placeholder="O que foi feito?"></textarea>
-        <button class="btn" id="dtResolver">✅ Resolvido — volta a operar</button>` : `<button class="btn btn-ghost" id="dtReabrir">Reabrir</button>`}
+    ${nok.length ? `<div class="card ${A.cls === "ok" ? "" : "alerta-borda"}" id="dtSituacao">
+      <b>Agora: <span class="tag ${A.cls}">${A.ico} ${A.txt}</span></b>
+      <p class="mini">${resolvidos} de ${nok.length} item(ns) não conforme(s) resolvido(s).
+        ${A.cls === "ok" ? "Equipamento voltou a operar." : "Resolva cada item abaixo, com nota e foto."}</p>
+      ${legado ? `<button class="btn btn-ghost" id="dtReabrir">Reabrir</button>` : ""}
     </div>` : ""}
     <h3 class="secao">Itens</h3>
-    ${(i.itens || []).map(it => `<div class="ck-item ${it.st} leitura">
+    ${(i.itens || []).map(it => `<div class="ck-item ${it.st} ${it.st === "nok" && (legado || res[it.id]) ? "feito" : ""} leitura" data-item="${h(it.id)}">
       <div class="ck-txt"><span class="stico">${it.st === "ok" ? "✔" : it.st === "nok" ? "✖" : "–"}</span>${h(it.texto)}
       ${it.critico ? ' <span class="critico">CRÍTICO</span>' : ""}</div>
       ${it.obs ? `<p class="obs">${h(it.obs)}</p>` : ""}
-      <div class="midias">${midiasDe(it.id)}</div></div>`).join("")}
+      <div class="midias">${midiasDe(it.id)}</div>
+      ${Dados.ehGestao() ? blocoItem(it) : ""}</div>`).join("")}
     ${Object.values(i.midias || {}).some(m => m.item === "geral") || i.obs ? `<h3 class="secao">Geral</h3>
       <div class="card">${i.obs ? `<p>${h(i.obs)}</p>` : ""}<div class="midias">${midiasDe("geral")}</div></div>` : ""}
     <button class="btn" id="dtZap">📲 Enviar resumo pelo WhatsApp</button>
-    ${Dados.ehAdmin() ? `<button class="btn btn-ghost perigo" id="dtApagar">🗑 Apagar este checklist</button>` : ""}`;
+    ${Dados.ehAdmin() ? `<button class="btn btn-ghost perigo" id="dtApagar">🗑 Apagar este checklist</button>` : ""}
+    <input type="file" id="inFotoRes" accept="image/*" capture="environment" hidden />`;
 
-  // miniaturas vêm do Storage (só quem está logado e liberado consegue)
+  // fotos já enviadas vêm do servidor; as da resolução em andamento, do aparelho
   app().querySelectorAll("[data-thumb]").forEach(async img => {
     try { img.src = await Midia.url(img.dataset.thumb); } catch (e) { img.alt = "sem acesso"; }
   });
+  preencherMiniaturas(app());
+  const nota = $("#rsNota");
+  if (nota) { nota.oninput = () => { Resolver.nota = nota.value; }; if (!Resolver.mids.length && !Resolver.nota) nota.focus(); }
+
   app().onclick = async ev => {
-    const m = ev.target.closest(".remota");
+    const alvo = ev.target;
+    const m = alvo.closest(".remota");
     if (m && !m.disabled) {
       try { verMidia(await Midia.url(m.dataset.path), m.dataset.tipo); }
       catch (e) { toast("Não deu para abrir o arquivo.", "erro"); }
+      return;
     }
+    const abrir = alvo.closest("[data-resolver]");
+    if (abrir) {
+      await cancelarResolucao();
+      Object.assign(Resolver, { inspId: i.id, itemId: abrir.dataset.resolver, nota: "", mids: [] });
+      return redesenhar(i, abrir.dataset.resolver);
+    }
+    if (alvo.id === "rsCancelar") { await cancelarResolucao(); return redesenhar(i); }
+    if (alvo.id === "rsFoto") return fotoResolucao(i);
+    const tirar = alvo.closest("[data-rs-tirar]");
+    if (tirar) {
+      Resolver.mids = Resolver.mids.filter(x => x !== tirar.dataset.rsTirar);
+      await Midia.apagar(tirar.dataset.rsTirar).catch(() => {}); liberarURL(tirar.dataset.rsTirar);
+      return redesenhar(i, Resolver.itemId);
+    }
+    if (alvo.id === "rsConfirmar") return confirmarResolucao(i);
+    const reabrir = alvo.closest("[data-reabrir]");
+    if (reabrir) return reabrirItem(i, reabrir.dataset.reabrir);
+    if (alvo.id === "dtReabrir") return reabrirLegado(i);
+    if (alvo.id === "dtZap") return zapDetalhe(i);
+    if (alvo.id === "dtApagar") { if (await apagarInspecao(i)) Telas.voltar(); }
   };
-  const tratar = async status => {
-    const nova = { status, nota: status === "resolvido" ? ($("#dtNota") ? $("#dtNota").value.trim() : "") : "",
-      por: Dados.usuario.nome || Dados.usuario.usuario, em: Date.now() };
-    Dados.tratar(i.id, nova).catch(() => toast("Não deu para salvar.", "erro"));
-    Historico.marcar(i.id, { resolvido: status === "resolvido" });
-    const eid = (i.equipamento || {}).id;
-    if (status === "resolvido") Dados.fecharPendencia(eid, i.id);
-    else Dados.abrirPendencia(eid, i.id, i.resultado);
-    const l = (Painel.lista || []).find(x => x.id === i.id); if (l) l.tratativa = nova;
-    toast(status === "resolvido" ? "Resolvido ✔ " + nomeEquip(i.equipamento) + " voltou a operar" : "Reaberto", "ok");
-    Telas.render();
+}
+
+/* foto da resolução terminou de subir: troca o ⏳ pela foto sem precisar sair da tela */
+window.addEventListener("ck-midia-enviada", ev => {
+  const i = Estado.detalhe, d = ev.detail || {};
+  if (!i || i.id !== d.inspId || !Telas.atual || Telas.atual.nome !== "detalhe" || !(i.midias || {})[d.mid]) return;
+  i.midias[d.mid] = Object.assign({}, i.midias[d.mid], { ok: true });
+  i.pendentes = Math.max(0, (i.pendentes || 0) - 1);
+  // alguém digitando a nota de outro item: não redesenha (fecharia o teclado)
+  if (!Resolver.itemId) redesenhar(i);
+});
+
+function redesenhar(i, itemId) {
+  const y = window.scrollY;
+  desenharDetalhe(i);
+  window.scrollTo(0, y);
+  const el = itemId && document.querySelector(`[data-item="${CSS.escape(itemId)}"]`);
+  if (el) el.scrollIntoView({ block: "nearest" });
+}
+
+async function cancelarResolucao() {
+  for (const mid of Resolver.mids) { await Midia.apagar(mid).catch(() => {}); liberarURL(mid); }
+  Object.assign(Resolver, { inspId: "", itemId: "", nota: "", mids: [] });
+}
+
+function fotoResolucao(i) {
+  const inp = $("#inFotoRes");
+  inp.value = "";
+  inp.onchange = async () => {
+    const arq = inp.files && inp.files[0]; if (!arq) return;
+    toast("Processando foto…");
+    try {
+      const carimbo = "RESOLVIDO · " + nomeEquip(i.equipamento) + " · " + dataHora(Date.now()) + " · " + (Dados.usuario.usuario || "");
+      const p = await Midia.prepararFoto(arq, carimbo);
+      const mid = Midia.novoId();
+      await Midia.guardar({ mid, estado: "rascunho", blob: p.blob, tipo: "foto", ext: p.ext, item: "res:" + Resolver.itemId });
+      Resolver.mids.push(mid);
+      redesenhar(i, Resolver.itemId);
+      toast("Foto adicionada ✔", "ok");
+    } catch (e) { toast(e.message || "Não deu para usar essa foto.", "erro"); }
   };
-  if ($("#dtResolver")) $("#dtResolver").onclick = () => tratar("resolvido");
-  if ($("#dtReabrir")) $("#dtReabrir").onclick = () => tratar("aberto");
-  $("#dtZap").onclick = () => {
-    const def = (i.itens || []).filter(x => x.st === "nok");
-    const txt = `*CHECKLIST ${R.txt}* ${R.ico}\n🚛 ${nomeEquip(i.equipamento)}\n👤 ${i.criadoNome}\n🕒 ${dataHora(i.criadoEm)}`
-      + (i.km != null ? `\nKM: ${i.km}` : "") + (i.horimetro != null ? `\nHorímetro: ${i.horimetro}` : "")
-      + (def.length ? `\n\n*Defeitos (${def.length}):*\n` + def.map(d => `• ${d.texto}${d.critico ? " (CRÍTICO)" : ""}${d.obs ? " — " + d.obs : ""}`).join("\n") : "\n\nSem defeitos.")
-      + (i.obs ? `\n\nObs.: ${i.obs}` : "");
-    window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
-  };
-  if ($("#dtApagar")) $("#dtApagar").onclick = async () => { if (await apagarInspecao(i)) Telas.voltar(); };
-};
+  inp.click();
+}
+
+/* Grava a resolução do item, sobe as fotos e recalcula a situação:
+   todos resolvidos -> Operando; só faltam itens com observação -> Restrição. */
+async function confirmarResolucao(i) {
+  const itemId = Resolver.itemId, nota = String(Resolver.nota || "").trim();
+  if (!nota) { toast("Escreva o que foi feito.", "erro"); const t = $("#rsNota"); if (t) t.focus(); return; }
+  const por = Dados.usuario.nome || Dados.usuario.usuario, em = Date.now();
+  const upd = {}, novas = {};
+  for (const mid of Resolver.mids) {
+    const reg = await Midia.ler(mid); if (!reg) continue;
+    const path = Midia.caminho(i.id, mid, reg.ext);
+    novas[mid] = { item: "res:" + itemId, tipo: "foto", path, ok: false, tam: reg.blob.size };
+    Object.assign(reg, { estado: "fila", inspId: i.id, path });
+    await Midia.guardar(reg);
+    upd["midias." + mid] = novas[mid];
+  }
+  const fotos = Object.keys(novas);
+  if (fotos.length) upd.pendentes = firebase.firestore.FieldValue.increment(fotos.length);
+  const r = { nota, por, em, fotos };
+  upd["resolucoes." + itemId] = r;
+  i.resolucoes = Object.assign({}, i.resolucoes, { [itemId]: r });
+  i.midias = Object.assign({}, i.midias, novas);
+  i.pendentes = (i.pendentes || 0) + fotos.length;
+  await aplicarSituacao(i, upd, por, em);
+  Object.assign(Resolver, { inspId: "", itemId: "", nota: "", mids: [] });
+  fotos.forEach(liberarURL);
+  Midia.processar();
+  const A = RESULTADOS[statusAtual(i)];
+  toast("Item resolvido ✔ " + nomeEquip(i.equipamento) + ": " + A.txt.toLowerCase(), "ok");
+  redesenhar(i, itemId);
+}
+
+async function reabrirItem(i, itemId) {
+  if (!(await confirmar("O item volta a ficar em aberto e o equipamento volta para a situação dele.", { titulo: "Reabrir item?", ok: "Reabrir" }))) return;
+  const upd = {}; upd["resolucoes." + itemId] = firebase.firestore.FieldValue.delete();
+  i.resolucoes = Object.assign({}, i.resolucoes); delete i.resolucoes[itemId];
+  await aplicarSituacao(i, upd, Dados.usuario.nome || Dados.usuario.usuario, Date.now());
+  toast("Item reaberto", "ok");
+  redesenhar(i, itemId);
+}
+
+/* checklist resolvido pelo botão geral da versão anterior */
+async function reabrirLegado(i) {
+  i.tratativa = { status: "aberto" };
+  i.resolucoes = {};
+  await aplicarSituacao(i, { resolucoes: {} }, Dados.usuario.nome || Dados.usuario.usuario, Date.now());
+  redesenhar(i);
+}
+
+/* Tratativa, equipamento e listas seguem a situação atual dos itens */
+async function aplicarSituacao(i, upd, por, em) {
+  const atual = statusAtual(i);
+  i.tratativa = atual === "liberado" ? { status: "resolvido", por, em, nota: "Todos os itens resolvidos" } : { status: "aberto" };
+  upd.tratativa = i.tratativa;
+  Dados.atualizarInspecao(i.id, upd).catch(() => toast("Não deu para salvar.", "erro"));
+  const eid = (i.equipamento || {}).id;
+  if (atual === "liberado") Dados.fecharPendencia(eid, i.id); else Dados.abrirPendencia(eid, i.id, atual);
+  Historico.marcar(i.id, { atual, resolvido: atual === "liberado" });
+  const l = (Painel.lista || []).findIndex(x => x.id === i.id);
+  if (l >= 0) Painel.lista[l] = i;
+}
+
+function zapDetalhe(i) {
+  const R = RESULTADOS[i.resultado] || RESULTADOS.liberado, A = RESULTADOS[statusAtual(i)];
+  const res = i.resolucoes || {};
+  const def = (i.itens || []).filter(x => x.st === "nok");
+  const txt = `*CHECKLIST ${R.txt}* ${R.ico}\n🚛 ${nomeEquip(i.equipamento)}\n👤 ${i.criadoNome}\n🕒 ${dataHora(i.criadoEm)}`
+    + (i.km != null ? `\nKM: ${i.km}` : "") + (i.horimetro != null ? `\nHorímetro: ${i.horimetro}` : "")
+    + (def.length ? `\n\n*Não conformes (${def.length}):*\n` + def.map(d => `• ${d.texto}${d.critico ? " (CRÍTICO)" : ""}${d.obs ? " — " + d.obs : ""}`
+      + (res[d.id] ? `\n   ✅ Resolvido: ${res[d.id].nota}` : "")).join("\n") : "\n\nSem não conformes.")
+    + (def.length ? `\n\n*Agora:* ${A.ico} ${A.txt}` : "")
+    + (i.obs ? `\n\nObs.: ${i.obs}` : "");
+  window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
+}
 
 /* Só o administrador apaga (a regra do Firestore também barra os outros).
    As fotos vão junto. */
