@@ -26,9 +26,9 @@ async function foto(page) {
 const banco = page => page.evaluate(() => JSON.parse(localStorage.getItem('__ck_banco__') || '{}'));
 // defeitos em aberto gravados no equipamento (é deles que sai a situação)
 const pendencias = (page, P) => page.evaluate(P => (Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === P)[1]).pendencias || {}, P);
-const shot = async (page, nome) => {
+const shot = async (page, nome, inteira = true) => {
   (await page.evaluate(`(${CONTRASTE})(4.5)`)).forEach(t => contrasteRuim.push(nome + ': ' + t));
-  if (SHOTS) await page.screenshot({ path: SHOTS + '/' + nome + '.png', fullPage: true });
+  if (SHOTS) await page.screenshot({ path: SHOTS + '/' + nome + '.png', fullPage: inteira });
 };
 
 async function entrar(page, usuario) {
@@ -39,9 +39,9 @@ async function entrar(page, usuario) {
   await page.waitForSelector('#btnNovo');
 }
 async function sair(page) {
-  page.once('dialog', d => d.accept());
   await page.click('[data-ir="conta"]');
   await page.click('#ctSair');
+  await page.click('#mdlOk');
   await page.waitForSelector('#lgUsuario');
 }
 
@@ -55,6 +55,9 @@ async function sair(page) {
   const page = await ctx.newPage();
   const erros = [];
   page.on('pageerror', e => erros.push(e.message));
+  // janela cinza do navegador (confirm/alert) não pode mais aparecer
+  const nativas = [];
+  page.on('dialog', d => { nativas.push(d.message()); d.dismiss(); });
   page.on('console', m => { if (m.type() === 'error') erros.push(m.text()); });
 
   // o gestor do app de frota existe; nada do checklist ainda
@@ -157,8 +160,18 @@ async function sair(page) {
   await page.reload(); await page.waitForSelector('#btnContinuar');
   await page.click('#btnContinuar'); await page.waitForSelector('.ck-item:nth-child(1).nok');
   ok(await page.inputValue('#ckKm') === '152340', 'rascunho sobrevive ao fechar o app no meio');
-  page.once('dialog', d => d.accept());
+  ok(!(await page.isVisible('#inFoto')) && !(await page.isVisible('#inVideo')), 'campos "Escolher arquivo" ficam escondidos');
   await page.click('#ckFinalizar');
+  await page.waitForSelector('.mdl');
+  const mdl = await page.textContent('.mdl');
+  ok(mdl.includes('Enviar checklist?') && mdl.includes('MANUTENÇÃO') && mdl.includes('Pneus') && mdl.includes('CRÍTICO')
+    && (await page.textContent('#mdlOk')) === 'Enviar' && (await page.textContent('#mdlCancel')) === 'Voltar',
+    'janela do app: título, resultado, itens não conformes e botões Enviar/Voltar');
+  await shot(page, '12-confirmar', false);
+  await page.click('#mdlCancel');
+  ok(!(await page.$('.mdl')) && !(await page.$('.resultado')), 'Voltar fecha a janela e não envia');
+  await page.click('#ckFinalizar');
+  await page.click('#mdlOk');
   await page.waitForSelector('.resultado');
   ok((await page.textContent('.resultado h2')).includes('MANUTENÇÃO'), 'defeito crítico = MANUTENÇÃO');
   ok((await page.textContent('.resultado .aviso-critico')).includes('Acione a manutenção'), 'tela final repete "Acione a manutenção"');
@@ -195,8 +208,8 @@ async function sair(page) {
   await page.click('[data-foto="geral"]');
   await page.waitForSelector('.card .mini-midia img[src^="blob:"]');
   await page.click('#ckTudoOk');
-  page.once('dialog', d => d.accept());
   await page.click('#ckFinalizar');
+  await page.click('#mdlOk');
   await page.waitForSelector('.resultado');
   ok((await page.textContent('.resultado h2')).includes('OPERACIONAL COM OBSERVAÇÃO'), 'defeito não crítico = OPERACIONAL COM OBSERVAÇÃO');
   ok((await page.textContent('.resultado + p')).includes('Sem sinal'), 'avisa que ficou guardado');
@@ -279,15 +292,17 @@ async function sair(page) {
   const antes = await banco(page);
   const escav = Object.values(antes).find(d => d.resultado && d.equipamento.prefixo === 'ESC-03');
   const fotoEscav = Object.values(escav.midias)[0].path;
-  page.once('dialog', d => d.accept());
   await page.click(`[data-apagar="${escav.id}"]`);
+  await page.click('#mdlOk');
   await page.waitForFunction(() => document.querySelectorAll('#pLista .item').length === 1);
   const depois = await banco(page);
   ok(!depois['checklist_inspecoes/' + escav.id] && !depois[fotoEscav], 'admin apagou o checklist e a foto dele');
   ok(!(await page.evaluate(() => Historico.lista().map(x => x.id))).includes(escav.id), 'apagado sai na hora de "Meus últimos checklists"');
   ok(Object.keys(await pendencias(page, 'ESC-03')).length === 0, 'apagar o checklist tira a restrição do ESC-03');
-  page.once('dialog', d => d.dismiss());
   await page.click('[data-apagar]');
+  ok((await page.textContent('.mdl h2')) === 'Apagar checklist?' && await page.$eval('#mdlOk', b => b.classList.contains('btn-perigo')),
+    'apagar: janela do app com botão vermelho');
+  await page.click('#mdlCancel');
   ok(await page.$$eval('#pLista .item', l => l.length) === 1, 'cancelar não apaga');
   await page.click('#pLista .item');
   await page.waitForSelector('#dtApagar');
@@ -321,8 +336,8 @@ async function sair(page) {
   await page.click('.ck-item:nth-child(2) [data-st="nok"]');
   await page.fill('.ck-item:nth-child(2) .ck-obs', 'Pedal duro');
   await page.click('#ckTudoOk');
-  page.once('dialog', d => d.accept());
   await page.click('#ckFinalizar');
+  await page.click('#mdlOk');
   await page.waitForSelector('.resultado');
   ok((await page.textContent('.resultado h2')).includes('OPERACIONAL COM OBSERVAÇÃO'), 'defeito em item "com observação" = OPERACIONAL COM OBSERVAÇÃO (segue operando)');
   await page.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem('__ck_banco__')))
@@ -367,6 +382,7 @@ async function sair(page) {
   ok(await page.evaluate(() => getComputedStyle(document.body).backgroundColor) === 'rgb(255, 255, 255)',
     'fundo branco mesmo com o celular em modo escuro');
   ok(contrasteRuim.length === 0, 'contraste ≥ 4,5:1 em todas as telas fotografadas' + (contrasteRuim.length ? ': ' + contrasteRuim.join(' | ') : ''));
+  ok(nativas.length === 0, 'nenhuma janela do navegador (confirm/alert)' + (nativas.length ? ': ' + nativas.join(' | ') : ''));
   ok(erros.length === 0, 'nenhum erro de JavaScript' + (erros.length ? ': ' + erros.join(' | ') : ''));
   await browser.close();
   console.log(falhas ? '\n' + falhas + ' FALHA(S)' : '\nTUDO CERTO');

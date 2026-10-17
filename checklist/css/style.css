@@ -15,6 +15,7 @@
   color-scheme: light;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }   /* "input { display:block }" não pode reaparecer o que está escondido */
 html, body { margin: 0; background: var(--bg); color: var(--text); }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
@@ -218,3 +219,15 @@ textarea { resize: vertical; }
 .toast.mostra { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.ok { border-color: #22c55e; }
 .toast.erro { border-color: #ef4444; }
+
+/* ---- janela de confirmação (no lugar da janela do navegador) ---- */
+.mdl-fundo { position: fixed; inset: 0; z-index: 70; background: rgba(11,18,32,.55); display: flex; align-items: flex-end; justify-content: center; padding: 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+.mdl { width: 100%; max-width: 480px; background: var(--card); color: var(--text); border-radius: 20px; border-top: 5px solid var(--brand); padding: 20px 18px 14px; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+.mdl h2 { margin: 0 0 10px; font-size: 21px; }
+.mdl-msg { font-size: 16px; line-height: 1.45; max-height: 50vh; overflow-y: auto; }
+.mdl-msg p { margin: 6px 0; }
+.mdl-msg ul { margin: 6px 0; padding-left: 20px; }
+.mdl-bts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.mdl-bts .btn { margin: 0; padding: 15px 10px; font-size: 17px; }
+.btn-perigo { background: var(--perigo); color: #fff; }
+.tag-grande { font-size: 14px; padding: 6px 12px; }

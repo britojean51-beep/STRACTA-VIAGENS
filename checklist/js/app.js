@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck9";
+const VERSAO = "ck10";
 const RASCUNHO_KEY = "ck_rascunho";
 const HISTORICO_KEY = "ck_historico";
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
@@ -76,7 +76,28 @@ function toast(msg, tipo) {
   clearTimeout(toast._t);
   toast._t = setTimeout(() => { t.className = "toast"; }, 3200);
 }
-function confirmar(msg) { return Promise.resolve(window.confirm(msg)); }
+/* Janela de confirmação no visual do app (no lugar da janela cinza do navegador).
+   o: { titulo, ok, cancelar, perigo (botão vermelho), html (conteúdo pronto) } */
+function confirmar(msg, o = {}) {
+  const ant = document.querySelector(".mdl-fundo"); if (ant) ant.remove();
+  return new Promise(ok => {
+    const f = document.createElement("div");
+    f.className = "mdl-fundo";
+    f.innerHTML = `<div class="mdl" role="dialog" aria-modal="true" aria-labelledby="mdlTitulo">
+      <h2 id="mdlTitulo">${h(o.titulo || "Confirmar")}</h2>
+      <div class="mdl-msg">${o.html || h(msg).replace(/\n/g, "<br>")}</div>
+      <div class="mdl-bts">
+        <button class="btn btn-ghost" id="mdlCancel">${h(o.cancelar || "Cancelar")}</button>
+        <button class="btn ${o.perigo ? "btn-perigo" : ""}" id="mdlOk">${h(o.ok || "Confirmar")}</button>
+      </div></div>`;
+    const fim = v => { f.remove(); document.removeEventListener("keydown", tecla); ok(v); };
+    const tecla = e => { if (e.key === "Escape") fim(false); };
+    f.onclick = e => { if (e.target === f || e.target.id === "mdlCancel") fim(false); else if (e.target.id === "mdlOk") fim(true); };
+    document.addEventListener("keydown", tecla);
+    document.body.appendChild(f);
+    f.querySelector("#mdlOk").focus();
+  });
+}
 
 function lerJSON(k, padrao) { try { const v = JSON.parse(localStorage.getItem(k) || "null"); return v == null ? padrao : v; } catch (e) { return padrao; } }
 function gravarJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
@@ -262,7 +283,7 @@ Render.inicio = function () {
   if (r) {
     $("#btnContinuar").onclick = () => Telas.ir("checklist");
     $("#btnDescartar").onclick = async () => {
-      if (await confirmar("Descartar o checklist em andamento? As fotos dele serão apagadas.")) {
+      if (await confirmar("O checklist em andamento e as fotos dele serão apagados.", { titulo: "Descartar checklist?", ok: "Descartar", perigo: true })) {
         await descartarRascunho(); Telas.render();
       }
     };
@@ -517,7 +538,11 @@ async function finalizar() {
   const criticos = defeitos.filter(i => i.critico);
   const resultado = criticos.length ? "bloqueado" : defeitos.length ? "restricao" : "liberado";
   const R = RESULTADOS[resultado];
-  if (!(await confirmar("Resultado: " + R.txt + "\n" + defeitos.length + " não conforme(s). Enviar o checklist?"))) return;
+  if (!(await confirmar("", { titulo: "Enviar checklist?", ok: "Enviar", cancelar: "Voltar",
+    html: `<p><b>${h(nomeEquip(r.equip))}</b></p>
+      <p><span class="tag ${R.cls} tag-grande">${R.ico} ${R.txt}</span></p>
+      <p>${defeitos.length ? defeitos.length + " item(ns) não conforme(s):" : "Nenhum item não conforme."}</p>
+      ${defeitos.length ? `<ul>${defeitos.map(d => `<li>${h(d.texto)}${d.critico ? ' <span class="critico">CRÍTICO</span>' : ""}</li>`).join("")}</ul>` : ""}` }))) return;
 
   const agora = Date.now();
   const midias = {};
@@ -749,7 +774,8 @@ Render.detalhe = async function (id) {
    As fotos vão junto. */
 async function apagarInspecao(i) {
   if (!Dados.ehAdmin()) return false;
-  if (!(await confirmar("Apagar o checklist de " + nomeEquip(i.equipamento) + " (" + dataHora(i.criadoEm) + ")?\nAs fotos vão junto. Não tem como desfazer."))) return false;
+  if (!(await confirmar(nomeEquip(i.equipamento) + " · " + dataHora(i.criadoEm) + "\nAs fotos vão junto. Não tem como desfazer.",
+    { titulo: "Apagar checklist?", ok: "Apagar", perigo: true }))) return false;
   Dados.col("inspecoes").doc(i.id).delete().catch(() => toast("Não deu para apagar.", "erro"));
   Midia.apagarRemotas(i.midias);
   Historico.remover(i.id);
@@ -811,7 +837,7 @@ Render["cad-equip"] = function (editId) {
   if (e.id) {
     $("#eqCancelar").onclick = () => { Telas.atual.arg = null; Telas.render(); };
     $("#eqApagar").onclick = async () => {
-      if (!(await confirmar("Apagar " + nomeEquip(e) + "? Os checklists já feitos continuam."))) return;
+      if (!(await confirmar(nomeEquip(e) + "\nOs checklists já feitos continuam.", { titulo: "Apagar equipamento?", ok: "Apagar", perigo: true }))) return;
       Dados.remover("equipamentos", e.id).catch(() => toast("Não deu para apagar.", "erro"));
       Telas.atual.arg = null; Telas.render();
     };
@@ -903,7 +929,7 @@ Render["cad-modelo"] = function (id) {
     toast("Modelo salvo ✔", "ok"); Telas.voltar();
   };
   if (base) $("#mdApagar").onclick = async () => {
-    if (!(await confirmar("Apagar o modelo " + base.nome + "?"))) return;
+    if (!(await confirmar(base.nome, { titulo: "Apagar modelo?", ok: "Apagar", perigo: true }))) return;
     Dados.remover("modelos", base.id).catch(() => {});
     Render["cad-modelo"]._ed = null; Telas.voltar();
   };
@@ -992,7 +1018,8 @@ Render.conta = function () {
   };
   $("#ctSair").onclick = async () => {
     const n = await Midia.pendentes();
-    if (!(await confirmar(n ? "Ainda há " + n + " arquivo(s) para enviar. Eles ficam guardados e sobem quando você entrar de novo. Sair?" : "Sair deste aparelho?"))) return;
+    if (!(await confirmar(n ? "Ainda há " + n + " foto(s) para enviar. Elas ficam guardadas e sobem quando você entrar de novo." : "Para entrar de novo será preciso o usuário e a senha.",
+      { titulo: "Sair deste aparelho?", ok: "Sair" }))) return;
     Estado.parar(); await Dados.sair(); Render.login();
   };
   atualizarRede();
