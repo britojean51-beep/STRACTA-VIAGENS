@@ -31,6 +31,7 @@ node simgs.js "Solicitações"      # roda o Codigo.gs de verdade sobre o que o 
 | `smoke.js` | Passa por todas as telas nos dois temas: erro de JavaScript e contraste. |
 | `ck-sdk.js` | Firebase de mentira (Auth, Firestore com fila sem sinal, Storage) para o app `/checklist`. |
 | `test-checklist.js` | App `/checklist` de ponta a ponta: login, cadastros, checklist com foto, sem sinal, painel. Sirva em 8131. |
+| `contraste.js` | Mede o contraste de todo texto contra o fundo real. O checklist exige 4,5:1 (é usado ao sol). |
 | `test-separacao.js` | Operador liberado só no checklist é barrado no app de frota. Sirva em 8130. |
 | `test40.js` | Solicitações de manutenção com foto (r47). |
 | `test41.js` | A aba Solicitações na planilha (r47). |

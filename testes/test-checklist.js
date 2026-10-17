@@ -7,6 +7,8 @@ const fs = require('fs');
 const SDK = fs.readFileSync(__dirname + '/ck-sdk.js', 'utf8');
 const URL = 'http://localhost:8131/checklist/index.html';
 const SHOTS = process.env.SHOTS || '';
+const CONTRASTE = require('./contraste.js');
+const contrasteRuim = [];   // [tela, texto] — o app é usado ao sol: mínimo 4,5:1
 
 let falhas = 0;
 const ok = (cond, msg) => { console.log((cond ? '  ✔ ' : '  ✖ ') + msg); if (!cond) falhas++; };
@@ -22,7 +24,10 @@ async function foto(page) {
   return { name: 'foto.png', mimeType: 'image/png', buffer: Buffer.from(b64, 'base64') };
 }
 const banco = page => page.evaluate(() => JSON.parse(localStorage.getItem('__ck_banco__') || '{}'));
-const shot = async (page, nome) => { if (SHOTS) await page.screenshot({ path: SHOTS + '/' + nome + '.png', fullPage: true }); };
+const shot = async (page, nome) => {
+  (await page.evaluate(`(${CONTRASTE})(4.5)`)).forEach(t => contrasteRuim.push(nome + ': ' + t));
+  if (SHOTS) await page.screenshot({ path: SHOTS + '/' + nome + '.png', fullPage: true });
+};
 
 async function entrar(page, usuario) {
   await page.waitForSelector('#lgUsuario');
@@ -40,7 +45,8 @@ async function sair(page) {
 
 (async () => {
   const browser = await chromium.launch();
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2,
+  // celular em modo escuro: o app tem que continuar branco (é usado ao sol)
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: 'dark',
     serviceWorkers: 'block' });
   await ctx.route('https://www.gstatic.com/**', r => r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
   await ctx.addInitScript(SDK);
@@ -265,6 +271,9 @@ async function sair(page) {
   ok(b6['checklist_modelos/padrao-caminhao'].itens.length === 19, 'item novo entra no modelo');
   await shot(page, '08-modelos');
 
+  ok(await page.evaluate(() => getComputedStyle(document.body).backgroundColor) === 'rgb(255, 255, 255)',
+    'fundo branco mesmo com o celular em modo escuro');
+  ok(contrasteRuim.length === 0, 'contraste ≥ 4,5:1 em todas as telas fotografadas' + (contrasteRuim.length ? ': ' + contrasteRuim.join(' | ') : ''));
   ok(erros.length === 0, 'nenhum erro de JavaScript' + (erros.length ? ': ' + erros.join(' | ') : ''));
   await browser.close();
   console.log(falhas ? '\n' + falhas + ' FALHA(S)' : '\nTUDO CERTO');
