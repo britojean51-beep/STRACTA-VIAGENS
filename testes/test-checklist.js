@@ -227,7 +227,7 @@ async function sair(page) {
   await page.waitForSelector('[data-abrir]');
   ok(await page.$$eval('#pLista .item', l => l.length) === 2, 'painel mostra os 2 checklists de hoje');
   const frota = await page.textContent('#pFrota');
-  ok(/Em manutenção \(1\)\s*CB-12/.test(frota) && /Com restrição \(1\)\s*ESC-03/.test(frota) && frota.includes('Operacional (0)'),
+  ok(/Em manutenção \(1\)\s*CB-12/.test(frota) && /Com restrição \(1\)\s*ESC-03/.test(frota) && frota.includes('Operando (0)'),
     'situação da frota: CB-12 em manutenção, ESC-03 com restrição');
   await shot(page, '06-painel');
   await page.click('[data-f="bloqueado"]');
@@ -249,11 +249,19 @@ async function sair(page) {
     && d.tratativa.por === 'Ana Gestora'), 'gestor resolveu (tratativa gravada com o nome dele)');
   await page.click('#btnVoltar');
   await page.click('[data-f="todos"]');
-  await page.waitForFunction(() => document.querySelector('#pFrota').textContent.includes('Operacional (1)'));
+  await page.waitForFunction(() => document.querySelector('#pFrota').textContent.includes('Operando (1)'));
   ok(!(await page.textContent('#pFrota')).includes('Em manutenção'), 'resolvido sai de "Em manutenção" no Painel');
   await page.click('[data-f="bloqueado"]');
   ok((await page.textContent('#pFiltro')).includes('🔧 Manutenção') && !(await page.textContent('#app')).includes('Bloquead'),
     'filtro "Manutenção" (não aparece mais "Bloqueado")');
+  ok(await page.$$eval('#pLista .item', l => l.length) === 0, 'resolvido sai da aba Manutenção');
+  await page.click('[data-f="liberado"]');
+  ok((await page.textContent('#pFiltro')).includes('✅ Operando') && !(await page.textContent('#pFiltro')).includes('Liberad'),
+    'aba "Liberados" agora se chama "Operando"');
+  const operando = await page.textContent('#pLista');
+  ok(operando.includes('CB-12') && operando.includes('resolvido (era manutenção)'), 'resolvido aparece na aba Operando (com o que era)');
+  ok((await page.$$eval('.kpi', k => k.map(x => x.textContent.replace(/\s+/g, ' ').trim()))).join('|').includes("1operando"),
+    'contador "operando" conta o resolvido');
   await page.click('[data-f="todos"]');
   ok(!(await page.$('[data-apagar]')), 'gestor não tem lixeira na lista');
   ok((await page.textContent('#pLista')).includes('(motorista)'), 'lista mostra a função de quem fez');

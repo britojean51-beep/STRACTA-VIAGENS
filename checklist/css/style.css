@@ -105,6 +105,7 @@ textarea { resize: vertical; }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 6px; text-align: center; }
 .kpi b { display: block; font-size: 24px; }
 .kpi span { font-size: 12px; color: var(--muted); }
+.kpi.ok b { color: var(--ok); }
 .kpi.alerta b { color: var(--alerta); }
 .kpi.perigo b { color: var(--perigo); }
 
