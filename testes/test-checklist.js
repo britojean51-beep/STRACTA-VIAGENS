@@ -24,6 +24,8 @@ async function foto(page) {
   return { name: 'foto.png', mimeType: 'image/png', buffer: Buffer.from(b64, 'base64') };
 }
 const banco = page => page.evaluate(() => JSON.parse(localStorage.getItem('__ck_banco__') || '{}'));
+// defeitos em aberto gravados no equipamento (é deles que sai a situação)
+const pendencias = (page, P) => page.evaluate(P => (Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === P)[1]).pendencias || {}, P);
 const shot = async (page, nome) => {
   (await page.evaluate(`(${CONTRASTE})(4.5)`)).forEach(t => contrasteRuim.push(nome + ': ' + t));
   if (SHOTS) await page.screenshot({ path: SHOTS + '/' + nome + '.png', fullPage: true });
@@ -155,7 +157,7 @@ async function sair(page) {
   page.once('dialog', d => d.accept());
   await page.click('#ckFinalizar');
   await page.waitForSelector('.resultado');
-  ok((await page.textContent('.resultado h2')).includes('BLOQUEADO'), 'defeito crítico = BLOQUEADO');
+  ok((await page.textContent('.resultado h2')).includes('MANUTENÇÃO'), 'defeito crítico = MANUTENÇÃO');
   await shot(page, '04-resultado');
   await page.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('__ck_banco__') || '{}')).filter(k => k.startsWith('checklist_fotos/')).length === 1);
   await page.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem('__ck_banco__')))
@@ -171,11 +173,14 @@ async function sair(page) {
   ok(Object.keys(await page.evaluate(() => window.__STORAGE__)).length === 0, 'nada vai para o Storage (desligado)');
   ok(insp.km === 152340 && insp.criadoPor === 'ze@gp2t.local' && insp.criticos === 1 && insp.tratativa.status === 'aberto',
     'checklist gravado com KM, autor e tratativa aberta');
+  ok(JSON.stringify(await pendencias(page, 'CB-12')) === JSON.stringify({ [insp.id]: 'bloqueado' }), 'CB-12 entra EM MANUTENÇÃO');
 
   console.log('4. sem sinal: checklist e foto ficam na fila');
   await page.evaluate(() => { window.__SEM_REDE__ = true; });
   await page.context().setOffline(true);
   await page.click('#rsNovo');
+  ok((await page.textContent('.equip.sit-perigo')).includes('Em manutenção') && (await page.textContent('.equip.sit-perigo')).includes('CB-12'),
+    'na escolha, CB-12 aparece marcado "Em manutenção"');
   await page.click('.equip:has-text("ESC-03")');
   await page.waitForSelector('.ck-item');
   ok(await page.$$eval('.ck-item', l => l.length) === 17, 'escavadeira usa o modelo de máquina');
@@ -203,6 +208,7 @@ async function sair(page) {
   await page.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem('__ck_banco__')))
     .filter(d => d.resultado && d.pendentes === 0).length === 2);
   ok(true, 'rede voltou: foto subiu sozinha e o checklist foi marcado');
+  ok(Object.values(await pendencias(page, 'ESC-03')).join() === 'restricao', 'ESC-03 (defeito operacional) fica COM RESTRIÇÃO e segue operando');
   await page.waitForFunction(() => !document.querySelector('#app').textContent.includes('⏳ na fila'));
   ok(true, 'início passa para "enviado"');
   const filaIDB = await page.evaluate(() => Midia.pendentes());
@@ -215,7 +221,9 @@ async function sair(page) {
   await page.click('[data-ir="painel"]');
   await page.waitForSelector('[data-abrir]');
   ok(await page.$$eval('#pLista .item', l => l.length) === 2, 'painel mostra os 2 checklists de hoje');
-  ok((await page.textContent('.perigo-borda')).includes('CB-12'), 'CB-12 aparece em "Parados por checklist"');
+  const frota = await page.textContent('#pFrota');
+  ok(/Em manutenção \(1\)\s*CB-12/.test(frota) && /Com restrição \(1\)\s*ESC-03/.test(frota) && frota.includes('Operacional (0)'),
+    'situação da frota: CB-12 em manutenção, ESC-03 com restrição');
   await shot(page, '06-painel');
   await page.click('[data-f="bloqueado"]');
   ok(await page.$$eval('#pLista .item', l => l.length) === 1, 'filtro de bloqueados');
@@ -228,13 +236,20 @@ async function sair(page) {
   await shot(page, '07-detalhe');
   await page.fill('#dtNota', 'Pneu trocado');
   await page.click('#dtResolver');
+  await page.waitForFunction(P => Object.keys((Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === P)[1]).pendencias || {}).length === 0, 'CB-12');
+  ok(true, 'resolvido: CB-12 volta a OPERACIONAL');
   await page.waitForSelector('#dtReabrir');
   const b5 = await banco(page);
   ok(Object.values(b5).some(d => d.tratativa && d.tratativa.status === 'resolvido' && d.tratativa.nota === 'Pneu trocado'
     && d.tratativa.por === 'Ana Gestora'), 'gestor resolveu (tratativa gravada com o nome dele)');
   await page.click('#btnVoltar');
   await page.click('[data-f="todos"]');
-  ok(!(await page.$('.perigo-borda')), 'resolvido sai de "Parados por checklist"');
+  await page.waitForFunction(() => document.querySelector('#pFrota').textContent.includes('Operacional (1)'));
+  ok(!(await page.textContent('#pFrota')).includes('Em manutenção'), 'resolvido sai de "Em manutenção" no Painel');
+  await page.click('[data-f="bloqueado"]');
+  ok((await page.textContent('#pFiltro')).includes('🔧 Manutenção') && !(await page.textContent('#app')).includes('Bloquead'),
+    'filtro "Manutenção" (não aparece mais "Bloqueado")');
+  await page.click('[data-f="todos"]');
   ok(!(await page.$('[data-apagar]')), 'gestor não tem lixeira na lista');
   ok((await page.textContent('#pLista')).includes('(motorista)'), 'lista mostra a função de quem fez');
   await page.evaluate(() => Telas.ir('cad-usuarios'));
@@ -254,6 +269,7 @@ async function sair(page) {
   await page.waitForFunction(() => document.querySelectorAll('#pLista .item').length === 1);
   const depois = await banco(page);
   ok(!depois['checklist_inspecoes/' + escav.id] && !depois[fotoEscav], 'admin apagou o checklist e a foto dele');
+  ok(Object.keys(await pendencias(page, 'ESC-03')).length === 0, 'apagar o checklist tira a restrição do ESC-03');
   page.once('dialog', d => d.dismiss());
   await page.click('[data-apagar]');
   ok(await page.$$eval('#pLista .item', l => l.length) === 1, 'cancelar não apaga');
@@ -265,10 +281,37 @@ async function sair(page) {
   await page.click('#mdCopiar');
   await page.waitForSelector('[data-md]');
   await page.click('[data-md="padrao-caminhao"]');
-  await page.fill('#mdNovoItem', 'Lona de cobertura da carga'); await page.click('#mdAdd');
+  ok((await page.textContent('#app')).includes('põe o equipamento em manutenção'), 'tela de modelo explica os níveis');
+  // o freio (item 2) passa de Crítico para Operacional; item novo entra como Crítico
+  ok(await page.$eval('.md-item[data-n="1"] .md-nivel', e => e.value) === 'critico', 'freio vem como Crítico');
+  await page.selectOption('.md-item[data-n="1"] .md-nivel', 'operacional');
+  await page.fill('#mdNovoItem', 'Lona de cobertura da carga');
+  await page.selectOption('#mdNovoNivel', 'critico');
+  await page.click('#mdAdd');
+  await shot(page, '10-niveis');
   await page.click('#mdSalvar');
   const b6 = await banco(page);
   ok(b6['checklist_modelos/padrao-caminhao'].itens.length === 19, 'item novo entra no modelo');
+  const itensMod = b6['checklist_modelos/padrao-caminhao'].itens;
+  ok(itensMod[1].critico === false && itensMod[18].texto === 'Lona de cobertura da carga' && itensMod[18].critico === true,
+    'níveis salvos: freio Operacional, lona Crítico');
+  // e o checklist novo já usa os níveis
+  await page.click('[data-ir="novo"]');
+  await page.click('.equip:has-text("CB-12")');
+  await page.waitForSelector('.ck-item');
+  const tags = await page.$$eval('.ck-item', l => l.map(e => !!e.querySelector('.critico')));
+  ok(tags[1] === false && tags[18] === true, 'checklist novo: freio sem CRÍTICO, lona com CRÍTICO');
+  // lona (crítico) com defeito -> manutenção; freio (operacional) com defeito -> só restrição
+  await page.click('.ck-item:nth-child(2) [data-st="nok"]');
+  await page.fill('.ck-item:nth-child(2) .ck-obs', 'Pedal duro');
+  await page.click('#ckTudoOk');
+  page.once('dialog', d => d.accept());
+  await page.click('#ckFinalizar');
+  await page.waitForSelector('.resultado');
+  ok((await page.textContent('.resultado h2')).includes('RESTRIÇÃO'), 'defeito em item Operacional = RESTRIÇÃO (segue operando)');
+  await page.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem('__ck_banco__')))
+    .some(d => d.prefixo === 'CB-12' && Object.values(d.pendencias || {}).join() === 'restricao'));
+  ok(true, 'CB-12 passa a "Com restrição"');
   await shot(page, '08-modelos');
 
   ok(await page.evaluate(() => getComputedStyle(document.body).backgroundColor) === 'rgb(255, 255, 255)',

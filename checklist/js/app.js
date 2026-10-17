@@ -1,14 +1,14 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck4";
+const VERSAO = "ck5";
 const RASCUNHO_KEY = "ck_rascunho";
 const HISTORICO_KEY = "ck_historico";
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
 const RESULTADOS = {
   liberado: { txt: "LIBERADO", ico: "✅", cls: "ok" },
   restricao: { txt: "LIBERADO COM RESTRIÇÃO", ico: "⚠️", cls: "alerta" },
-  bloqueado: { txt: "BLOQUEADO", ico: "⛔", cls: "perigo" }
+  bloqueado: { txt: "MANUTENÇÃO", ico: "🔧", cls: "perigo" }   // a chave segue "bloqueado" nos dados
 };
 
 /* Modelos que já vêm prontos. O admin edita ou cria outros em Cadastros. */
@@ -30,6 +30,26 @@ const MODELOS_PADRAO = [
     ["Painel sem luz de alerta", false], ["Filtro de ar", false], ["Limpeza e organização da cabine", false]] }
 ].map(m => Object.assign({}, m, { padrao: true,
   itens: m.itens.map(([texto, critico], i) => ({ id: "i" + (i + 1), texto, critico })) }));
+
+/* Situação do equipamento: sai dos defeitos ainda em aberto (pendencias). */
+const SITUACOES = {
+  manutencao: { txt: "Em manutenção", ico: "🔧", cls: "perigo" },
+  restricao: { txt: "Com restrição", ico: "⚠️", cls: "alerta" },
+  operacional: { txt: "Operacional", ico: "✅", cls: "ok" }
+};
+function situacaoDe(e) {
+  const v = Object.values((e && e.pendencias) || {});
+  return v.includes("bloqueado") ? "manutencao" : v.includes("restricao") ? "restricao" : "operacional";
+}
+/* o checklist em aberto mais recente que deixou o equipamento nessa situação */
+function pendenciaMaisRecente(e) {
+  const p = (e && e.pendencias) || {}, alvo = situacaoDe(e) === "manutencao" ? "bloqueado" : "restricao";
+  return Object.keys(p).filter(k => p[k] === alvo).sort().pop() || "";
+}
+const NIVEIS = {
+  critico: "Crítico — defeito põe em manutenção",
+  operacional: "Operacional — defeito com observação, segue operando (restrição)"
+};
 
 /* ---------- utilidades ---------- */
 const $ = s => document.querySelector(s);
@@ -236,10 +256,11 @@ Render.novo = function (busca) {
   app().innerHTML = `
     <input class="busca" id="busca" type="search" placeholder="🔎 Prefixo ou placa" value="${h(busca || "")}" />
     <div class="grade" id="grade">
-      ${lista.map(e => `<button class="equip" data-id="${h(e.id)}">
+      ${lista.map(e => { const S = SITUACOES[situacaoDe(e)]; return `<button class="equip sit-${S.cls}" data-id="${h(e.id)}">
         <span>${e.tipo === "maquina" ? "🚜" : e.tipo === "leve" ? "🚙" : "🚛"}</span>
         <b>${h(e.prefixo || e.placa)}</b><small>${h(e.placa && e.prefixo ? e.placa : (e.descricao || TIPOS[e.tipo] || ""))}</small>
-      </button>`).join("")}
+        ${S.cls !== "ok" ? `<em class="tag ${S.cls}">${S.ico} ${S.txt}</em>` : ""}
+      </button>`; }).join("")}
     </div>
     ${!lista.length ? `<p class="vazio">${Estado.equipamentos.length ? "Nada encontrado." : "Nenhum equipamento cadastrado ainda."}</p>` : ""}
     <details class="card" id="avulso" ${Estado.equipamentos.length ? "" : "open"}>
@@ -254,6 +275,7 @@ Render.novo = function (busca) {
   $("#grade").onclick = ev => {
     const el = ev.target.closest(".equip"); if (!el) return;
     const e = Estado.equipamentos.find(x => x.id === el.dataset.id);
+    if (situacaoDe(e) === "manutencao") toast("Atenção: " + nomeEquip(e) + " está EM MANUTENÇÃO.", "erro");
     iniciarChecklist({ id: e.id, prefixo: e.prefixo || "", placa: e.placa || "", tipo: e.tipo || "outro", modeloId: e.modeloId || "" });
   };
   $("#avIr").onclick = () => {
@@ -331,7 +353,7 @@ Render.checklist = function () {
       ${r.modelo.itens.map((it, n) => {
         const resp = r.respostas[it.id] || {};
         return `<div class="ck-item ${resp.st || ""}" data-item="${h(it.id)}">
-          <div class="ck-txt"><span class="num">${n + 1}</span>${h(it.texto)}${it.critico ? ' <span class="critico" title="Item crítico: defeito bloqueia o equipamento">CRÍTICO</span>' : ""}</div>
+          <div class="ck-txt"><span class="num">${n + 1}</span>${h(it.texto)}${it.critico ? ' <span class="critico" title="Item crítico: defeito põe o equipamento em manutenção">CRÍTICO</span>' : ""}</div>
           <div class="ck-bts">
             <button class="st ok ${resp.st === "ok" ? "on" : ""}" data-st="ok">✔ OK</button>
             <button class="st nok ${resp.st === "nok" ? "on" : ""}" data-st="nok">✖ Defeito</button>
@@ -483,6 +505,7 @@ async function finalizar() {
     if (reg) { reg.estado = "fila"; reg.inspId = r.id; reg.path = m.path; await Midia.guardar(reg); }
   }
   Historico.adicionar({ id: r.id, equip: nomeEquip(r.equip), resultado, defeitos: defeitos.length, criadoEm: agora, enviado: false });
+  Dados.abrirPendencia(r.equip.id, r.id, resultado);
   Dados.gravarInspecao(insp)
     .then(() => { Historico.marcar(r.id, { enviado: true }); Telas.atualizarSeVisivel(["inicio"]); })
     .catch(e => toast("Erro ao enviar: " + ((e && e.code) || "tente de novo"), "erro"));
@@ -504,7 +527,8 @@ Render.resultado = function (a) {
       <h2>${R.txt}</h2>
       <p>${h(a.equip)}</p>
       ${a.defeitos.length ? `<ul>${a.defeitos.map(d => `<li>${h(d)}</li>`).join("")}</ul>` : ""}
-      ${a.resultado === "bloqueado" ? `<p><b>Não opere este equipamento.</b> Avise a manutenção.</p>` : ""}
+      ${a.resultado === "bloqueado" ? `<p><b>Equipamento em manutenção: não opere.</b> Avise a manutenção.</p>` : ""}
+      ${a.resultado === "restricao" ? `<p>Pode operar, com atenção aos itens acima. A manutenção foi avisada.</p>` : ""}
     </div>
     <p class="muted mini">${a.online ? "Enviando agora. Fotos e vídeos sobem em segundo plano." :
       "Sem sinal: ficou guardado no aparelho e vai sozinho quando a rede voltar."}</p>
@@ -527,10 +551,9 @@ Render.painel = async function () {
       (p.filtro === "todos" || (p.filtro === "aberto" ? i.tratativa && i.tratativa.status === "aberto" : i.resultado === p.filtro)) &&
       (!p.busca || (nomeEquip(i.equipamento) + " " + (i.criadoNome || "")).toLowerCase().includes(p.busca.toLowerCase())));
     const todos = p.lista || [];
-    // situação da frota: o checklist mais recente de cada equipamento
-    const ultimo = {};
-    todos.forEach(i => { const k = nomeEquip(i.equipamento); if (!ultimo[k] || ultimo[k].criadoEm < i.criadoEm) ultimo[k] = i; });
-    const bloqueados = Object.values(ultimo).filter(i => i.resultado === "bloqueado" && !(i.tratativa && i.tratativa.status === "resolvido"));
+    // situação da frota: vem dos equipamentos, não do período escolhido
+    const porSit = { manutencao: [], restricao: [], operacional: [] };
+    Estado.equipamentos.forEach(e => porSit[situacaoDe(e)].push(e));
     app().innerHTML = `
       <div class="seg" id="pDias">
         ${[[1, "Hoje"], [7, "7 dias"], [30, "30 dias"]].map(([d, t]) => `<button data-d="${d}" class="${p.dias === d ? "on" : ""}">${t}</button>`).join("")}
@@ -538,14 +561,18 @@ Render.painel = async function () {
       <div class="kpis">
         <div class="kpi"><b>${todos.length}</b><span>checklists</span></div>
         <div class="kpi alerta"><b>${todos.filter(i => i.resultado === "restricao").length}</b><span>restrição</span></div>
-        <div class="kpi perigo"><b>${todos.filter(i => i.resultado === "bloqueado").length}</b><span>bloqueados</span></div>
+        <div class="kpi perigo"><b>${todos.filter(i => i.resultado === "bloqueado").length}</b><span>manutenção</span></div>
         <div class="kpi"><b>${todos.filter(i => i.tratativa && i.tratativa.status === "aberto").length}</b><span>em aberto</span></div>
       </div>
-      ${bloqueados.length ? `<div class="card perigo-borda"><b>⛔ Parados por checklist</b>
-        ${bloqueados.map(i => `<div class="link" data-abrir="${h(i.id)}">${h(nomeEquip(i.equipamento))} — ${dataHora(i.criadoEm)}</div>`).join("")}</div>` : ""}
+      <div class="card frota" id="pFrota"><b>Situação da frota agora</b>
+        ${["manutencao", "restricao"].map(k => porSit[k].length ? `<div class="sit ${SITUACOES[k].cls}">
+          <span class="tag ${SITUACOES[k].cls}">${SITUACOES[k].ico} ${SITUACOES[k].txt} (${porSit[k].length})</span>
+          ${porSit[k].map(e => `<div class="link" data-abrir="${h(pendenciaMaisRecente(e))}">${h(nomeEquip(e))}</div>`).join("")}</div>` : "").join("")}
+        <p class="mini"><span class="tag ok">✅ Operacional (${porSit.operacional.length})</span></p>
+      </div>
       <input class="busca" id="pBusca" type="search" placeholder="🔎 Equipamento ou nome" value="${h(p.busca)}" />
       <div class="chips" id="pFiltro">
-        ${[["todos", "Todos"], ["bloqueado", "⛔ Bloqueados"], ["restricao", "⚠️ Restrição"], ["liberado", "✅ Liberados"], ["aberto", "🔧 Em aberto"]]
+        ${[["todos", "Todos"], ["bloqueado", "🔧 Manutenção"], ["restricao", "⚠️ Restrição"], ["liberado", "✅ Liberados"], ["aberto", "⏳ Em aberto"]]
           .map(([k, t]) => `<button data-f="${k}" class="${p.filtro === k ? "on" : ""}">${t}</button>`).join("")}
       </div>
       ${p.carregando && !p.lista ? `<p class="carregando">Carregando…</p>` : ""}
@@ -555,7 +582,7 @@ Render.painel = async function () {
         return `<div class="item ${R.cls}" data-abrir="${h(i.id)}">
           <div><b>${h(nomeEquip(i.equipamento))}</b><small>${dataHora(i.criadoEm)} · ${h(i.criadoNome)}${PERFIS[i.criadoPerfil] ? " (" + PERFIS[i.criadoPerfil].toLowerCase() + ")" : ""}</small></div>
           <div class="dir">${Dados.ehAdmin() ? `<button class="apagar" data-apagar="${h(i.id)}" aria-label="Apagar checklist">🗑</button>` : ""}<span class="tag ${R.cls}">${R.ico} ${i.defeitos || 0}</span>
-          <small>${i.tratativa && i.tratativa.status === "resolvido" ? "🔧 resolvido" : i.tratativa ? "🔧 aberto" : ""}
+          <small>${i.tratativa && i.tratativa.status === "resolvido" ? "✅ resolvido" : i.tratativa ? "⏳ aberto" : ""}
           ${Object.keys(i.midias || {}).length ? " · 📎" + Object.keys(i.midias).length : ""}</small></div></div>`;
       }).join("")}</div>
       ${p.lista && !l.length ? `<p class="vazio">Nenhum checklist neste filtro.</p>` : ""}
@@ -578,7 +605,13 @@ Render.painel = async function () {
   const carregar = async () => {
     p.carregando = true; p.erro = ""; desenhar();
     const ini = new Date(); ini.setHours(0, 0, 0, 0); ini.setDate(ini.getDate() - (p.dias - 1));
-    try { p.lista = await Dados.inspecoes(ini.getTime()); }
+    try {
+      p.lista = await Dados.inspecoes(ini.getTime());
+      p.lista.forEach(i => {
+        const eid = (i.equipamento || {}).id, e = Estado.equipamentos.find(x => x.id === eid);
+        if (e && i.tratativa && i.tratativa.status === "aberto" && !(e.pendencias || {})[i.id]) Dados.abrirPendencia(eid, i.id, i.resultado);
+      });
+    }
     catch (e) { p.lista = p.lista || []; p.erro = "Não deu para carregar (" + ((e && e.code) || "sem sinal") + ")."; }
     p.carregando = false;
     if (Telas.atual.nome === "painel") desenhar();
@@ -628,7 +661,7 @@ Render.detalhe = async function (id) {
       <b>🔧 Tratativa: ${t.status === "resolvido" ? "resolvido" : "em aberto"}</b>
       ${t.nota ? `<p>${h(t.nota)}</p>` : ""}${t.por ? `<p class="muted mini">${h(t.por)} · ${dataHora(t.em)}</p>` : ""}
       ${t.status !== "resolvido" ? `<textarea id="dtNota" rows="2" placeholder="O que foi feito?"></textarea>
-        <button class="btn" id="dtResolver">Marcar como resolvido</button>` : `<button class="btn btn-ghost" id="dtReabrir">Reabrir</button>`}
+        <button class="btn" id="dtResolver">✅ Resolvido — volta a operar</button>` : `<button class="btn btn-ghost" id="dtReabrir">Reabrir</button>`}
     </div>` : ""}
     <h3 class="secao">Itens</h3>
     ${(i.itens || []).map(it => `<div class="ck-item ${it.st} leitura">
@@ -656,8 +689,11 @@ Render.detalhe = async function (id) {
     const nova = { status, nota: status === "resolvido" ? ($("#dtNota") ? $("#dtNota").value.trim() : "") : "",
       por: Dados.usuario.nome || Dados.usuario.usuario, em: Date.now() };
     Dados.tratar(i.id, nova).catch(() => toast("Não deu para salvar.", "erro"));
+    const eid = (i.equipamento || {}).id;
+    if (status === "resolvido") Dados.fecharPendencia(eid, i.id);
+    else Dados.abrirPendencia(eid, i.id, i.resultado);
     const l = (Painel.lista || []).find(x => x.id === i.id); if (l) l.tratativa = nova;
-    toast(status === "resolvido" ? "Marcado como resolvido ✔" : "Reaberto", "ok");
+    toast(status === "resolvido" ? "Resolvido ✔ " + nomeEquip(i.equipamento) + " voltou a operar" : "Reaberto", "ok");
     Telas.render();
   };
   if ($("#dtResolver")) $("#dtResolver").onclick = () => tratar("resolvido");
@@ -680,6 +716,7 @@ async function apagarInspecao(i) {
   if (!(await confirmar("Apagar o checklist de " + nomeEquip(i.equipamento) + " (" + dataHora(i.criadoEm) + ")?\nAs fotos vão junto. Não tem como desfazer."))) return false;
   Dados.col("inspecoes").doc(i.id).delete().catch(() => toast("Não deu para apagar.", "erro"));
   Midia.apagarRemotas(i.midias);
+  Dados.fecharPendencia((i.equipamento || {}).id, i.id);
   Painel.lista = (Painel.lista || []).filter(x => x.id !== i.id);
   toast("Checklist apagado.", "ok");
   return true;
@@ -690,7 +727,7 @@ Render.cadastros = function () {
   titulo("CADASTROS", "");
   app().innerHTML = `
     <button class="menu" data-ir="cad-equip"><span>🚛</span><div><b>Equipamentos</b><small>${Estado.equipamentos.length} cadastrado(s)</small></div></button>
-    <button class="menu" data-ir="cad-modelos"><span>📝</span><div><b>Modelos de checklist</b><small>${Estado.modelos.length || "padrão"} · itens e o que é crítico</small></div></button>
+    <button class="menu" data-ir="cad-modelos"><span>📝</span><div><b>Modelos de checklist</b><small>${Estado.modelos.length || "padrão"} · itens e nível de cada um</small></div></button>
     <button class="menu" data-ir="cad-usuarios"><span>👥</span><div><b>Usuários</b><small>quem pode entrar e fazer checklist</small></div></button>`;
   app().onclick = ev => { const b = ev.target.closest("[data-ir]"); if (b) Telas.ir(b.dataset.ir); };
 };
@@ -721,7 +758,8 @@ Render["cad-equip"] = function (editId) {
     <h3 class="secao">${Estado.equipamentos.length} equipamento(s)</h3>
     ${Estado.equipamentos.map(x => `<div class="item" data-ed="${h(x.id)}">
       <div><b>${h(nomeEquip(x))}</b><small>${h(TIPOS[x.tipo] || "")}${x.descricao ? " · " + h(x.descricao) : ""}</small></div>
-      <div class="dir"><small>${h((ms.find(m => m.id === x.modeloId) || {}).nome || "automático")}</small></div></div>`).join("")}`;
+      <div class="dir"><span class="tag ${SITUACOES[situacaoDe(x)].cls}">${SITUACOES[situacaoDe(x)].ico} ${SITUACOES[situacaoDe(x)].txt}</span>
+      <small>${h((ms.find(m => m.id === x.modeloId) || {}).nome || "automático")}</small></div></div>`).join("")}`;
   $("#fEq").onsubmit = ev => {
     ev.preventDefault();
     const f = Object.fromEntries(new FormData(ev.target));
@@ -751,7 +789,7 @@ Render["cad-modelos"] = function () {
       <p class="mini">Caminhão e Máquina já vêm prontos. Para mudar os itens, copie-os para a nuvem e edite.</p>
       <button class="btn" id="mdCopiar">Copiar modelos padrão para editar</button></div>` : ""}
     ${Estado.modelosEfetivos().map(m => `<div class="item" ${m.padrao ? "" : `data-md="${h(m.id)}"`}>
-      <div><b>${h(m.nome)}</b><small>${h(TIPOS[m.tipo] || "")} · ${m.itens.length} itens · ${m.itens.filter(x => x.critico).length} críticos</small></div>
+      <div><b>${h(m.nome)}</b><small>${h(TIPOS[m.tipo] || "")} · ${m.itens.length} itens · ${m.itens.filter(x => x.critico).length} críticos · ${m.itens.filter(x => !x.critico).length} operacionais</small></div>
       <div class="dir"><small>${m.padrao ? "padrão" : "editar ›"}</small></div></div>`).join("")}
     <button class="btn" id="mdNovo">➕ Novo modelo</button>`;
   if ($("#mdCopiar")) $("#mdCopiar").onclick = () => {
@@ -776,20 +814,32 @@ Render["cad-modelo"] = function (id) {
       <label>Nome<input id="mdNome" value="${h(m.nome)}" placeholder="ex.: Caminhão basculante — diário" /></label>
       <label>Tipo de equipamento<select id="mdTipo">${Object.entries(TIPOS).map(([k, v]) => `<option value="${k}" ${m.tipo === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
     </div>
-    <h3 class="secao">${m.itens.length} itens · marque os críticos (defeito bloqueia)</h3>
+    <div class="card mini">
+      <b>Nível de cada item</b>
+      <p><span class="critico">CRÍTICO</span> defeito põe o equipamento <b>em manutenção</b> (não opera até resolver).</p>
+      <p><b>Operacional</b>: defeito com observação; o equipamento <b>segue operando</b> e aparece em <b>Restrição</b>.</p>
+      <p class="muted">Quando o gestor marca o defeito como resolvido, o equipamento volta a Operacional.</p>
+    </div>
+    <h3 class="secao">${m.itens.length} itens</h3>
     <div id="mdItens">${m.itens.map((it, n) => `<div class="md-item" data-n="${n}">
       <input class="md-txt" value="${h(it.texto)}" />
-      <label class="toggle"><input type="checkbox" class="md-crit" ${it.critico ? "checked" : ""}/> crítico</label>
+      <select class="md-nivel" aria-label="Nível">
+        <option value="critico" ${it.critico ? "selected" : ""}>Crítico</option>
+        <option value="operacional" ${it.critico ? "" : "selected"}>Operacional</option></select>
       <button class="mini-bt" data-acao="sobe">↑</button><button class="mini-bt" data-acao="tira">✕</button></div>`).join("")}</div>
-    <div class="linha"><input id="mdNovoItem" placeholder="Novo item" /><button class="btn" id="mdAdd">Adicionar</button></div>
+    <div class="card"><b>Novo item</b>
+      <input id="mdNovoItem" placeholder="ex.: Pneus" />
+      <div class="linha"><select id="mdNovoNivel" aria-label="Nível do item novo">
+        <option value="critico">Crítico (manutenção)</option><option value="operacional" selected>Operacional (restrição)</option></select>
+      <button class="btn" id="mdAdd">Adicionar</button></div></div>
     <button class="btn btn-grande" id="mdSalvar">Salvar modelo</button>
     ${base ? `<button class="btn btn-ghost perigo" id="mdApagar">Apagar modelo</button>` : ""}`;
   $("#mdNome").oninput = e => { m.nome = e.target.value; };
   $("#mdTipo").onchange = e => { m.tipo = e.target.value; };
-  $("#mdItens").oninput = ev => {
+  $("#mdItens").onchange = $("#mdItens").oninput = ev => {
     const n = +ev.target.closest(".md-item").dataset.n;
     if (ev.target.classList.contains("md-txt")) m.itens[n].texto = ev.target.value;
-    if (ev.target.classList.contains("md-crit")) m.itens[n].critico = ev.target.checked;
+    if (ev.target.classList.contains("md-nivel")) m.itens[n].critico = ev.target.value === "critico";
   };
   $("#mdItens").onclick = ev => {
     const b = ev.target.closest("[data-acao]"); if (!b) return;
@@ -801,7 +851,7 @@ Render["cad-modelo"] = function (id) {
   const add = () => {
     const t = $("#mdNovoItem").value.trim(); if (!t) return;
     const maior = m.itens.reduce((a, x) => Math.max(a, parseInt(String(x.id).slice(1)) || 0), 0);
-    m.itens.push({ id: "i" + (maior + 1), texto: t, critico: false });
+    m.itens.push({ id: "i" + (maior + 1), texto: t, critico: $("#mdNovoNivel").value === "critico" });
     Telas.render(); $("#mdNovoItem").focus();
   };
   $("#mdAdd").onclick = add;

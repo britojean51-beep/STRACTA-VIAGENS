@@ -80,7 +80,9 @@
         const partes = k.split("."); let o = novo;
         partes.slice(0, -1).forEach(p => { o[p] = o[p] || {}; o = o[p]; });
         const f = partes[partes.length - 1];
-        if (v && v.__inc__ !== undefined) o[f] = (Number(o[f]) || 0) + v.__inc__; else o[f] = v;
+        if (v && v.__inc__ !== undefined) o[f] = (Number(o[f]) || 0) + v.__inc__;
+        else if (v && v.__del__) delete o[f];
+        else o[f] = v;
       });
     } else if (merge && atual) novo = Object.assign({}, atual, dados);
     else novo = dados;
@@ -125,7 +127,7 @@
   };
   const fsInst = { enablePersistence: async () => {}, collection: n => new Col(n), doc: p => new Doc(p) };
   function firestore() { return fsInst; }
-  firestore.FieldValue = { increment: n => ({ __inc__: n }) };
+  firestore.FieldValue = { increment: n => ({ __inc__: n }), delete: () => ({ __del__: true }) };
 
   /* ---- storage ---- */
   function Ref(path) { this.path = path; }

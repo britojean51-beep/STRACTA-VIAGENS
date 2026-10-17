@@ -103,8 +103,18 @@ A função é escolhida ao criar o acesso e pode ser trocada na lista de **Usuá
 Quem é gestor no app de frota entra aqui como **Administrador**.
 As regras do Firestore conferem a mesma coisa no servidor: não adianta "forçar" pela tela.
 
-Item **crítico** com defeito = equipamento **BLOQUEADO**. Defeito em item comum =
-**LIBERADO COM RESTRIÇÃO**.
+## Nível dos itens e situação do equipamento
+
+Em **Cadastros → Modelos**, cada item tem um nível:
+
+| Nível | Defeito nesse item | Equipamento fica |
+|---|---|---|
+| **Crítico** | resultado **MANUTENÇÃO** | 🔧 **Em manutenção** (não opera) |
+| **Operacional** | resultado **LIBERADO COM RESTRIÇÃO** (observação obrigatória) | ⚠️ **Com restrição** (segue operando) |
+
+Quando o gestor ou o administrador abre o checklist e toca em **"Resolvido — volta a operar"**,
+o equipamento volta para ✅ **Operacional** (se não tiver outro defeito em aberto).
+A situação de toda a frota aparece no topo do **Painel** e na escolha do equipamento.
 
 ---
 

@@ -6,7 +6,9 @@
                                   perfil: motorista | operador  -> fazem checklist
                                           gestor               -> + Painel e tratativa
                                           admin                -> + apagar e Cadastros
-     checklist_equipamentos/{id}  prefixo, placa, tipo, modeloId
+     checklist_equipamentos/{id}  prefixo, placa, tipo, modeloId,
+                                  pendencias {idDoChecklist: "bloqueado"|"restricao"}
+                                  (defeitos em aberto: é deles que sai a situação)
      checklist_modelos/{id}       nome, tipo, itens [{id, texto, critico}]
      checklist_inspecoes/{id}     o checklist feito, com respostas e mídias
    Gestor do app de frota entra aqui como admin (é quem libera os primeiros).
@@ -202,6 +204,19 @@ const Dados = {
   },
   tratar(id, tratativa) {
     return this.col("inspecoes").doc(id).update({ tratativa });
+  },
+
+  /* Situação do equipamento = pior defeito ainda em aberto.
+     Checklist com defeito abre a pendência; "resolvido" (ou apagar) fecha. */
+  abrirPendencia(equipId, inspId, resultado) {
+    if (!equipId || resultado === "liberado") return Promise.resolve();
+    const upd = {}; upd["pendencias." + inspId] = resultado;
+    return this.col("equipamentos").doc(equipId).update(upd).catch(() => {});
+  },
+  fecharPendencia(equipId, inspId) {
+    if (!equipId) return Promise.resolve();
+    const upd = {}; upd["pendencias." + inspId] = firebase.firestore.FieldValue.delete();
+    return this.col("equipamentos").doc(equipId).update(upd).catch(() => {});
   },
 
   /* ---- usuários (só admin) ---- */
