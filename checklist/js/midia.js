@@ -188,6 +188,7 @@ const Midia = {
       });
     }
     await Dados.marcarMidiaEnviada(reg.inspId, reg.mid);
+    window.dispatchEvent(new CustomEvent("ck-midia-enviada", { detail: { inspId: reg.inspId, mid: reg.mid } }));
   },
 
   /* Foto sem Storage: um documento por foto (cabe folgado no 1 MiB). O set
@@ -204,6 +205,7 @@ const Midia = {
       criadoEm: Date.now(), dados
     });
     await Dados.marcarMidiaEnviada(reg.inspId, reg.mid);
+    window.dispatchEvent(new CustomEvent("ck-midia-enviada", { detail: { inspId: reg.inspId, mid: reg.mid } }));
   },
 
   /* endereço para ver o arquivo (só quem está logado e liberado consegue) */

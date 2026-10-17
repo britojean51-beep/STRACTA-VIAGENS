@@ -153,6 +153,9 @@ async function sair(page) {
   ok(true, 'foto aparece na miniatura');
   await page.click('#ckFinalizar');
   ok((await page.textContent('#toast')).includes('Faltam'), 'não finaliza com item sem resposta');
+  // faróis (item 5) é "com observação": não conforme junto com o pneu (crítico)
+  await page.click('.ck-item:nth-child(5) [data-st="nok"]');
+  await page.fill('.ck-item:nth-child(5) .ck-obs', 'Farol direito queimado');
   await page.click('#ckTudoOk');
   ok(await page.$eval('.ck-item:nth-child(1)', e => e.classList.contains('nok')), '"marcar os que faltam" não apaga o defeito');
   await shot(page, '03-checklist');
@@ -252,16 +255,49 @@ async function sair(page) {
   ok(!(await page.$('#dtApagar')), 'gestor não tem o botão de apagar');
   ok((await page.textContent('#app')).includes('Pneu dianteiro esquerdo com corte'), 'observação do defeito aparece');
   await shot(page, '07-detalhe');
-  await page.fill('#dtNota', 'Pneu trocado');
-  await page.click('#dtResolver');
-  await page.waitForFunction(P => Object.keys((Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === P)[1]).pendencias || {}).length === 0, 'CB-12');
-  ok(true, 'resolvido: CB-12 volta a OPERACIONAL');
+  ok(await page.$$eval('[data-resolver]', l => l.map(b => b.dataset.resolver).join()) === 'i1,i5', 'cada item não conforme tem "Resolver este item"');
+  ok(!(await page.$('#dtResolver')), 'não existe mais o botão geral de resolver');
+  // 1) resolve o crítico (pneu), com nota e foto
+  await page.click('[data-resolver="i1"]');
+  await page.fill('#rsNota', 'Pneu trocado');
+  page.once('filechooser', async fc => fc.setFiles(await foto(page)));
+  await page.click('#rsFoto');
+  await page.waitForSelector('.resolvendo .mini-midia img[src^="blob:"]');
+  await shot(page, '13-resolvendo');
+  await page.click('#rsConfirmar');
+  await page.waitForSelector('[data-item="i1"] .resolvido');
+  await page.waitForFunction(id => JSON.stringify((Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === 'CB-12')[1].pendencias || {})) === JSON.stringify({ [id]: 'restricao' }), insp.id);
+  ok(true, 'resolvido o crítico: CB-12 sai de MANUTENÇÃO e fica COM RESTRIÇÃO (falta o farol)');
+  const sit = await page.textContent('#dtSituacao');
+  ok(sit.includes('OPERACIONAL COM OBSERVAÇÃO') && sit.includes('1 de 2'), 'detalhe mostra "agora" e 1 de 2 resolvidos');
+  await page.waitForFunction(id => { const b = JSON.parse(localStorage.getItem('__ck_banco__')); const d = b['checklist_inspecoes/' + id];
+    const f = ((d.resolucoes || {}).i1 || {}).fotos || []; return f.length === 1 && d.midias[f[0]].ok && b['checklist_fotos/' + f[0]]; }, insp.id);
+  ok(true, 'foto da correção subiu e ficou ligada ao item');
+  await page.waitForFunction(() => document.querySelector('[data-item="i1"] .resolvido img') && document.querySelector('[data-item="i1"] .resolvido img').src.startsWith('data:image/jpeg'));
+  ok((await page.textContent('[data-item="i1"] .resolvido')).includes('Pneu trocado'), 'item resolvido mostra nota e foto');
+  // 2) sem nota não confirma
+  await page.click('[data-resolver="i5"]');
+  await page.click('#rsConfirmar');
+  ok((await page.textContent('#toast')).includes('Escreva o que foi feito'), 'sem nota não resolve');
+  await page.fill('#rsNota', 'Lâmpada trocada');
+  await page.click('#rsConfirmar');
+  await page.waitForFunction(() => Object.keys((Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === 'CB-12')[1].pendencias || {})).length === 0);
+  ok(true, 'todos os itens resolvidos: CB-12 volta a OPERANDO');
+  // 3) reabrir um item volta a situação; resolver de novo
+  await page.click('[data-reabrir="i5"]');
+  await page.click('#mdlOk');
+  await page.waitForFunction(id => JSON.stringify((Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === 'CB-12')[1].pendencias || {})) === JSON.stringify({ [id]: 'restricao' }), insp.id);
+  ok(true, 'reabrir o farol: CB-12 volta a COM RESTRIÇÃO');
+  await page.click('[data-resolver="i5"]');
+  await page.fill('#rsNota', 'Lâmpada trocada');
+  await page.click('#rsConfirmar');
+  await page.waitForFunction(() => Object.keys((Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === 'CB-12')[1].pendencias || {})).length === 0);
   ok(await page.evaluate(id => Historico.lista().find(x => x.id === id).resolvido === true, insp.id),
     'quem resolveu neste aparelho: o Início já marca como resolvido');
-  await page.waitForSelector('#dtReabrir');
   const b5 = await banco(page);
-  ok(Object.values(b5).some(d => d.tratativa && d.tratativa.status === 'resolvido' && d.tratativa.nota === 'Pneu trocado'
-    && d.tratativa.por === 'Ana Gestora'), 'gestor resolveu (tratativa gravada com o nome dele)');
+  const d5 = b5['checklist_inspecoes/' + insp.id];
+  ok(d5.resolucoes.i1.nota === 'Pneu trocado' && d5.resolucoes.i1.por === 'Ana Gestora' && d5.resolucoes.i5.nota === 'Lâmpada trocada'
+    && d5.tratativa.status === 'resolvido', 'resolução por item gravada com nota e nome; tratativa resolvida');
   await page.click('#btnVoltar');
   await page.click('[data-f="todos"]');
   await page.waitForFunction(() => document.querySelector('#pFrota').textContent.includes('Operando (1)'));

@@ -193,14 +193,12 @@ const Dados = {
       return d.exists;
     } catch (e) { return false; }
   },
-  /* Como o checklist está no servidor: { existe, resolvido }.
+  /* Como o checklist está no servidor: { existe, dados }.
      null = não deu para saber (sem sinal) — aí nada muda no aparelho. */
   async estado(inspId) {
     try {
       const d = await this.col("inspecoes").doc(inspId).get({ source: "server" });
-      if (!d.exists) return { existe: false, resolvido: false };
-      const t = (d.data() || {}).tratativa;
-      return { existe: true, resolvido: !!(t && t.status === "resolvido") };
+      return d.exists ? { existe: true, dados: d.data() || {} } : { existe: false };
     } catch (e) { return null; }
   },
   async inspecoes(desdeMs) {
@@ -212,8 +210,9 @@ const Dados = {
     const d = await this.col("inspecoes").doc(id).get();
     return d.exists ? Object.assign({ id: d.id }, d.data()) : null;
   },
-  tratar(id, tratativa) {
-    return this.col("inspecoes").doc(id).update({ tratativa });
+  /* gestor/admin: tratativa, resolução por item e as fotos da resolução */
+  atualizarInspecao(id, upd) {
+    return this.col("inspecoes").doc(id).update(upd);
   },
 
   /* Situação do equipamento = pior defeito ainda em aberto.
