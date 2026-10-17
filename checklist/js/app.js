@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck6";
+const VERSAO = "ck7";
 const RASCUNHO_KEY = "ck_rascunho";
 const HISTORICO_KEY = "ck_historico";
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
@@ -111,9 +111,21 @@ const Historico = {
     const l = this.lista(); const r = l.find(x => x.id === id);
     if (r) { Object.assign(r, campos); gravarJSON(HISTORICO_KEY, l); }
   },
+  remover(id) { gravarJSON(HISTORICO_KEY, this.lista().filter(x => x.id !== id)); },
   async conferirPendentes() {
     const pend = this.lista().filter(x => !x.enviado);
     for (const r of pend) if (await Dados.confirmada(r.id)) this.marcar(r.id, { enviado: true });
+  },
+  /* Checklist apagado no Painel (neste ou em outro celular) sai da lista.
+     Só confere o que já tinha chegado ao servidor: o que está na fila ainda
+     não existe lá e não pode sumir. */
+  async conferirApagados() {
+    if (!navigator.onLine) return false;
+    let mudou = false;
+    for (const r of this.lista().filter(x => x.enviado).slice(0, 30)) {
+      if (await Dados.existe(r.id) === false) { this.remover(r.id); mudou = true; }
+    }
+    return mudou;
   }
 };
 
@@ -222,7 +234,7 @@ Render.inicio = function () {
     <button class="btn btn-grande btn-novo" id="btnNovo">➕ Novo checklist</button>
     <div class="kpis">
       <div class="kpi"><b>${deHoje.length}</b><span>hoje</span></div>
-      <div class="kpi"><b>${deHoje.filter(x => x.resultado !== "liberado").length}</b><span>com defeito</span></div>
+      <div class="kpi"><b>${deHoje.filter(x => x.resultado !== "liberado").length}</b><span>não conformes</span></div>
       <div class="kpi"><b>${hist.filter(x => !x.enviado).length}</b><span>na fila</span></div>
     </div>
     <p class="muted mini" data-pendentes></p>
@@ -230,7 +242,7 @@ Render.inicio = function () {
     ${hist.length ? hist.slice(0, 20).map(x => {
       const R = RESULTADOS[x.resultado] || RESULTADOS.liberado;
       return `<div class="item ${R.cls}">
-        <div><b>${h(x.equip)}</b><small>${dataHora(x.criadoEm)} · ${x.defeitos || 0} defeito(s)</small></div>
+        <div><b>${h(x.equip)}</b><small>${dataHora(x.criadoEm)} · ${x.defeitos || 0} não conforme(s)</small></div>
         <div class="dir"><span class="tag ${R.cls}">${R.ico} ${R.txt}</span>
         <small>${x.enviado ? "✔ enviado" : "⏳ na fila"}</small></div></div>`;
     }).join("") : `<p class="vazio">Nenhum checklist feito neste aparelho ainda.</p>`}`;
@@ -488,7 +500,7 @@ async function finalizar() {
   const criticos = defeitos.filter(i => i.critico);
   const resultado = criticos.length ? "bloqueado" : defeitos.length ? "restricao" : "liberado";
   const R = RESULTADOS[resultado];
-  if (!(await confirmar("Resultado: " + R.txt + "\n" + defeitos.length + " defeito(s). Enviar o checklist?"))) return;
+  if (!(await confirmar("Resultado: " + R.txt + "\n" + defeitos.length + " não conforme(s). Enviar o checklist?"))) return;
 
   const agora = Date.now();
   const midias = {};
@@ -722,6 +734,7 @@ async function apagarInspecao(i) {
   if (!(await confirmar("Apagar o checklist de " + nomeEquip(i.equipamento) + " (" + dataHora(i.criadoEm) + ")?\nAs fotos vão junto. Não tem como desfazer."))) return false;
   Dados.col("inspecoes").doc(i.id).delete().catch(() => toast("Não deu para apagar.", "erro"));
   Midia.apagarRemotas(i.midias);
+  Historico.remover(i.id);
   Dados.fecharPendencia((i.equipamento || {}).id, i.id);
   Painel.lista = (Painel.lista || []).filter(x => x.id !== i.id);
   toast("Checklist apagado.", "ok");
@@ -980,7 +993,9 @@ function entrouNoApp() {
   Telas.ir("inicio", null, true);
   Midia.aoMudar = atualizarRede;
   Midia.processar();
-  Historico.conferirPendentes().then(() => Telas.atualizarSeVisivel(["inicio"]));
+  Historico.conferirPendentes()
+    .then(() => Historico.conferirApagados())
+    .then(() => Telas.atualizarSeVisivel(["inicio"]));
 }
 
 async function iniciar() {
