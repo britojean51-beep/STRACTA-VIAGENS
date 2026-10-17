@@ -243,6 +243,8 @@ async function sair(page) {
   await page.click('#dtResolver');
   await page.waitForFunction(P => Object.keys((Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === P)[1]).pendencias || {}).length === 0, 'CB-12');
   ok(true, 'resolvido: CB-12 volta a OPERACIONAL');
+  ok(await page.evaluate(id => Historico.lista().find(x => x.id === id).resolvido === true, insp.id),
+    'quem resolveu neste aparelho: o Início já marca como resolvido');
   await page.waitForSelector('#dtReabrir');
   const b5 = await banco(page);
   ok(Object.values(b5).some(d => d.tratativa && d.tratativa.status === 'resolvido' && d.tratativa.nota === 'Pneu trocado'
@@ -259,7 +261,7 @@ async function sair(page) {
   ok((await page.textContent('#pFiltro')).includes('✅ Operando') && !(await page.textContent('#pFiltro')).includes('Liberad'),
     'aba "Liberados" agora se chama "Operando"');
   const operando = await page.textContent('#pLista');
-  ok(operando.includes('CB-12') && operando.includes('resolvido (era manutenção)'), 'resolvido aparece na aba Operando (com o que era)');
+  ok(operando.includes('CB-12') && operando.includes('era manutenção') && operando.includes('✔ resolvido'), 'resolvido aparece na aba Operando (com o que era)');
   ok((await page.$$eval('.kpi', k => k.map(x => x.textContent.replace(/\s+/g, ' ').trim()))).join('|').includes("1operando"),
     'contador "operando" conta o resolvido');
   await page.click('[data-f="todos"]');
@@ -342,8 +344,25 @@ async function sair(page) {
   const resto = await page.evaluate(() => Historico.lista().map(x => x.id));
   ok(resto.length === hist.length - 1, 'ao abrir, o apagado sumiu e os outros ficaram');
   await page.evaluate(() => { window.__SEM_REDE__ = true; });
-  ok(await page.evaluate(() => Dados.existe('qualquer')) === null, 'sem sinal não apaga nada da lista (não dá para saber)');
+  ok(await page.evaluate(() => Dados.estado('qualquer')) === null, 'sem sinal não muda nada na lista (não dá para saber)');
   await page.evaluate(() => { window.__SEM_REDE__ = false; });
+
+  console.log('8. resolvido em OUTRO celular: o Início mostra Operando');
+  const ultimo = await page.evaluate(() => Historico.lista().find(x => x.enviado && x.resultado !== 'liberado' && !x.resolvido));
+  ok(!!ultimo, 'há um checklist com não conforme ainda aberto no Início (' + (ultimo && ultimo.resultado) + ')');
+  ok((await page.textContent('#app')).includes((ultimo.resultado === 'bloqueado' ? 'MANUTENÇÃO' : 'OPERACIONAL COM OBSERVAÇÃO')),
+    'antes: Início mostra o resultado do checklist');
+  await page.evaluate(id => { const b = JSON.parse(localStorage.getItem('__ck_banco__'));
+    b['checklist_inspecoes/' + id].tratativa = { status: 'resolvido', por: 'Ana Gestora', em: Date.now() };
+    localStorage.setItem('__ck_banco__', JSON.stringify(b)); }, ultimo.id);
+  await page.reload();
+  await page.waitForSelector('#btnNovo');
+  await page.waitForFunction(id => (Historico.lista().find(x => x.id === id) || {}).resolvido === true, ultimo.id);
+  await page.waitForFunction(() => document.querySelector('#app').textContent.includes('✔ resolvido'));
+  const itemTxt = await page.$$eval('#app .item', l => l.map(e => e.textContent.replace(/\s+/g, ' ')).join(' | '));
+  ok(!/MANUTENÇÃO|OPERACIONAL COM OBSERVAÇÃO/.test(itemTxt) && itemTxt.includes('OPERANDO'),
+    'depois de resolvido: Início mostra OPERANDO (com o que era)');
+  await shot(page, '11-inicio-operando');
 
   ok(await page.evaluate(() => getComputedStyle(document.body).backgroundColor) === 'rgb(255, 255, 255)',
     'fundo branco mesmo com o celular em modo escuro');
