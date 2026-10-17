@@ -167,6 +167,9 @@ textarea { resize: vertical; }
 .st.nok.on { background: var(--perigo); border-color: var(--perigo); color: #fff; }
 .st.na.on { background: var(--muted); border-color: var(--muted); color: var(--bg); }
 .ck-obs { margin-top: 8px; }
+.aviso-critico { margin-top: 10px; padding: 12px; border-radius: 12px; background: var(--perigo); color: #fff;
+  font-weight: 800; font-size: 17px; text-align: center; letter-spacing: .3px; }
+.resultado .aviso-critico.forte { font-size: 22px; padding: 16px; margin: 12px 0 6px; }
 .obs { margin: 6px 0 0 24px; color: var(--perigo); font-weight: 600; }
 
 .midias { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
