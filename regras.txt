@@ -72,9 +72,12 @@ service cloud.firestore {
       }
     }
 
-    // ---- Checklist de máquinas e caminhões (app em /checklist) ----
-    // Quem entra: documento ativo em checklist_usuarios. O gestor do app de
-    // frota também entra, como admin — é ele quem libera os primeiros.
+    // ---- Checklist de máquinas e caminhões (gp2t-checklist.web.app) ----
+    // Quem entra: documento ativo em checklist_usuarios. Funções:
+    //   motorista, operador -> fazem checklist e veem só os seus
+    //   gestor              -> + veem todos e resolvem (tratativa)
+    //   admin               -> + apagam e mexem em usuários, equipamentos e modelos
+    // O gestor do app de frota também entra, como admin — é quem libera os primeiros.
     function ckDoc() {
       return get(/databases/$(database)/documents/checklist_usuarios/$(meuEmail())).data;
     }
@@ -86,6 +89,9 @@ service cloud.firestore {
     function ckLiberado() { return ckCadastrado() || ehGestor(); }
     function ckAdmin() {
       return (ckCadastrado() && ckDoc().get('perfil', '') == 'admin') || ehGestor();
+    }
+    function ckGestao() {
+      return ckAdmin() || (ckCadastrado() && ckDoc().get('perfil', '') == 'gestor');
     }
 
     match /checklist_usuarios/{email} {
@@ -100,13 +106,15 @@ service cloud.firestore {
       allow read: if ckLiberado();
       allow write: if ckAdmin();
     }
-    // O checklist feito: quem fez lê o seu; o admin lê todos.
+    // O checklist feito: quem fez lê o seu; gestor e admin leem todos.
     // Depois de enviado, quem fez só mexe em "midias" e "pendentes" (marcar a
-    // foto como enviada) — as respostas não mudam mais. Tratativa e apagar: admin.
+    // foto como enviada) — as respostas não mudam mais. O gestor só mexe na
+    // "tratativa" (resolver). Apagar: só o admin.
     match /checklist_inspecoes/{id} {
-      allow read: if ckAdmin() || (ckLiberado() && resource.data.criadoPor == meuEmail());
+      allow read: if ckGestao() || (ckLiberado() && resource.data.criadoPor == meuEmail());
       allow create: if ckLiberado() && request.resource.data.criadoPor == meuEmail();
       allow update: if ckAdmin()
+        || (ckGestao() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tratativa']))
         || (ckLiberado() && resource.data.criadoPor == meuEmail()
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['midias', 'pendentes']));
       allow delete: if ckAdmin();
@@ -115,7 +123,7 @@ service cloud.firestore {
     // Fotos do checklist (enquanto o Storage não estiver ligado): um documento
     // por foto. Mesma regra de quem vê o checklist; só imagem JPEG, até ~950 KB.
     match /checklist_fotos/{id} {
-      allow read: if ckAdmin() || (ckLiberado() && resource.data.criadoPor == meuEmail());
+      allow read: if ckGestao() || (ckLiberado() && resource.data.criadoPor == meuEmail());
       allow create, update: if ckLiberado()
         && request.resource.data.criadoPor == meuEmail()
         && request.resource.data.dados is string
