@@ -1,12 +1,12 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck7";
+const VERSAO = "ck8";
 const RASCUNHO_KEY = "ck_rascunho";
 const HISTORICO_KEY = "ck_historico";
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
 const RESULTADOS = {
-  liberado: { txt: "LIBERADO", ico: "✅", cls: "ok" },
+  liberado: { txt: "OPERANDO", ico: "✅", cls: "ok" },
   restricao: { txt: "OPERACIONAL COM OBSERVAÇÃO", ico: "⚠️", cls: "alerta" },
   bloqueado: { txt: "MANUTENÇÃO", ico: "🔧", cls: "perigo" }   // a chave segue "bloqueado" nos dados
 };
@@ -35,11 +35,16 @@ const MODELOS_PADRAO = [
 const SITUACOES = {
   manutencao: { txt: "Em manutenção", ico: "🔧", cls: "perigo" },
   restricao: { txt: "Com restrição", ico: "⚠️", cls: "alerta" },
-  operacional: { txt: "Operacional", ico: "✅", cls: "ok" }
+  operacional: { txt: "Operando", ico: "✅", cls: "ok" }
 };
 function situacaoDe(e) {
   const v = Object.values((e && e.pendencias) || {});
   return v.includes("bloqueado") ? "manutencao" : v.includes("restricao") ? "restricao" : "operacional";
+}
+/* Onde o checklist aparece no Painel: o resolvido conta como Operando
+   (o resultado original continua guardado e aparece no detalhe). */
+function statusPainel(i) {
+  return i.tratativa && i.tratativa.status === "resolvido" ? "liberado" : i.resultado;
 }
 /* o checklist em aberto mais recente que deixou o equipamento nessa situação */
 function pendenciaMaisRecente(e) {
@@ -566,7 +571,7 @@ Render.painel = async function () {
   const p = Painel;
   const desenhar = () => {
     const l = (p.lista || []).filter(i =>
-      (p.filtro === "todos" || (p.filtro === "aberto" ? i.tratativa && i.tratativa.status === "aberto" : i.resultado === p.filtro)) &&
+      (p.filtro === "todos" || (p.filtro === "aberto" ? i.tratativa && i.tratativa.status === "aberto" : statusPainel(i) === p.filtro)) &&
       (!p.busca || (nomeEquip(i.equipamento) + " " + (i.criadoNome || "")).toLowerCase().includes(p.busca.toLowerCase())));
     const todos = p.lista || [];
     // situação da frota: vem dos equipamentos, não do período escolhido
@@ -578,29 +583,29 @@ Render.painel = async function () {
       </div>
       <div class="kpis">
         <div class="kpi"><b>${todos.length}</b><span>checklists</span></div>
-        <div class="kpi alerta"><b>${todos.filter(i => i.resultado === "restricao").length}</b><span>restrição</span></div>
-        <div class="kpi perigo"><b>${todos.filter(i => i.resultado === "bloqueado").length}</b><span>manutenção</span></div>
-        <div class="kpi"><b>${todos.filter(i => i.tratativa && i.tratativa.status === "aberto").length}</b><span>em aberto</span></div>
+        <div class="kpi ok"><b>${todos.filter(i => statusPainel(i) === "liberado").length}</b><span>operando</span></div>
+        <div class="kpi alerta"><b>${todos.filter(i => statusPainel(i) === "restricao").length}</b><span>restrição</span></div>
+        <div class="kpi perigo"><b>${todos.filter(i => statusPainel(i) === "bloqueado").length}</b><span>manutenção</span></div>
       </div>
       <div class="card frota" id="pFrota"><b>Situação da frota agora</b>
         ${["manutencao", "restricao"].map(k => porSit[k].length ? `<div class="sit ${SITUACOES[k].cls}">
           <span class="tag ${SITUACOES[k].cls}">${SITUACOES[k].ico} ${SITUACOES[k].txt} (${porSit[k].length})</span>
           ${porSit[k].map(e => `<div class="link" data-abrir="${h(pendenciaMaisRecente(e))}">${h(nomeEquip(e))}</div>`).join("")}</div>` : "").join("")}
-        <p class="mini"><span class="tag ok">✅ Operacional (${porSit.operacional.length})</span></p>
+        <p class="mini"><span class="tag ok">✅ Operando (${porSit.operacional.length})</span></p>
       </div>
       <input class="busca" id="pBusca" type="search" placeholder="🔎 Equipamento ou nome" value="${h(p.busca)}" />
       <div class="chips" id="pFiltro">
-        ${[["todos", "Todos"], ["bloqueado", "🔧 Manutenção"], ["restricao", "⚠️ Restrição"], ["liberado", "✅ Liberados"], ["aberto", "⏳ Em aberto"]]
+        ${[["todos", "Todos"], ["bloqueado", "🔧 Manutenção"], ["restricao", "⚠️ Restrição"], ["liberado", "✅ Operando"], ["aberto", "⏳ Em aberto"]]
           .map(([k, t]) => `<button data-f="${k}" class="${p.filtro === k ? "on" : ""}">${t}</button>`).join("")}
       </div>
       ${p.carregando && !p.lista ? `<p class="carregando">Carregando…</p>` : ""}
       ${p.erro ? `<p class="erro">${h(p.erro)}</p>` : ""}
       <div id="pLista">${l.map(i => {
-        const R = RESULTADOS[i.resultado] || RESULTADOS.liberado;
+        const R = RESULTADOS[statusPainel(i)] || RESULTADOS.liberado;
         return `<div class="item ${R.cls}" data-abrir="${h(i.id)}">
           <div><b>${h(nomeEquip(i.equipamento))}</b><small>${dataHora(i.criadoEm)} · ${h(i.criadoNome)}${PERFIS[i.criadoPerfil] ? " (" + PERFIS[i.criadoPerfil].toLowerCase() + ")" : ""}</small></div>
           <div class="dir">${Dados.ehAdmin() ? `<button class="apagar" data-apagar="${h(i.id)}" aria-label="Apagar checklist">🗑</button>` : ""}<span class="tag ${R.cls}">${R.ico} ${i.defeitos || 0}</span>
-          <small>${i.tratativa && i.tratativa.status === "resolvido" ? "✅ resolvido" : i.tratativa ? "⏳ aberto" : ""}
+          <small>${i.tratativa && i.tratativa.status === "resolvido" ? "resolvido (era " + RESULTADOS[i.resultado].txt.toLowerCase() + ")" : i.tratativa ? "⏳ aberto" : ""}
           ${Object.keys(i.midias || {}).length ? " · 📎" + Object.keys(i.midias).length : ""}</small></div></div>`;
       }).join("")}</div>
       ${p.lista && !l.length ? `<p class="vazio">Nenhum checklist neste filtro.</p>` : ""}
@@ -837,7 +842,7 @@ Render["cad-modelo"] = function (id) {
       <b>Nível de cada item</b>
       <p><span class="critico">CRÍTICO</span> não conforme põe o equipamento <b>em manutenção</b> e mostra <b>"Acione a manutenção"</b> para quem faz o checklist.</p>
       <p><b>Operacional com observação</b>: não conforme com observação; o equipamento <b>segue operando</b> e aparece em <b>Restrição</b>.</p>
-      <p class="muted">Quando o gestor marca o defeito como resolvido, o equipamento volta a Operacional.</p>
+      <p class="muted">Quando o gestor marca o defeito como resolvido, o equipamento volta a Operando.</p>
     </div>
     <h3 class="secao">${m.itens.length} itens</h3>
     <div id="mdItens">${m.itens.map((it, n) => `<div class="md-item" data-n="${n}">
