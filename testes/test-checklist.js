@@ -285,7 +285,33 @@ async function sair(page) {
   ok(true, 'foto da correção subiu e ficou ligada ao item');
   await page.waitForFunction(() => document.querySelector('[data-item="i1"] .resolvido img') && document.querySelector('[data-item="i1"] .resolvido img').src.startsWith('data:image/jpeg'));
   ok((await page.textContent('[data-item="i1"] .resolvido')).includes('Pneu trocado'), 'item resolvido mostra nota e foto');
-  // 2) sem nota não confirma
+  // 1b) solicitação no farol: registra o pedido, o item continua em aberto
+  await page.click('[data-solicitar="i5"]');
+  await page.click('#slConfirmar');
+  ok((await page.textContent('#toast')).includes('Escreva o que foi solicitado'), 'solicitação sem texto não registra');
+  await page.fill('#slNota', 'Solicitada a compra da lâmpada do farol');
+  await page.click('#slConfirmar');
+  await page.waitForSelector('[data-item="i5"] .solicitado');
+  ok((await page.textContent('[data-item="i5"] .solicitado')).includes('Solicitada a compra da lâmpada do farol')
+    && !!(await page.$('[data-item="i5"] [data-resolver]')) && !(await page.$('[data-item="i5"] .resolvido')),
+    'solicitação aparece no item e ele continua em aberto (com "Resolver")');
+  const d5s = (await banco(page))['checklist_inspecoes/' + insp.id];
+  ok(d5s.solicitacoes.i5.nota === 'Solicitada a compra da lâmpada do farol' && d5s.solicitacoes.i5.por === 'Ana Gestora' && !(d5s.resolucoes || {}).i5,
+    'solicitação gravada com nome; não conta como resolvido');
+  ok(JSON.stringify(await page.evaluate(() => (Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === 'CB-12')[1].pendencias || {}))) === JSON.stringify({ [insp.id]: 'restricao' }),
+    'com solicitação o CB-12 continua COM RESTRIÇÃO');
+  ok((await page.textContent('#dtSituacao')).includes('1 com solicitação'), 'detalhe avisa "1 com solicitação, aguardando"');
+  await shot(page, '14-solicitado');
+  // no Painel: marcador e filtro "Solicitado"
+  await page.click('#btnVoltar');
+  await page.click('[data-f="solicitado"]');
+  const solLista = await page.textContent('#pLista');
+  ok(await page.$$eval('#pLista .item', l => l.length) === 1 && solLista.includes('CB-12') && solLista.includes('🛒 1 solicitado(s)'),
+    'Painel: filtro "🛒 Solicitado" mostra o CB-12 com "1 solicitado(s)"');
+  await page.click('[data-f="todos"]');
+  await page.click('#pLista .item:has-text("CB-12")');
+  await page.waitForSelector('[data-item="i5"] .solicitado');
+
   await page.click('[data-resolver="i5"]');
   await page.click('#rsConfirmar');
   ok((await page.textContent('#toast')).includes('Escreva o que foi feito'), 'sem nota não resolve');
@@ -304,6 +330,7 @@ async function sair(page) {
   await page.waitForFunction(() => Object.keys((Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === 'CB-12')[1].pendencias || {})).length === 0);
   ok(await page.evaluate(id => Historico.lista().find(x => x.id === id).resolvido === true, insp.id),
     'quem resolveu neste aparelho: o Início já marca como resolvido');
+  ok((await page.textContent('[data-item="i5"] .resolvido')).includes('Antes: solicitado'), 'resolvido guarda a solicitação no histórico do item');
   const b5 = await banco(page);
   const d5 = b5['checklist_inspecoes/' + insp.id];
   ok(d5.resolucoes.i1.nota === 'Pneu trocado' && d5.resolucoes.i1.por === 'Ana Gestora' && d5.resolucoes.i5.nota === 'Lâmpada trocada'
