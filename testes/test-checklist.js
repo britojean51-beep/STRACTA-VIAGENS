@@ -348,8 +348,8 @@ async function sair(page) {
   await page.fill('#rsNota', 'Lâmpada trocada');
   await page.click('#rsConfirmar');
   await page.waitForFunction(() => Object.keys((Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === 'CB-12')[1].pendencias || {})).length === 0);
-  ok(await page.evaluate(id => Historico.lista().find(x => x.id === id).resolvido === true, insp.id),
-    'quem resolveu neste aparelho: o Início já marca como resolvido');
+  ok(!(await page.evaluate(id => Historico.lista().some(x => x.id === id), insp.id)),
+    'o Início da gestora não mostra o checklist do motorista (lista é de cada pessoa)');
   ok((await page.textContent('[data-item="i5"] .resolvido')).includes('Antes: solicitado'), 'resolvido guarda a solicitação no histórico do item');
   const b5 = await banco(page);
   const d5 = b5['checklist_inspecoes/' + insp.id];
@@ -445,22 +445,29 @@ async function sair(page) {
   ok(true, 'CB-12 passa a "Com restrição"');
   await shot(page, '08-modelos');
 
-  console.log('7. checklist apagado em OUTRO celular some do Início ao abrir o app');
+  console.log('7. Início: os MEUS checklists, inclusive de outro celular; apagado some');
   await page.click('[data-ir="inicio"]');
   const hist = await page.evaluate(() => Historico.lista().filter(x => x.enviado).map(x => x.id));
-  ok(hist.length >= 2, 'Início tem ' + hist.length + ' checklists enviados');
-  const alvo = hist[hist.length - 1];
-  // "outro celular" apaga direto no servidor
-  await page.evaluate(id => { const b = JSON.parse(localStorage.getItem('__ck_banco__')); delete b['checklist_inspecoes/' + id];
-    localStorage.setItem('__ck_banco__', JSON.stringify(b)); }, alvo);
+  ok(hist.length >= 1, 'Início do admin tem ' + hist.length + ' checklist(s) dele');
+  // um checklist do jean feito em OUTRO celular (só existe no servidor)
+  await page.evaluate(() => { const b = JSON.parse(localStorage.getItem('__ck_banco__'));
+    b['checklist_inspecoes/outroCel'] = { criadoPor: 'jean@gp2t.local', criadoNome: 'Jean', criadoEm: Date.now() - 60000,
+      resultado: 'bloqueado', defeitos: 1, equipamento: { prefixo: 'XX-01' }, tratativa: { status: 'aberto' },
+      itens: [{ id: 'i1', texto: 'Pneus', critico: true, st: 'nok', obs: 'furado' }] };
+    localStorage.setItem('__ck_banco__', JSON.stringify(b)); });
   await page.reload();
   await page.waitForSelector('#btnNovo');
-  await page.waitForFunction(id => !Historico.lista().some(x => x.id === id), alvo);
+  await page.waitForFunction(() => Historico.lista().some(x => x.id === 'outroCel'));
+  await page.waitForFunction(() => document.querySelector('#app').textContent.includes('XX-01'));
+  ok(true, 'checklist que ele fez em outro celular aparece no Início');
+  // "outro celular" apaga direto no servidor
+  await page.evaluate(() => { const b = JSON.parse(localStorage.getItem('__ck_banco__')); delete b['checklist_inspecoes/outroCel'];
+    localStorage.setItem('__ck_banco__', JSON.stringify(b)); });
+  await page.reload();
+  await page.waitForSelector('#btnNovo');
+  await page.waitForFunction(() => !Historico.lista().some(x => x.id === 'outroCel'));
   const resto = await page.evaluate(() => Historico.lista().map(x => x.id));
-  ok(resto.length === hist.length - 1, 'ao abrir, o apagado sumiu e os outros ficaram');
-  await page.evaluate(() => { window.__SEM_REDE__ = true; });
-  ok(await page.evaluate(() => Dados.estado('qualquer')) === null, 'sem sinal não muda nada na lista (não dá para saber)');
-  await page.evaluate(() => { window.__SEM_REDE__ = false; });
+  ok(hist.every(id => resto.includes(id)) && !resto.includes('outroCel'), 'ao abrir, o apagado sumiu e os outros ficaram');
 
   console.log('8. resolvido em OUTRO celular: o Início mostra Operando');
   const ultimo = await page.evaluate(() => Historico.lista().find(x => x.enviado && x.resultado !== 'liberado' && !x.resolvido));
@@ -521,7 +528,30 @@ async function sair(page) {
     && man.st.every(x => x.endsWith(':200')), 'manifesto com ícones 192/512/maskable e todos existem (' + man.st.join(', ') + ')');
   await page.click('[data-ir="inicio"]');
 
-  console.log('11. atualização automática em todos os aparelhos');
+  console.log('11. cada motorista vê só os seus; motorista não cadastra equipamento');
+  await sair(page);
+  await entrar(page, 'beto');
+  await page.waitForFunction(() => Historico._sincronizadoEm > 0);
+  await page.waitForTimeout(200);
+  ok((await page.textContent('#app')).includes('Nenhum checklist') && (await page.evaluate(() => Historico.lista().length)) === 0,
+    'operador no mesmo celular: Início vazio (não vê os checklists dos outros)');
+  await page.click('[data-ir="novo"]');
+  await page.waitForSelector('.equip');
+  ok(!(await page.$('#avulso')) && !(await page.$('#avIr')), 'operador não tem "Equipamento não está na lista?" (não cadastra)');
+  await page.click('[data-ir="inicio"]');
+  await sair(page);
+  await entrar(page, 'ze');
+  await page.waitForFunction(() => Historico.lista().length > 0);
+  const zeHist = await page.evaluate(() => Historico.lista().map(x => x.equip).join(' | '));
+  ok(zeHist.includes('CB-12') && !zeHist.includes('TR-77') && !zeHist.includes('XX-01'), 'o motorista vê só os dele (' + zeHist + ')');
+  await page.click('[data-ir="novo"]');
+  await page.waitForSelector('.equip');
+  ok(!(await page.$('#avulso')), 'motorista também não tem a opção de equipamento à mão');
+  await page.click('[data-ir="inicio"]');
+  await sair(page);
+  await entrar(page, 'jean');
+
+  console.log('12. atualização automática em todos os aparelhos');
   // no meio de um checklist: espera
   await page.click('[data-ir="novo"]');
   await page.click('.equip:has-text("CB-12")');

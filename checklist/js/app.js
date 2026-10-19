@@ -1,9 +1,11 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck17";
-const RASCUNHO_KEY = "ck_rascunho";
-const HISTORICO_KEY = "ck_historico";
+const VERSAO = "ck18";
+const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
+const HISTORICO_KEY = "ck_historico";   // + ":" + email
+/* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
+const chaveDe = base => base + ":" + ((Dados.usuario && Dados.usuario.email) || "anonimo");
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
 const RESULTADOS = {
   liberado: { txt: "OPERANDO", ico: "✅", cls: "ok" },
@@ -260,34 +262,46 @@ const Estado = {
 
 /* histórico do próprio aparelho: quem fez vê o que fez mesmo sem sinal */
 const Historico = {
-  lista() { return lerJSON(HISTORICO_KEY, []); },
-  adicionar(r) { const l = this.lista(); l.unshift(r); gravarJSON(HISTORICO_KEY, l.slice(0, 60)); },
+  lista() { return lerJSON(chaveDe(HISTORICO_KEY), []); },
+  _gravar(l) { gravarJSON(chaveDe(HISTORICO_KEY), l.slice(0, 60)); },
+  adicionar(r) { const l = this.lista(); l.unshift(r); this._gravar(l); },
   marcar(id, campos) {
     const l = this.lista(); const r = l.find(x => x.id === id);
-    if (r) { Object.assign(r, campos); gravarJSON(HISTORICO_KEY, l); }
+    if (r) { Object.assign(r, campos); this._gravar(l); }
   },
-  remover(id) { gravarJSON(HISTORICO_KEY, this.lista().filter(x => x.id !== id)); },
+  remover(id) { this._gravar(this.lista().filter(x => x.id !== id)); },
   async conferirPendentes() {
     const pend = this.lista().filter(x => !x.enviado);
     for (const r of pend) if (await Dados.confirmada(r.id)) this.marcar(r.id, { enviado: true });
   },
-  /* Acompanha o que o Painel fez com os checklists deste aparelho:
-     apagado (neste ou em outro celular) sai da lista; resolvido passa a
-     Operando. Só confere o que já chegou ao servidor — o que está na fila
-     ainda não existe lá e não pode sumir. Sem sinal, nada muda. */
+  /* A lista vem do servidor: só os checklists DESTA pessoa (feitos em
+     qualquer celular), com a situação atual (resolvido -> Operando, apagado
+     some). O que ainda está na fila deste aparelho continua na lista.
+     Sem sinal, fica como está. */
   _sincronizadoEm: 0,
   async sincronizar() {
-    if (!navigator.onLine) return false;
+    if (!navigator.onLine || !Dados.usuario) return false;
     this._sincronizadoEm = Date.now();
-    let mudou = false;
-    for (const r of this.lista().filter(x => x.enviado).slice(0, 30)) {
-      const st = await Dados.estado(r.id);
-      if (!st) continue;
-      if (!st.existe) { this.remover(r.id); mudou = true; continue; }
-      const atual = statusAtual(st.dados);
-      if (r.atual !== atual) { this.marcar(r.id, { atual, resolvido: atual === "liberado" }); mudou = true; }
-    }
+    const meus = await Dados.minhas(Dados.usuario.email);
+    if (!meus) return false;
+    const fila = this.lista().filter(x => !x.enviado && !meus.some(m => m.id === x.id));
+    const nova = fila.concat(meus.map(d => {
+      const atual = statusAtual(d);
+      return { id: d.id, equip: nomeEquip(d.equipamento), resultado: d.resultado, defeitos: d.defeitos || 0,
+        criadoEm: d.criadoEm, enviado: true, atual, resolvido: atual === "liberado" };
+    })).sort((a, b) => b.criadoEm - a.criadoEm);
+    const mudou = JSON.stringify(nova) !== JSON.stringify(this.lista());
+    if (mudou) this._gravar(nova);
     return mudou;
+  },
+  /* versão antiga guardava uma lista só por celular: some na primeira
+     sincronização (o que não é desta pessoa sai pela lista do servidor) */
+  migrar() {
+    try {
+      const velha = lerJSON(HISTORICO_KEY, null);
+      if (velha && !localStorage.getItem(chaveDe(HISTORICO_KEY))) this._gravar(velha.filter(x => !x.enviado));
+      localStorage.removeItem(HISTORICO_KEY);
+    } catch (e) {}
   }
 };
 
@@ -462,12 +476,13 @@ Render.novo = function (busca) {
       </button>`; }).join("")}
     </div>
     ${!lista.length ? `<p class="vazio">${Estado.equipamentos.length ? "Nada encontrado." : "Nenhum equipamento cadastrado ainda."}</p>` : ""}
+    ${!Dados.ehAdmin() ? (Estado.equipamentos.length ? "" : `<p class="vazio">Peça ao administrador para cadastrar os equipamentos.</p>`) : `
     <details class="card" id="avulso" ${Estado.equipamentos.length ? "" : "open"}>
       <summary>Equipamento não está na lista?</summary>
       <label>Prefixo ou placa<input id="avPlaca" placeholder="ex.: CB-12 ou ABC1D23" /></label>
       <label>Tipo<select id="avTipo">${Object.entries(TIPOS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
       <button class="btn" id="avIr">Começar</button>
-    </details>`;
+    </details>`}`;
   const b = $("#busca");
   b.oninput = () => { const pos = b.selectionStart; Render.novo(b.value); const nb = $("#busca"); nb.focus(); nb.setSelectionRange(pos, pos); };
   Telas.atual.arg = busca;
@@ -477,7 +492,7 @@ Render.novo = function (busca) {
     if (situacaoDe(e) === "manutencao") toast("Atenção: " + nomeEquip(e) + " está EM MANUTENÇÃO.", "erro");
     iniciarChecklist({ id: e.id, prefixo: e.prefixo || "", placa: e.placa || "", tipo: e.tipo || "outro", modeloId: e.modeloId || "" });
   };
-  $("#avIr").onclick = () => {
+  if ($("#avIr")) $("#avIr").onclick = () => {
     const p = $("#avPlaca").value.trim().toUpperCase();
     if (!p) return toast("Digite o prefixo ou a placa.", "erro");
     iniciarChecklist({ id: "", prefixo: p, placa: "", tipo: $("#avTipo").value, modeloId: "" });
@@ -502,12 +517,12 @@ function iniciarChecklist(equip) {
   }
   Telas.ir("checklist");
 }
-function salvarRascunho() { gravarJSON(RASCUNHO_KEY, Estado.rascunho); }
+function salvarRascunho() { gravarJSON(chaveDe(RASCUNHO_KEY), Estado.rascunho); }
 async function descartarRascunho() {
   const r = Estado.rascunho; if (!r) return;
   for (const mid of Object.keys(r.midias)) { try { await Midia.apagar(mid); } catch (e) {} liberarURL(mid); }
   Estado.rascunho = null;
-  try { localStorage.removeItem(RASCUNHO_KEY); } catch (e) {}
+  try { localStorage.removeItem(chaveDe(RASCUNHO_KEY)); } catch (e) {}
 }
 
 /* miniaturas: o arquivo vem do IndexedDB do aparelho */
@@ -731,7 +746,7 @@ async function finalizar() {
     .catch(e => toast("Erro ao enviar: " + ((e && e.code) || "tente de novo"), "erro"));
   Object.keys(r.midias).forEach(liberarURL);
   Estado.rascunho = null;
-  try { localStorage.removeItem(RASCUNHO_KEY); } catch (e) {}
+  try { localStorage.removeItem(chaveDe(RASCUNHO_KEY)); } catch (e) {}
   Midia.processar();
   Telas.pilha = [];
   Telas.ir("resultado", { resultado, defeitos: defeitos.map(d => d.texto), equip: nomeEquip(insp.equipamento),
@@ -1448,7 +1463,13 @@ function entrouNoApp() {
   document.body.classList.toggle("admin", Dados.ehAdmin());
   document.body.classList.toggle("gestao", Dados.ehGestao());
   $("#abas").hidden = false;
-  Estado.rascunho = lerJSON(RASCUNHO_KEY, null);
+  Historico.migrar();
+  try {   // rascunho da versão antiga (um por celular) fica com quem entrar primeiro
+    const velho = localStorage.getItem(RASCUNHO_KEY);
+    if (velho && !localStorage.getItem(chaveDe(RASCUNHO_KEY))) localStorage.setItem(chaveDe(RASCUNHO_KEY), velho);
+    localStorage.removeItem(RASCUNHO_KEY);
+  } catch (e) {}
+  Estado.rascunho = lerJSON(chaveDe(RASCUNHO_KEY), null);
   if (Estado.rascunho && !Estado.rascunho.modelo) Estado.rascunho = null;
   Estado.ouvir();
   Telas.ir("inicio", null, true);
