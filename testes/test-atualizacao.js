@@ -34,6 +34,9 @@ let falhou = false;
   const ks = await p.evaluate(() => caches.keys());
   const novo = ks.includes('ck-v99') && !ks.some(k => k !== 'ck-v99' && k.startsWith('ck-'));
   console.log((novo ? '  ✔ ' : '  ✖ ') + 'cache da versão antiga trocado pelo novo (' + ks.join(', ') + ')'); falhou = falhou || !novo;
+  // as imagens dos cartões ficam no celular: sem sinal o caminhão e a máquina continuam aparecendo
+  const imgs = await p.evaluate(async () => !!(await caches.match('img/caminhao.jpg')) && !!(await caches.match('img/maquina.svg')));
+  console.log((imgs ? '  ✔ ' : '  ✖ ') + 'desenhos dos equipamentos guardados para usar sem sinal'); falhou = falhou || !imgs;
   await b.close();
 })().catch(e => { console.error(e); falhou = true; })
   .finally(() => { fs.writeFileSync(__dirname + '/../checklist/sw.js', ORIGINAL); process.exit(falhou ? 1 : 0); });

@@ -58,7 +58,9 @@ async function sair(page) {
   // janela cinza do navegador (confirm/alert) não pode mais aparecer
   const nativas = [];
   page.on('dialog', d => { nativas.push(d.message()); d.dismiss(); });
-  page.on('console', m => { if (m.type() === 'error') erros.push(m.text()); });
+  // aqui o service worker fica desligado: sem sinal a imagem do cartão não carrega (no celular ela vem do cache,
+  // ver test-atualizacao.js); isso não é erro do app
+  page.on('console', m => { if (m.type() === 'error' && !/ERR_INTERNET_DISCONNECTED/.test(m.text())) erros.push(m.text()); });
 
   // o gestor do app de frota existe; nada do checklist ainda
   await page.goto(URL);
@@ -108,14 +110,14 @@ async function sair(page) {
   await page.fill('[name=prefixo]', 'cb-12'); await page.fill('[name=placa]', 'abc1d23');
   await page.fill('[name=descricao]', 'Scania basculante');
   await page.selectOption('[name=modeloId]', 'padrao-caminhao');   // o resto do teste usa o "Caminhão — diário"
-  await page.click('#fEq button.btn');
+  await page.click('#fEq button.btn:not([type=button])');
   await page.waitForSelector('[data-ed]');
   await page.fill('[name=prefixo]', 'ESC-03'); await page.selectOption('[name=tipo]', 'maquina');
-  await page.click('#fEq button.btn');
+  await page.click('#fEq button.btn:not([type=button])');
   await page.waitForFunction(() => document.querySelectorAll('[data-ed]').length === 2);
   const b1 = await banco(page);
   ok(Object.values(b1).some(d => d.prefixo === 'CB-12' && d.placa === 'ABC1D23'), 'equipamento gravado em maiúsculas');
-  await page.fill('[name=prefixo]', 'CB-12'); await page.click('#fEq button.btn');
+  await page.fill('[name=prefixo]', 'CB-12'); await page.click('#fEq button.btn:not([type=button])');
   ok((await page.textContent('#toast')).includes('Já existe'), 'não deixa cadastrar prefixo repetido');
   await page.fill('[name=prefixo]', '');
   await page.click('#btnVoltar');

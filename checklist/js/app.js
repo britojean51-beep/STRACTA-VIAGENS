@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck19";
+const VERSAO = "ck20";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -499,7 +499,7 @@ Render.novo = function (busca) {
     <input class="busca" id="busca" type="search" placeholder="🔎 Prefixo ou placa" value="${h(busca || "")}" />
     <div class="grade" id="grade">
       ${lista.map(e => { const S = SITUACOES[situacaoDe(e)]; return `<button class="equip sit-${S.cls}" data-id="${h(e.id)}">
-        <span>${e.tipo === "maquina" ? "🚜" : e.tipo === "leve" ? "🚙" : "🚛"}</span>
+        ${visualEquip(e)}
         <b>${h(e.prefixo || e.placa)}</b><small>${h(e.placa && e.prefixo ? e.placa : (e.descricao || TIPOS[e.tipo] || ""))}</small>
         ${S.cls !== "ok" ? `<em class="tag ${S.cls}">${S.ico} ${S.txt}</em>` : ""}
       </button>`; }).join("")}
@@ -516,10 +516,15 @@ Render.novo = function (busca) {
   b.oninput = () => { const pos = b.selectionStart; Render.novo(b.value); const nb = $("#busca"); nb.focus(); nb.setSelectionRange(pos, pos); };
   Telas.atual.arg = busca;
   $("#grade").onclick = ev => {
-    const el = ev.target.closest(".equip"); if (!el) return;
+    const el = ev.target.closest(".equip"); if (!el || $("#grade").classList.contains("indo")) return;
     const e = Estado.equipamentos.find(x => x.id === el.dataset.id);
     if (situacaoDe(e) === "manutencao") toast("Atenção: " + nomeEquip(e) + " está EM MANUTENÇÃO.", "erro");
-    iniciarChecklist({ id: e.id, prefixo: e.prefixo || "", placa: e.placa || "", tipo: e.tipo || "outro", modeloId: e.modeloId || "" });
+    const ir = () => iniciarChecklist({ id: e.id, prefixo: e.prefixo || "", placa: e.placa || "", tipo: e.tipo || "outro", modeloId: e.modeloId || "" });
+    // o veículo sai andando e aí abre o checklist (sem animação se o celular pede menos movimento)
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return ir();
+    $("#grade").classList.add("indo"); el.classList.add("saindo");
+    if (navigator.vibrate) navigator.vibrate(15);
+    setTimeout(() => { if (Telas.atual.nome === "novo") ir(); }, 650);
   };
   if ($("#avIr")) $("#avIr").onclick = () => {
     const p = $("#avPlaca").value.trim().toUpperCase();
@@ -527,6 +532,27 @@ Render.novo = function (busca) {
     iniciarChecklist({ id: "", prefixo: p, placa: "", tipo: $("#avTipo").value, modeloId: "" });
   };
 };
+
+/* Imagem do cartão: a foto do próprio equipamento, se o admin pôs; senão o desenho do tipo */
+function visualEquip(e) {
+  if (e.foto) return `<span class="vis foto"><img src="${h(e.foto)}" alt="" /></span>`;
+  if (e.tipo === "maquina") return `<span class="vis"><img src="img/maquina.svg" alt="" /></span>`;
+  if (e.tipo === "caminhao" || !e.tipo) return `<span class="vis"><img src="img/caminhao.jpg" alt="" /></span>`;
+  return `<span class="vis"><svg viewBox="0 0 120 60" aria-hidden="true"><g fill="none" stroke="#475569" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M10 42 V32 q0-4 4-5 l14-3 12-12 h34 q4 0 6 3 l8 12 h16 q6 0 6 6 V42 Z"/><path d="M44 15 v12 M80 15 v12"/></g>
+    <g fill="#1e293b"><circle cx="30" cy="44" r="8"/><circle cx="92" cy="44" r="8"/></g><g fill="#cbd5e1"><circle cx="30" cy="44" r="3"/><circle cx="92" cy="44" r="3"/></g></svg></span>`;
+}
+
+/* Foto do equipamento para o cartão: pequena (vai junto do cadastro, que todo celular baixa) */
+async function fotoDoEquipamento(arq) {
+  const img = await Midia._carregarImagem(arq);
+  const esc = Math.min(1, 480 / Math.max(img.width, img.height));
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(img.width * esc); cv.height = Math.round(img.height * esc);
+  cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+  if (img.close) img.close();
+  return cv.toDataURL("image/jpeg", 0.7);
+}
 
 function iniciarChecklist(equip) {
   const m = Estado.modeloPara(equip);
@@ -1239,6 +1265,15 @@ Render["cad-equip"] = function (editId) {
         <label>Modelo de checklist<select name="modeloId"><option value="">Automático pelo tipo</option>
           ${ms.map(m => `<option value="${h(m.id)}" ${e.modeloId === m.id ? "selected" : ""}>${h(m.nome)}</option>`).join("")}</select></label>
       </div>
+      <div class="foto-eq">
+        <span class="equip-vis">${visualEquip(e)}</span>
+        <div><b class="mini">Foto do equipamento</b><small class="muted mini">Aparece no cartão na hora de escolher. Sem foto, fica o desenho.</small>
+        <div class="linha"><button type="button" class="btn btn-ghost" id="eqFoto">📷 Foto</button>
+          <button type="button" class="btn btn-ghost" id="eqGaleria">🖼️ Galeria</button>
+          <button type="button" class="btn btn-ghost perigo" id="eqSemFoto" ${e.foto ? "" : "hidden"}>Tirar</button></div></div>
+      </div>
+      <input type="file" id="inFotoEq" accept="image/*" capture="environment" hidden />
+      <input type="file" id="inGaleriaEq" accept="image/*" hidden />
       <div class="linha">
         <button class="btn">${e.id ? "Salvar" : "Cadastrar"}</button>
         ${e.id ? `<button type="button" class="btn btn-ghost" id="eqCancelar">Cancelar</button>
@@ -1250,9 +1285,25 @@ Render["cad-equip"] = function (editId) {
       <div><b>${h(nomeEquip(x))}</b><small>${h(TIPOS[x.tipo] || "")}${x.descricao ? " · " + h(x.descricao) : ""}</small></div>
       <div class="dir"><span class="tag ${SITUACOES[situacaoDe(x)].cls}">${SITUACOES[situacaoDe(x)].ico} ${SITUACOES[situacaoDe(x)].txt}</span>
       <small>${h((ms.find(m => m.id === x.modeloId) || {}).nome || "automático")}</small></div></div>`).join("")}`;
+  let foto;   // undefined = não mexeu · "" = sem foto · data URL = nova
+  const mostrarFoto = () => {
+    $(".foto-eq .equip-vis").innerHTML = visualEquip({ ...e, tipo: $("#fEq [name=tipo]").value, foto: foto === undefined ? e.foto : foto });
+    $("#eqSemFoto").hidden = !(foto === undefined ? e.foto : foto);
+  };
+  $("#fEq [name=tipo]").onchange = mostrarFoto;
+  for (const [btn, inp] of [["#eqFoto", "#inFotoEq"], ["#eqGaleria", "#inGaleriaEq"]]) {
+    $(btn).onclick = () => { $(inp).value = ""; $(inp).click(); };
+    $(inp).onchange = async ev2 => {
+      const arq = ev2.target.files[0]; if (!arq) return;
+      try { foto = await fotoDoEquipamento(arq); mostrarFoto(); toast("Foto pronta. Toque em Salvar.", "ok"); }
+      catch (err) { toast("Não deu para usar essa foto.", "erro"); }
+    };
+  }
+  $("#eqSemFoto").onclick = () => { foto = ""; mostrarFoto(); };
   $("#fEq").onsubmit = ev => {
     ev.preventDefault();
     const f = Object.fromEntries(new FormData(ev.target));
+    if (foto !== undefined) f.foto = foto;
     f.prefixo = f.prefixo.trim().toUpperCase(); f.placa = f.placa.trim().toUpperCase(); f.descricao = f.descricao.trim();
     if (!f.prefixo && !f.placa) return toast("Informe o prefixo ou a placa.", "erro");
     const repetido = Estado.equipamentos.find(x => x.id !== e.id && ((f.prefixo && x.prefixo === f.prefixo) || (f.placa && x.placa === f.placa)));
