@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck14";
+const VERSAO = "ck15";
 const RASCUNHO_KEY = "ck_rascunho";
 const HISTORICO_KEY = "ck_historico";
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
@@ -96,6 +96,11 @@ function itensAbertos(i) {
   if (i.tratativa && i.tratativa.status === "resolvido" && !i.resolucoes) return [];
   const res = i.resolucoes || {};
   return (i.itens || []).filter(x => x.st === "nok" && !res[x.id]);
+}
+/* Itens ainda abertos com solicitação registrada (ex.: peça pedida, aguardando compra) */
+function solicitadosAbertos(i) {
+  const sol = i.solicitacoes || {};
+  return itensAbertos(i).filter(x => sol[x.id]);
 }
 /* Situação atual do checklist pelos itens em aberto */
 function statusAtual(i) {
@@ -678,7 +683,8 @@ Render.painel = async function () {
   const p = Painel;
   const desenhar = () => {
     const l = (p.lista || []).filter(i =>
-      (p.filtro === "todos" || (p.filtro === "aberto" ? i.tratativa && i.tratativa.status === "aberto" : statusPainel(i) === p.filtro)) &&
+      (p.filtro === "todos" || (p.filtro === "aberto" ? i.tratativa && i.tratativa.status === "aberto"
+        : p.filtro === "solicitado" ? solicitadosAbertos(i).length > 0 : statusPainel(i) === p.filtro)) &&
       (!p.busca || (nomeEquip(i.equipamento) + " " + (i.criadoNome || "")).toLowerCase().includes(p.busca.toLowerCase())));
     const todos = p.lista || [];
     // situação da frota: vem dos equipamentos, não do período escolhido
@@ -711,7 +717,7 @@ Render.painel = async function () {
       </div>
       <input class="busca" id="pBusca" type="search" placeholder="🔎 Equipamento ou nome" value="${h(p.busca)}" />
       <div class="chips" id="pFiltro">
-        ${[["todos", "Todos"], ["bloqueado", "🔧 Manutenção"], ["restricao", "⚠️ Restrição"], ["liberado", "✅ Operando"], ["aberto", "⏳ Em aberto"]]
+        ${[["todos", "Todos"], ["bloqueado", "🔧 Manutenção"], ["restricao", "⚠️ Restrição"], ["liberado", "✅ Operando"], ["solicitado", "🛒 Solicitado"], ["aberto", "⏳ Em aberto"]]
           .map(([k, t]) => `<button data-f="${k}" class="${p.filtro === k ? "on" : ""}">${t}</button>`).join("")}
       </div>
       ${p.carregando && !p.lista ? `<p class="carregando">Carregando…</p>` : ""}
@@ -722,6 +728,7 @@ Render.painel = async function () {
           <div><b>${h(nomeEquip(i.equipamento))}</b><small>${dataHora(i.criadoEm)} · ${h(i.criadoNome)}${PERFIS[i.criadoPerfil] ? " (" + PERFIS[i.criadoPerfil].toLowerCase() + ")" : ""}${statusPainel(i) !== i.resultado ? " · era " + RESULTADOS[i.resultado].txt.toLowerCase() : ""}</small></div>
           <div class="dir">${Dados.ehAdmin() ? `<button class="apagar" data-apagar="${h(i.id)}" aria-label="Apagar checklist">🗑</button>` : ""}<span class="tag ${R.cls}">${R.ico} ${i.defeitos || 0}</span>
           <small>${statusPainel(i) === "liberado" && i.resultado !== "liberado" ? "✔ resolvido" : statusPainel(i) !== i.resultado ? "◐ em andamento" : i.tratativa ? "⏳ aberto" : ""}
+          ${solicitadosAbertos(i).length ? " · 🛒 " + solicitadosAbertos(i).length + " solicitado(s)" : ""}
           ${Object.keys(i.midias || {}).length ? " · 📎" + Object.keys(i.midias).length : ""}</small></div></div>`;
       }).join("")}</div>
       ${p.lista && !l.length ? `<p class="vazio">Nenhum checklist neste filtro.</p>` : ""}
@@ -776,7 +783,7 @@ function baixarCSV(lista) {
 
 /* ---------- detalhe de um checklist (admin) ---------- */
 /* Resolução por item: o que está sendo resolvido agora (nota + fotos ainda no aparelho) */
-const Resolver = { inspId: "", itemId: "", nota: "", mids: [] };
+const Resolver = { inspId: "", itemId: "", nota: "", mids: [], modo: "resolver" };   // modo: resolver | solicitar
 
 Render.detalhe = async function (id) {
   titulo("CHECKLIST", "");
@@ -804,14 +811,24 @@ function desenharDetalhe(i) {
         : `<span class="espera">⏳<small>enviando</small></span>`}</button>`).join("");
   const blocoItem = it => {
     if (it.st !== "nok") return "";
-    const r = res[it.id];
+    const r = res[it.id], sl = (i.solicitacoes || {})[it.id];
+    const caixaSol = sl ? `<div class="solicitado"><b>🛒 Solicitado</b> <span class="muted mini">· ${h(sl.por)} · ${dataHora(sl.em)}</span>
+        <p>${h(sl.nota)}</p></div>` : "";
     if (r || legado) return `<div class="resolvido">
         <b>✅ Resolvido</b>${r ? ` <span class="muted mini">· ${h(r.por)} · ${dataHora(r.em)}</span>` : ` <span class="muted mini">(tratativa geral)</span>`}
         ${r && r.nota ? `<p>${h(r.nota)}</p>` : ""}
+        ${sl ? `<p class="mini muted">🛒 Antes: solicitado em ${dataHora(sl.em)} — ${h(sl.nota)}</p>` : ""}
         <div class="midias">${midiasDe("res:" + it.id)}</div>
         ${r ? `<button class="mini-bt" data-reabrir="${h(it.id)}">Reabrir item</button>` : ""}
       </div>`;
-    if (Resolver.inspId === i.id && Resolver.itemId === it.id) return `<div class="resolvendo">
+    if (Resolver.inspId === i.id && Resolver.itemId === it.id && Resolver.modo === "solicitar") return `${caixaSol}<div class="resolvendo solicitando">
+        <b>🛒 Solicitação: ${h(it.texto)}</b>
+        <textarea id="slNota" rows="2" placeholder="O que foi solicitado? (ex.: troca do pneu, compra da peça)">${h(Resolver.nota)}</textarea>
+        <p class="mini muted">O item continua em aberto até ser resolvido.</p>
+        <div class="linha"><button class="btn btn-ghost" id="rsCancelar">Cancelar</button>
+          <button class="btn" id="slConfirmar">🛒 Registrar</button></div>
+      </div>`;
+    if (Resolver.inspId === i.id && Resolver.itemId === it.id) return `${caixaSol}<div class="resolvendo">
         <b>🔧 Resolver: ${h(it.texto)}</b>
         <textarea id="rsNota" rows="2" placeholder="O que foi feito? (obrigatório)">${h(Resolver.nota)}</textarea>
         <div class="midias">${Resolver.mids.map(mid => `<div class="mini-midia"><img data-mid="${mid}" alt="foto" />
@@ -820,7 +837,10 @@ function desenharDetalhe(i) {
         <div class="linha"><button class="btn btn-ghost" id="rsCancelar">Cancelar</button>
           <button class="btn" id="rsConfirmar">✅ Confirmar</button></div>
       </div>`;
-    return `<button class="btn btn-resolver" data-resolver="${h(it.id)}">🔧 Resolver este item</button>`;
+    return `${caixaSol}<div class="acoes-item">
+        <button class="btn btn-resolver" data-resolver="${h(it.id)}">🔧 Resolver este item</button>
+        <button class="btn btn-ghost btn-resolver" data-solicitar="${h(it.id)}">🛒 ${sl ? "Editar solicitação" : "Solicitação"}</button>
+      </div>${sl ? `<button class="mini-bt" data-sol-cancelar="${h(it.id)}">Cancelar solicitação</button>` : ""}`;
   };
   app().innerHTML = `
     <div class="card resultado ${R.cls} compacto"><h2>${R.ico} ${R.txt}</h2>
@@ -832,7 +852,8 @@ function desenharDetalhe(i) {
     ${nok.length ? `<div class="card ${A.cls === "ok" ? "" : "alerta-borda"}" id="dtSituacao">
       <b>Agora: <span class="tag ${A.cls}">${A.ico} ${A.txt}</span></b>
       <p class="mini">${resolvidos} de ${nok.length} item(ns) não conforme(s) resolvido(s).
-        ${A.cls === "ok" ? "Equipamento voltou a operar." : "Resolva cada item abaixo, com nota e foto."}</p>
+        ${A.cls === "ok" ? "Equipamento voltou a operar." : "Resolva cada item abaixo, com nota e foto."}
+        ${solicitadosAbertos(i).length ? `<br>🛒 ${solicitadosAbertos(i).length} com solicitação, aguardando.` : ""}</p>
       ${legado ? `<button class="btn btn-ghost" id="dtReabrir">Reabrir</button>` : ""}
     </div>` : ""}
     <h3 class="secao">Itens</h3>
@@ -853,6 +874,8 @@ function desenharDetalhe(i) {
     try { img.src = await Midia.url(img.dataset.thumb); } catch (e) { img.alt = "sem acesso"; }
   });
   preencherMiniaturas(app());
+  const sNota = $("#slNota");
+  if (sNota) { sNota.oninput = () => { Resolver.nota = sNota.value; }; if (!Resolver.nota) sNota.focus(); }
   const nota = $("#rsNota");
   if (nota) { nota.oninput = () => { Resolver.nota = nota.value; }; if (!Resolver.mids.length && !Resolver.nota) nota.focus(); }
 
@@ -867,7 +890,7 @@ function desenharDetalhe(i) {
     const abrir = alvo.closest("[data-resolver]");
     if (abrir) {
       await cancelarResolucao();
-      Object.assign(Resolver, { inspId: i.id, itemId: abrir.dataset.resolver, nota: "", mids: [] });
+      Object.assign(Resolver, { inspId: i.id, itemId: abrir.dataset.resolver, nota: "", mids: [], modo: "resolver" });
       return redesenhar(i, abrir.dataset.resolver);
     }
     if (alvo.id === "rsCancelar") { await cancelarResolucao(); return redesenhar(i); }
@@ -879,6 +902,16 @@ function desenharDetalhe(i) {
       return redesenhar(i, Resolver.itemId);
     }
     if (alvo.id === "rsConfirmar") return confirmarResolucao(i);
+    const sol = alvo.closest("[data-solicitar]");
+    if (sol) {
+      await cancelarResolucao();
+      const ant = (i.solicitacoes || {})[sol.dataset.solicitar];
+      Object.assign(Resolver, { inspId: i.id, itemId: sol.dataset.solicitar, nota: ant ? ant.nota : "", mids: [], modo: "solicitar" });
+      return redesenhar(i, sol.dataset.solicitar);
+    }
+    if (alvo.id === "slConfirmar") return registrarSolicitacao(i);
+    const solX = alvo.closest("[data-sol-cancelar]");
+    if (solX) return cancelarSolicitacao(i, solX.dataset.solCancelar);
     const reabrir = alvo.closest("[data-reabrir]");
     if (reabrir) return reabrirItem(i, reabrir.dataset.reabrir);
     if (alvo.id === "dtReabrir") return reabrirLegado(i);
@@ -907,7 +940,30 @@ function redesenhar(i, itemId) {
 
 async function cancelarResolucao() {
   for (const mid of Resolver.mids) { await Midia.apagar(mid).catch(() => {}); liberarURL(mid); }
-  Object.assign(Resolver, { inspId: "", itemId: "", nota: "", mids: [] });
+  Object.assign(Resolver, { inspId: "", itemId: "", nota: "", mids: [], modo: "resolver" });
+}
+
+/* Solicitação: registra o que foi pedido (compra, troca). O item continua
+   em aberto e o equipamento fica na mesma situação até ser resolvido. */
+async function registrarSolicitacao(i) {
+  const itemId = Resolver.itemId, nota = String(Resolver.nota || "").trim();
+  if (!nota) { toast("Escreva o que foi solicitado.", "erro"); const t = $("#slNota"); if (t) t.focus(); return; }
+  const sl = { nota, por: Dados.usuario.nome || Dados.usuario.usuario, em: Date.now() };
+  const upd = {}; upd["solicitacoes." + itemId] = sl;
+  i.solicitacoes = Object.assign({}, i.solicitacoes, { [itemId]: sl });
+  Dados.atualizarInspecao(i.id, upd).catch(() => toast("Não deu para salvar.", "erro"));
+  Object.assign(Resolver, { inspId: "", itemId: "", nota: "", mids: [], modo: "resolver" });
+  const l = (Painel.lista || []).findIndex(x => x.id === i.id); if (l >= 0) Painel.lista[l] = i;
+  toast("🛒 Solicitação registrada. O item continua em aberto.", "ok");
+  redesenhar(i, itemId);
+}
+async function cancelarSolicitacao(i, itemId) {
+  if (!(await confirmar("A solicitação deste item será apagada. O item continua em aberto.", { titulo: "Cancelar solicitação?", ok: "Apagar", perigo: true }))) return;
+  const upd = {}; upd["solicitacoes." + itemId] = firebase.firestore.FieldValue.delete();
+  i.solicitacoes = Object.assign({}, i.solicitacoes); delete i.solicitacoes[itemId];
+  Dados.atualizarInspecao(i.id, upd).catch(() => toast("Não deu para salvar.", "erro"));
+  toast("Solicitação cancelada", "ok");
+  redesenhar(i, itemId);
 }
 
 function fotoResolucao(i) {
@@ -952,7 +1008,7 @@ async function confirmarResolucao(i) {
   i.midias = Object.assign({}, i.midias, novas);
   i.pendentes = (i.pendentes || 0) + fotos.length;
   await aplicarSituacao(i, upd, por, em);
-  Object.assign(Resolver, { inspId: "", itemId: "", nota: "", mids: [] });
+  Object.assign(Resolver, { inspId: "", itemId: "", nota: "", mids: [], modo: "resolver" });
   fotos.forEach(liberarURL);
   Midia.processar();
   const A = RESULTADOS[statusAtual(i)];
@@ -997,7 +1053,7 @@ function zapDetalhe(i) {
   const txt = `*CHECKLIST ${R.txt}* ${R.ico}\n🚛 ${nomeEquip(i.equipamento)}\n👤 ${i.criadoNome}\n🕒 ${dataHora(i.criadoEm)}`
     + (i.km != null ? `\nKM: ${i.km}` : "") + (i.horimetro != null ? `\nHorímetro: ${i.horimetro}` : "")
     + (def.length ? `\n\n*Não conformes (${def.length}):*\n` + def.map(d => `• ${d.texto}${d.critico ? " (CRÍTICO)" : ""}${d.obs ? " — " + d.obs : ""}`
-      + (res[d.id] ? `\n   ✅ Resolvido: ${res[d.id].nota}` : "")).join("\n") : "\n\nSem não conformes.")
+      + (res[d.id] ? `\n   ✅ Resolvido: ${res[d.id].nota}` : (i.solicitacoes || {})[d.id] ? `\n   🛒 Solicitado: ${i.solicitacoes[d.id].nota}` : "")).join("\n") : "\n\nSem não conformes.")
     + (def.length ? `\n\n*Agora:* ${A.ico} ${A.txt}` : "")
     + (i.obs ? `\n\nObs.: ${i.obs}` : "");
   window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
