@@ -143,6 +143,8 @@ textarea { resize: vertical; }
 .equip.sit-alerta { border: 2px solid var(--alerta); }
 .frota .sit { margin: 8px 0; }
 .frota .sit .link { padding: 6px 4px; }
+.tag.sem { background: var(--card-2); color: var(--muted); border: 1px solid var(--line); }
+.frota .nomes { margin: 6px 4px 0; color: var(--muted); }
 
 .seg, .chips { display: flex; gap: 6px; margin-bottom: 10px; overflow-x: auto; }
 .seg button, .chips button { flex: 1; white-space: nowrap; background: var(--card); border: 1px solid var(--line); border-radius: 99px; padding: 8px 12px; font-size: 13px; cursor: pointer; }

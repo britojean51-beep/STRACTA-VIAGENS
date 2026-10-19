@@ -241,6 +241,10 @@ async function sair(page) {
   await sair(page);
 
   console.log('5. gestor no painel: vê tudo e resolve, mas não apaga');
+  // um terceiro equipamento que nunca fez checklist
+  await page.evaluate(() => { const b = JSON.parse(localStorage.getItem('__ck_banco__'));
+    b['checklist_equipamentos/semck'] = { prefixo: 'PC-09', placa: '', tipo: 'maquina' };
+    localStorage.setItem('__ck_banco__', JSON.stringify(b)); });
   await entrar(page, 'ana');
   ok(await page.isVisible('[data-ir="painel"]') && !(await page.isVisible('[data-ir="cadastros"]')), 'gestor vê Painel, não vê Cadastros');
   await page.click('[data-ir="painel"]');
@@ -249,6 +253,7 @@ async function sair(page) {
   const frota = await page.textContent('#pFrota');
   ok(/Em manutenção \(1\)\s*CB-12/.test(frota) && /Com restrição \(1\)\s*ESC-03/.test(frota) && frota.includes('Operando (0)'),
     'situação da frota: CB-12 em manutenção, ESC-03 com restrição');
+  ok(/Sem checklist hoje \(1\)\s*PC-09/.test(frota), 'equipamento sem checklist hoje NÃO conta como Operando: fica em "Sem checklist hoje"');
   await shot(page, '06-painel');
   await page.click('[data-f="bloqueado"]');
   ok(await page.$$eval('#pLista .item', l => l.length) === 1, 'filtro de bloqueados');
@@ -305,6 +310,7 @@ async function sair(page) {
   await page.click('#btnVoltar');
   await page.click('[data-f="todos"]');
   await page.waitForFunction(() => document.querySelector('#pFrota').textContent.includes('Operando (1)'));
+  ok((await page.textContent('#pFrota')).includes('Sem checklist hoje (1)'), 'resolvido o CB-12: Operando (1) e o PC-09 continua sem checklist');
   ok(!(await page.textContent('#pFrota')).includes('Em manutenção'), 'resolvido sai de "Em manutenção" no Painel');
   await page.click('[data-f="bloqueado"]');
   ok((await page.textContent('#pFiltro')).includes('🔧 Manutenção') && !(await page.textContent('#app')).includes('Bloquead'),
