@@ -87,6 +87,7 @@ async function sair(page) {
   await page.click('[data-ir="cad-equip"]');
   await page.fill('[name=prefixo]', 'cb-12'); await page.fill('[name=placa]', 'abc1d23');
   await page.fill('[name=descricao]', 'Scania basculante');
+  await page.selectOption('[name=modeloId]', 'padrao-caminhao');   // o resto do teste usa o "Caminhão — diário"
   await page.click('#fEq button.btn');
   await page.waitForSelector('[data-ed]');
   await page.fill('[name=prefixo]', 'ESC-03'); await page.selectOption('[name=tipo]', 'maquina');
@@ -430,6 +431,24 @@ async function sair(page) {
   ok(!/MANUTENÇÃO|OPERACIONAL COM OBSERVAÇÃO/.test(itemTxt) && itemTxt.includes('OPERANDO'),
     'depois de resolvido: Início mostra OPERANDO (com o que era)');
   await shot(page, '11-inicio-operando');
+
+  console.log('9. caminhão sem modelo escolhido usa o FO.09.STR.018 (veículos pesados)');
+  await page.click('[data-ir="novo"]');
+  await page.click('#avulso summary');
+  await page.fill('#avPlaca', 'TR-77');
+  await page.selectOption('#avTipo', 'caminhao');
+  await page.click('#avIr');
+  await page.waitForSelector('.ck-item');
+  const tx = await page.$$eval('.ck-item .ck-txt', l => l.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+  ok(tx.length === 18 && tx[0].includes('Condição do condutor, CNH e treinamentos válidos')
+    && tx[3].includes('Cinto de segurança para todos os ocupantes do veículo')
+    && tx[17].includes('Dispositivo de controle de ruído do escapamento e emissão de fumaça preta'),
+    'checklist de veículos pesados: 18 itens iguais à folha');
+  ok((await page.textContent('#subtitulo')).includes('FO.09.STR.018'), 'nome do modelo com o código do formulário');
+  ok(await page.$$eval('.ck-item .critico', l => l.length) === 6, '6 itens críticos (condutor, extintor, cinto, pneus, buzina/ré, faróis/freio/ré)');
+  await page.click('[data-ir="inicio"]');
+  await page.click('#btnDescartar'); await page.click('#mdlOk');
+  await page.waitForFunction(() => !document.querySelector('#btnContinuar'));
 
   ok(await page.evaluate(() => getComputedStyle(document.body).backgroundColor) === 'rgb(255, 255, 255)',
     'fundo branco mesmo com o celular em modo escuro');

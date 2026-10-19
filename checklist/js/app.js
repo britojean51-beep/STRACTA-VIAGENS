@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck13";
+const VERSAO = "ck14";
 const RASCUNHO_KEY = "ck_rascunho";
 const HISTORICO_KEY = "ck_historico";
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
@@ -13,6 +13,26 @@ const RESULTADOS = {
 
 /* Modelos que já vêm prontos. O admin edita ou cria outros em Cadastros. */
 const MODELOS_PADRAO = [
+  /* Formulário FO.09.STR.018 — Check List Veículos Pesados (18 itens), igual ao papel */
+  { id: "padrao-pesados-18", nome: "Caminhão — check list veículos pesados (FO.09.STR.018)", tipo: "caminhao", itens: [
+    ["Condição do condutor, CNH e treinamentos válidos", true],
+    ["Documentação, placa e identificação do veículo (TAG) na traseira e dianteira", false],
+    ["Extintor de incêndio", true],
+    ["Cinto de segurança para todos os ocupantes do veículo", true],
+    ["Vidros para-brisa, traseiro e laterais, limpador / lavador de para-brisas e para-sol", false],
+    ["Espelho retrovisores, interno e externos", false],
+    ["Acesso ao veículo (degraus, escadas e alças) e estado geral do veículo / lataria", false],
+    ["Arrumação e limpeza do veículo", false],
+    ["Identificação da empresa no veículo e fita adesiva refletora", false],
+    ["Calços para estacionamento, cones / triângulos de sinalização de segurança", false],
+    ["Estado geral dos pneus (talão, flanco e banda de rodagem) e tampa da válvula", true],
+    ["Óleo de direção, freio, motor e água do radiador entre o nível mínimo e máximo", false],
+    ["Rádio de comunicação", false],
+    ["Ar condicionado", false],
+    ["Buzina e sinal sonoro de ré acoplado ao sistema de câmbio", true],
+    ["Faróis principais dianteiros com luz baixa e alta, luzes de freio e lanternas de marcha ré funcionando", true],
+    ["Luzes de setas e pisca alerta: dianteiras e traseiras funcionando e luz de iluminação de placa traseira", false],
+    ["Dispositivo de controle de ruído do escapamento e emissão de fumaça preta", false]] },
   { id: "padrao-caminhao", nome: "Caminhão — diário", tipo: "caminhao", itens: [
     ["Pneus (calibragem, cortes, desgaste)", true], ["Freio de serviço e de estacionamento", true],
     ["Vazamentos (óleo, ar, combustível, água)", true], ["Luz de freio, setas e pisca-alerta", true],
@@ -54,6 +74,9 @@ const MODELOS_PADRAO = [
     ["Painel sem luz de alerta", false], ["Filtro de ar", false], ["Limpeza e organização da cabine", false]] }
 ].map(m => Object.assign({}, m, { padrao: true,
   itens: m.itens.map(([texto, critico], i) => ({ id: "i" + (i + 1), texto, critico })) }));
+
+/* Formulários em papel da empresa: viram o modelo automático do tipo */
+const FORMULARIOS_OFICIAIS = ["padrao-pesados-18", "padrao-maquina-22"];
 
 /* Situação do equipamento: sai dos defeitos ainda em aberto (pendencias). */
 const SITUACOES = {
@@ -153,10 +176,14 @@ const Estado = {
     const ids = new Set(this.modelos.map(m => m.id));
     return this.modelos.filter(m => !m.removido).concat(MODELOS_PADRAO.filter(m => !ids.has(m.id)));
   },
+  /* Modelo do equipamento: o escolhido no cadastro dele; senão o formulário
+     oficial do tipo (FO de veículos pesados / máquinas), se não foi apagado;
+     senão o primeiro do tipo. */
   modeloPara(equip) {
-    const ms = this.modelosEfetivos();
+    const ms = this.modelosEfetivos(), tipo = equip && equip.tipo;
     return (equip && equip.modeloId && ms.find(m => m.id === equip.modeloId))
-      || ms.find(m => m.tipo === (equip && equip.tipo)) || ms[0];
+      || ms.find(m => m.tipo === tipo && FORMULARIOS_OFICIAIS.includes(m.id))
+      || ms.find(m => m.tipo === tipo) || ms[0];
   },
   ouvir() {
     this.parar();
