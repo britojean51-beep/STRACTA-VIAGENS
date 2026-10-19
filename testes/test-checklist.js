@@ -473,9 +473,33 @@ async function sair(page) {
     'checklist de veículos pesados: 18 itens iguais à folha');
   ok((await page.textContent('#subtitulo')).includes('FO.09.STR.018'), 'nome do modelo com o código do formulário');
   ok(await page.$$eval('.ck-item .critico', l => l.length) === 6, '6 itens críticos (condutor, extintor, cinto, pneus, buzina/ré, faróis/freio/ré)');
+  // foto da galeria (sem forçar a câmera)
+  ok(await page.$eval('#inGaleria', e => !e.hasAttribute('capture')) && await page.$eval('#inFoto', e => e.getAttribute('capture') === 'environment'),
+    'botão 🖼️ abre a galeria (sem capture); 📷 continua na câmera');
+  page.once('filechooser', async fc => fc.setFiles(await foto(page)));
+  await page.click('.ck-item:nth-child(1) [data-galeria]');
+  await page.waitForSelector('.ck-item:nth-child(1) .mini-midia img[src^="blob:"]');
+  ok(await page.evaluate(() => Object.values(Estado.rascunho.midias).some(m => m.origem === 'galeria')), 'foto da galeria entra no item, marcada como "galeria"');
   await page.click('[data-ir="inicio"]');
   await page.click('#btnDescartar'); await page.click('#mdlOk');
   await page.waitForFunction(() => !document.querySelector('#btnContinuar'));
+
+  console.log('10. instalar o aplicativo');
+  ok(!(await page.$('#btnInstalar')), 'sem oferta do navegador, não mostra o botão no Início');
+  await page.evaluate(() => { const e = new Event('beforeinstallprompt'); e.prompt = () => { window.__pediuInstalar = true; };
+    e.userChoice = Promise.resolve({ outcome: 'accepted' }); window.dispatchEvent(e); });
+  await page.waitForSelector('#btnInstalar');
+  ok((await page.textContent('.instalar')).includes('Baixe o aplicativo'), 'celular oferece instalar: aparece "📲 Instalar o app" no Início');
+  await page.click('#btnInstalar');
+  await page.waitForFunction(() => window.__pediuInstalar === true);
+  ok(true, 'o botão abre a janela de instalação do celular');
+  await page.click('[data-ir="conta"]');
+  ok((await page.textContent('.instalar')).includes('Instalar app'), 'Conta mostra como instalar pelo menu ⋮');
+  const man = await page.evaluate(async () => { const m = await (await fetch('manifest.json')).json();
+    const st = await Promise.all(m.icons.map(i => fetch(i.src).then(r => i.sizes + ':' + r.status))); return { m, st }; });
+  ok(man.m.icons.some(i => i.sizes === '192x192') && man.m.icons.some(i => i.sizes === '512x512') && man.m.icons.some(i => i.purpose === 'maskable')
+    && man.st.every(x => x.endsWith(':200')), 'manifesto com ícones 192/512/maskable e todos existem (' + man.st.join(', ') + ')');
+  await page.click('[data-ir="inicio"]');
 
   ok(await page.evaluate(() => getComputedStyle(document.body).backgroundColor) === 'rgb(255, 255, 255)',
     'fundo branco mesmo com o celular em modo escuro');

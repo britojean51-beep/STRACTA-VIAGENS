@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck15";
+const VERSAO = "ck16";
 const RASCUNHO_KEY = "ck_rascunho";
 const HISTORICO_KEY = "ck_historico";
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
@@ -167,6 +167,38 @@ function confirmar(msg, o = {}) {
 function lerJSON(k, padrao) { try { const v = JSON.parse(localStorage.getItem(k) || "null"); return v == null ? padrao : v; } catch (e) { return padrao; } }
 function gravarJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 
+/* ---------- instalar como aplicativo ----------
+   Android/Chrome: o navegador avisa (beforeinstallprompt) e o botão abre a janela de instalar.
+   iPhone: não existe esse aviso, então mostra o passo a passo do Safari. */
+const Instalar = {
+  evento: null,
+  instalado() {
+    return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+  },
+  ios() { return /iphone|ipad|ipod/i.test(navigator.userAgent); },
+  cartao(sempre) {
+    if (this.instalado()) return sempre ? `<div class="card instalar ok-borda"><b>✅ App instalado</b><p class="mini">Abra pelo ícone "Checklist" na tela do celular.</p></div>` : "";
+    if (this.evento) return `<div class="card instalar"><b>📲 Baixe o aplicativo</b>
+      <p class="mini">Fica com ícone na tela do celular, abre em tela cheia e funciona sem sinal.</p>
+      <button class="btn" id="btnInstalar">📲 Instalar o app</button></div>`;
+    if (this.ios()) return `<div class="card instalar"><b>📲 Instalar no iPhone</b>
+      <p class="mini">No Safari, toque em <b>Compartilhar</b> (quadrado com seta ↑) e depois em <b>"Adicionar à Tela de Início"</b>.</p></div>`;
+    return sempre ? `<div class="card instalar"><b>📲 Instalar o app</b>
+      <p class="mini">No Chrome, toque no menu <b>⋮</b> e depois em <b>"Instalar app"</b> ou <b>"Adicionar à tela inicial"</b>.</p></div>` : "";
+  },
+  preencher() { document.querySelectorAll("[data-slot-instalar]").forEach(el => { el.innerHTML = this.cartao(el.dataset.slotInstalar === "sempre"); }); },
+  async instalar() {
+    if (!this.evento) return;
+    const ev = this.evento; this.evento = null;
+    ev.prompt();
+    try { const r = await ev.userChoice; if (r && r.outcome === "accepted") toast("App instalado ✔", "ok"); } catch (e) {}
+    this.preencher();
+  }
+};
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); Instalar.evento = e; Instalar.preencher(); });
+window.addEventListener("appinstalled", () => { Instalar.evento = null; Instalar.preencher(); toast("App instalado ✔ — abra pelo ícone na tela", "ok"); });
+document.addEventListener("click", e => { if (e.target.closest("#btnInstalar")) Instalar.instalar(); });
+
 /* ---------- estado ---------- */
 const Estado = {
   equipamentos: [],
@@ -264,6 +296,7 @@ const Telas = {
       b.classList.toggle("ativa", b.dataset.ir === raiz);
     });
     if (fn) fn(arg);
+    Instalar.preencher();
   },
   atualizarSeVisivel(nomes) { if (this.atual && nomes.includes(this.atual.nome)) this.render(); }
 };
@@ -309,7 +342,9 @@ Render.login = function (erro) {
       <p class="erro" id="lgErro">${h(erro || "")}</p>
       <button class="btn btn-grande" id="lgEntrar">Entrar</button>
       <p class="muted mini">Esqueceu a senha? Peça ao administrador para trocar.</p>
-    </form>`;
+    </form>
+    <div data-slot-instalar="talvez"></div>`;
+  Instalar.preencher();
   const u = $("#lgUsuario"), s = $("#lgSenha");
   (u.value ? s : u).focus();
   $("#lgOlho").onclick = () => { s.type = s.type === "password" ? "text" : "password"; };
@@ -346,6 +381,7 @@ Render.inicio = function () {
       <div class="kpi"><b>${hist.filter(x => !x.enviado).length}</b><span>na fila</span></div>
     </div>
     <p class="muted mini" data-pendentes></p>
+    <div data-slot-instalar="talvez"></div>
     <h3 class="secao">Meus últimos checklists</h3>
     ${hist.length ? hist.slice(0, 20).map(x => {
       const R = RESULTADOS[statusPainel(x)] || RESULTADOS.liberado;
@@ -487,7 +523,8 @@ Render.checklist = function () {
           ${resp.st === "nok" && it.critico ? `<div class="aviso-critico" role="alert">🔧 Acione a manutenção</div>` : ""}
           ${resp.st === "nok" ? `<textarea class="ck-obs" placeholder="O que está errado? (obrigatório)" rows="2">${h(resp.obs || "")}</textarea>` : ""}
           <div class="midias">${miniaturas(it.id)}
-            <button class="add-midia" data-foto="${h(it.id)}">📷</button>
+            <button class="add-midia" data-foto="${h(it.id)}" aria-label="Tirar foto">📷</button>
+            <button class="add-midia" data-galeria="${h(it.id)}" aria-label="Escolher da galeria">🖼️</button>
             ${Midia.video() ? `<button class="add-midia" data-video="${h(it.id)}">🎥</button>` : ""}
           </div>
         </div>`;
@@ -497,13 +534,15 @@ Render.checklist = function () {
       <b>Fotos gerais e observações</b>
       <p class="muted mini">Frente, traseira, laterais, painel…</p>
       <div class="midias">${miniaturas("geral")}
-        <button class="add-midia" data-foto="geral">📷</button>
+        <button class="add-midia" data-foto="geral" aria-label="Tirar foto">📷</button>
+        <button class="add-midia" data-galeria="geral" aria-label="Escolher da galeria">🖼️</button>
         ${Midia.video() ? `<button class="add-midia" data-video="geral">🎥</button>` : ""}
       </div>
       <textarea id="ckObs" rows="3" placeholder="Observação geral (opcional)">${h(r.obs)}</textarea>
     </div>
     <button class="btn btn-grande" id="ckFinalizar">Finalizar checklist</button>
     <input type="file" id="inFoto" accept="image/*" capture="environment" hidden />
+    <input type="file" id="inGaleria" accept="image/*" hidden />
     <input type="file" id="inVideo" accept="video/*" capture="environment" hidden />`;
   preencherMiniaturas(app());
 
@@ -538,7 +577,8 @@ Render.checklist = function () {
       }
       return;
     }
-    const f = ev.target.closest("[data-foto]"), v = ev.target.closest("[data-video]");
+    const f = ev.target.closest("[data-foto]"), v = ev.target.closest("[data-video]"), g = ev.target.closest("[data-galeria]");
+    if (g) { capturar("foto", g.dataset.galeria, true); return; }
     if (f || v) { capturar(f ? "foto" : "video", (f || v).dataset[f ? "foto" : "video"]); return; }
     const tirar = ev.target.closest("[data-tirar]");
     if (tirar) {
@@ -556,8 +596,15 @@ Render.checklist = function () {
   $("#ckFinalizar").onclick = finalizar;
 };
 
-function capturar(tipo, item) {
-  const inp = $(tipo === "foto" ? "#inFoto" : "#inVideo");
+/* Carimbo da foto. Da galeria vai marcado e com a data da própria foto
+   (e não a de agora), para ninguém confundir com uma foto tirada na hora. */
+function carimboFoto(prefixo, arq, galeria) {
+  const quando = galeria ? "galeria · foto de " + dataHora(arq.lastModified || Date.now()) : dataHora(Date.now());
+  return prefixo + " · " + quando + " · " + (Dados.usuario.usuario || "");
+}
+
+function capturar(tipo, item, galeria) {
+  const inp = $(galeria ? "#inGaleria" : tipo === "foto" ? "#inFoto" : "#inVideo");
   inp.value = "";
   inp.onchange = async () => {
     const arq = inp.files && inp.files[0];
@@ -568,11 +615,11 @@ function capturar(tipo, item) {
     }
     toast(tipo === "foto" ? "Processando foto…" : "Guardando vídeo…");
     try {
-      const carimbo = (nomeEquip(r.equip) || "") + " · " + dataHora(Date.now()) + " · " + (Dados.usuario.usuario || "");
+      const carimbo = carimboFoto(nomeEquip(r.equip) || "", arq, galeria);
       const p = tipo === "foto" ? await Midia.prepararFoto(arq, carimbo) : await Midia.prepararVideo(arq);
       const mid = Midia.novoId();
       await Midia.guardar({ mid, estado: "rascunho", blob: p.blob, tipo: p.tipo, ext: p.ext, item, rascunho: r.id });
-      r.midias[mid] = { item, tipo: p.tipo, ext: p.ext, dur: p.dur || null, tam: p.blob.size };
+      r.midias[mid] = { item, tipo: p.tipo, ext: p.ext, dur: p.dur || null, tam: p.blob.size, origem: galeria ? "galeria" : "camera" };
       salvarRascunho();
       const y = window.scrollY; Telas.render(); window.scrollTo(0, y);
       toast(tipo === "foto" ? "Foto adicionada ✔" : "Vídeo adicionado ✔", "ok");
@@ -623,7 +670,7 @@ async function finalizar() {
   const midias = {};
   Object.entries(r.midias).forEach(([mid, m]) => {
     midias[mid] = { item: m.item, tipo: m.tipo, path: Midia.caminho(r.id, mid, m.ext), ok: false,
-      dur: m.dur || null, tam: m.tam || null };
+      dur: m.dur || null, tam: m.tam || null, origem: m.origem || "camera" };
   });
   const insp = {
     id: r.id, equipamento: r.equip, modelo: { id: r.modelo.id, nome: r.modelo.nome }, itens,
@@ -833,7 +880,8 @@ function desenharDetalhe(i) {
         <textarea id="rsNota" rows="2" placeholder="O que foi feito? (obrigatório)">${h(Resolver.nota)}</textarea>
         <div class="midias">${Resolver.mids.map(mid => `<div class="mini-midia"><img data-mid="${mid}" alt="foto" />
           <button class="tirar" data-rs-tirar="${mid}" aria-label="Remover">✕</button></div>`).join("")}
-          <button class="add-midia" id="rsFoto" aria-label="Tirar foto da correção">📷</button></div>
+          <button class="add-midia" id="rsFoto" aria-label="Tirar foto da correção">📷</button>
+          <button class="add-midia" id="rsGaleria" aria-label="Escolher da galeria">🖼️</button></div>
         <div class="linha"><button class="btn btn-ghost" id="rsCancelar">Cancelar</button>
           <button class="btn" id="rsConfirmar">✅ Confirmar</button></div>
       </div>`;
@@ -867,7 +915,8 @@ function desenharDetalhe(i) {
       <div class="card">${i.obs ? `<p>${h(i.obs)}</p>` : ""}<div class="midias">${midiasDe("geral")}</div></div>` : ""}
     <button class="btn" id="dtZap">📲 Enviar resumo pelo WhatsApp</button>
     ${Dados.ehAdmin() ? `<button class="btn btn-ghost perigo" id="dtApagar">🗑 Apagar este checklist</button>` : ""}
-    <input type="file" id="inFotoRes" accept="image/*" capture="environment" hidden />`;
+    <input type="file" id="inFotoRes" accept="image/*" capture="environment" hidden />
+    <input type="file" id="inGaleriaRes" accept="image/*" hidden />`;
 
   // fotos já enviadas vêm do servidor; as da resolução em andamento, do aparelho
   app().querySelectorAll("[data-thumb]").forEach(async img => {
@@ -895,6 +944,7 @@ function desenharDetalhe(i) {
     }
     if (alvo.id === "rsCancelar") { await cancelarResolucao(); return redesenhar(i); }
     if (alvo.id === "rsFoto") return fotoResolucao(i);
+    if (alvo.id === "rsGaleria") return fotoResolucao(i, true);
     const tirar = alvo.closest("[data-rs-tirar]");
     if (tirar) {
       Resolver.mids = Resolver.mids.filter(x => x !== tirar.dataset.rsTirar);
@@ -966,14 +1016,14 @@ async function cancelarSolicitacao(i, itemId) {
   redesenhar(i, itemId);
 }
 
-function fotoResolucao(i) {
-  const inp = $("#inFotoRes");
+function fotoResolucao(i, galeria) {
+  const inp = $(galeria ? "#inGaleriaRes" : "#inFotoRes");
   inp.value = "";
   inp.onchange = async () => {
     const arq = inp.files && inp.files[0]; if (!arq) return;
     toast("Processando foto…");
     try {
-      const carimbo = "RESOLVIDO · " + nomeEquip(i.equipamento) + " · " + dataHora(Date.now()) + " · " + (Dados.usuario.usuario || "");
+      const carimbo = carimboFoto("RESOLVIDO · " + nomeEquip(i.equipamento), arq, galeria);
       const p = await Midia.prepararFoto(arq, carimbo);
       const mid = Midia.novoId();
       await Midia.guardar({ mid, estado: "rascunho", blob: p.blob, tipo: "foto", ext: p.ext, item: "res:" + Resolver.itemId });
@@ -1291,6 +1341,7 @@ Render.conta = function () {
       <label>Senha nova<input name="nova" type="password" autocomplete="new-password" minlength="6" required /></label>
       <button class="btn">Trocar senha</button>
     </form>
+    <div data-slot-instalar="sempre"></div>
     <button class="btn btn-ghost perigo" id="ctSair">Sair deste aparelho</button>
     <p class="muted mini centro">Versão ${VERSAO}</p>`;
   $("#ctEnviar").onclick = () => { if (!navigator.onLine) return toast("Sem sinal agora.", "erro"); Midia.processar(); toast("Enviando…"); };
