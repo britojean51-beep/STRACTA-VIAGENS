@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck18";
+const VERSAO = "ck19";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -284,15 +284,31 @@ const Historico = {
     this._sincronizadoEm = Date.now();
     const meus = await Dados.minhas(Dados.usuario.email);
     if (!meus) return false;
-    const fila = this.lista().filter(x => !x.enviado && !meus.some(m => m.id === x.id));
+    return this.aplicar(meus).mudou;
+  },
+  /* resumo de um checklist para o Início, com o andamento da manutenção */
+  resumo(d) {
+    const atual = statusAtual(d);
+    const nok = (d.itens || []).filter(x => x.st === "nok").length;
+    return { id: d.id, equip: nomeEquip(d.equipamento), resultado: d.resultado, defeitos: d.defeitos || 0,
+      criadoEm: d.criadoEm, enviado: true, atual, resolvido: atual === "liberado",
+      itensNok: nok, resolvidos: nok - itensAbertos(d).length, solicitados: solicitadosAbertos(d).length };
+  },
+  /* troca a lista pela do servidor; devolve o que mudou de situação */
+  aplicar(meus) {
+    const ant = this.lista();
+    const fila = ant.filter(x => !x.enviado && !meus.some(m => m.id === x.id));
+    // o Firestore mostra na hora o que ainda vai enviar: "na fila" só sai quando o servidor confirmar
     const nova = fila.concat(meus.map(d => {
-      const atual = statusAtual(d);
-      return { id: d.id, equip: nomeEquip(d.equipamento), resultado: d.resultado, defeitos: d.defeitos || 0,
-        criadoEm: d.criadoEm, enviado: true, atual, resolvido: atual === "liberado" };
+      const r = this.resumo(d), a = ant.find(x => x.id === d.id);
+      if (a && !a.enviado) r.enviado = false;
+      return r;
     })).sort((a, b) => b.criadoEm - a.criadoEm);
-    const mudou = JSON.stringify(nova) !== JSON.stringify(this.lista());
+    const mudancas = nova.filter(n => { const a = ant.find(x => x.id === n.id); return a && a.enviado && (a.atual || a.resultado) !== n.atual; })
+      .map(n => ({ id: n.id, equip: n.equip, para: n.atual }));
+    const mudou = JSON.stringify(nova) !== JSON.stringify(ant);
     if (mudou) this._gravar(nova);
-    return mudou;
+    return { mudou, mudancas };
   },
   /* versão antiga guardava uma lista só por celular: some na primeira
      sincronização (o que não é desta pessoa sai pela lista do servidor) */
@@ -310,7 +326,7 @@ const Telas = {
   atual: null,
   pilha: [],
   ir(nome, arg, semPilha) {
-    const soGestao = ["painel", "detalhe"], soAdmin = ["cadastros", "cad-equip", "cad-modelos", "cad-modelo", "cad-usuarios"];
+    const soGestao = ["painel"], soAdmin = ["cadastros", "cad-equip", "cad-modelos", "cad-modelo", "cad-usuarios"];
     if ((soGestao.includes(nome) && !Dados.ehGestao()) || (soAdmin.includes(nome) && !Dados.ehAdmin())) nome = "inicio";
     if (!semPilha && this.atual && this.atual.nome !== nome) this.pilha.push(this.atual);
     if (["inicio", "painel", "cadastros", "conta"].includes(nome)) this.pilha = [];
@@ -418,6 +434,8 @@ Render.inicio = function () {
   const hist = Historico.lista();
   const hoje = diaDe(Date.now());
   const deHoje = hist.filter(x => diaDe(x.criadoEm) === hoje);
+  // checklists de hoje com não conforme: acompanha até voltar a operar
+  const acompanhar = deHoje.filter(x => x.enviado && x.resultado && x.resultado !== "liberado");
   app().innerHTML = `
     ${r ? `<div class="card destaque">
         <b>Checklist em andamento</b>
@@ -432,17 +450,28 @@ Render.inicio = function () {
       <div class="kpi"><b>${deHoje.filter(x => statusPainel(x) !== "liberado").length}</b><span>não conformes</span></div>
       <div class="kpi"><b>${hist.filter(x => !x.enviado).length}</b><span>na fila</span></div>
     </div>
+    ${acompanhar.length ? `<h3 class="secao">Acompanhe hoje</h3>` + acompanhar.map(x => {
+      const S = RESULTADOS[statusPainel(x)];
+      const ok = statusPainel(x) === "liberado";
+      return `<div class="card acompanhe ${S.cls}">
+        <div class="linha-topo"><b>${h(x.equip)}</b><span class="tag ${S.cls}">${S.ico} ${ok ? "Operando" : S === RESULTADOS.bloqueado ? "Em manutenção" : "Com restrição"}</span></div>
+        <p class="mini">${ok ? "✅ Voltou a operar — tudo resolvido." :
+          (x.itensNok != null ? `${x.resolvidos} de ${x.itensNok} item(ns) resolvido(s)` : "Aguardando a manutenção")
+          + (x.solicitados ? ` · 🛒 ${x.solicitados} aguardando peça` : "")}</p>
+        <button class="btn btn-ghost btn-acompanhar" data-ver="${h(x.id)}">Ver andamento ›</button></div>`;
+    }).join("") : ""}
     <p class="muted mini" data-pendentes></p>
     <div data-slot-instalar="talvez"></div>
     <h3 class="secao">Meus últimos checklists</h3>
     ${hist.length ? hist.slice(0, 20).map(x => {
       const R = RESULTADOS[statusPainel(x)] || RESULTADOS.liberado;
-      return `<div class="item ${R.cls}">
+      return `<div class="item ${R.cls}" ${x.enviado ? `data-ver="${h(x.id)}"` : ""}>
         <div><b>${h(x.equip)}</b><small>${dataHora(x.criadoEm)} · ${x.defeitos || 0} não conforme(s)${statusPainel(x) !== x.resultado ? " · era " + ((RESULTADOS[x.resultado] || R).txt.toLowerCase()) : ""}</small></div>
         <div class="dir"><span class="tag ${R.cls}">${R.ico} ${R.txt}</span>
         <small>${statusPainel(x) === "liberado" && x.resultado !== "liberado" ? "✔ resolvido" : statusPainel(x) !== x.resultado ? "◐ em andamento" : x.enviado ? "✔ enviado" : "⏳ na fila"}</small></div></div>`;
     }).join("") : `<p class="vazio">Nenhum checklist feito neste aparelho ainda.</p>`}`;
   $("#btnNovo").onclick = () => r ? Telas.ir("checklist") : Telas.ir("novo");
+  app().onclick = ev => { const v = ev.target.closest("[data-ver]"); if (v) Telas.ir("detalhe", v.dataset.ver); };
   if (r) {
     $("#btnContinuar").onclick = () => Telas.ir("checklist");
     $("#btnDescartar").onclick = async () => {
@@ -892,6 +921,10 @@ Render.detalhe = async function (id) {
   try { i = (await Dados.inspecao(id)) || i; } catch (e) {}
   if (!i) { app().innerHTML = `<p class="erro">Checklist não encontrado.</p>`; return; }
   if (Telas.atual.nome !== "detalhe" || Telas.atual.arg !== id) return;
+  // motorista/operador: só o próprio checklist (a regra do Firestore também barra)
+  if (!Dados.ehGestao() && i.criadoPor !== Dados.usuario.email) {
+    toast("Checklist de outra pessoa.", "erro"); return Telas.ir("inicio", null, true);
+  }
   if (Resolver.inspId !== i.id) await cancelarResolucao();
   desenharDetalhe(i);
 };
@@ -919,8 +952,10 @@ function desenharDetalhe(i) {
         ${r && r.nota ? `<p>${h(r.nota)}</p>` : ""}
         ${sl ? `<p class="mini muted">🛒 Antes: solicitado em ${dataHora(sl.em)} — ${h(sl.nota)}</p>` : ""}
         <div class="midias">${midiasDe("res:" + it.id)}</div>
-        ${r ? `<button class="mini-bt" data-reabrir="${h(it.id)}">Reabrir item</button>` : ""}
+        ${r && Dados.ehGestao() ? `<button class="mini-bt" data-reabrir="${h(it.id)}">Reabrir item</button>` : ""}
       </div>`;
+    // motorista/operador: acompanha, não resolve
+    if (!Dados.ehGestao()) return caixaSol || `<p class="aguardando">⏳ Aguardando a manutenção</p>`;
     if (Resolver.inspId === i.id && Resolver.itemId === it.id && Resolver.modo === "solicitar") return `${caixaSol}<div class="resolvendo solicitando">
         <b>🛒 Solicitação: ${h(it.texto)}</b>
         <textarea id="slNota" rows="2" placeholder="O que foi solicitado? (ex.: troca do pneu, compra da peça)">${h(Resolver.nota)}</textarea>
@@ -953,9 +988,9 @@ function desenharDetalhe(i) {
     ${nok.length ? `<div class="card ${A.cls === "ok" ? "" : "alerta-borda"}" id="dtSituacao">
       <b>Agora: <span class="tag ${A.cls}">${A.ico} ${A.txt}</span></b>
       <p class="mini">${resolvidos} de ${nok.length} item(ns) não conforme(s) resolvido(s).
-        ${A.cls === "ok" ? "Equipamento voltou a operar." : "Resolva cada item abaixo, com nota e foto."}
+        ${A.cls === "ok" ? "Equipamento voltou a operar." : Dados.ehGestao() ? "Resolva cada item abaixo, com nota e foto." : "A manutenção vai resolvendo cada item; esta tela atualiza sozinha."}
         ${solicitadosAbertos(i).length ? `<br>🛒 ${solicitadosAbertos(i).length} com solicitação, aguardando.` : ""}</p>
-      ${legado ? `<button class="btn btn-ghost" id="dtReabrir">Reabrir</button>` : ""}
+      ${legado && Dados.ehGestao() ? `<button class="btn btn-ghost" id="dtReabrir">Reabrir</button>` : ""}
     </div>` : ""}
     <h3 class="secao">Itens</h3>
     ${(i.itens || []).map(it => `<div class="ck-item ${it.st} ${it.st === "nok" && (legado || res[it.id]) ? "feito" : ""} leitura" data-item="${h(it.id)}">
@@ -963,7 +998,7 @@ function desenharDetalhe(i) {
       ${it.critico ? ' <span class="critico">CRÍTICO</span>' : ""}</div>
       ${it.obs ? `<p class="obs">${h(it.obs)}</p>` : ""}
       <div class="midias">${midiasDe(it.id)}</div>
-      ${Dados.ehGestao() ? blocoItem(it) : ""}</div>`).join("")}
+      ${blocoItem(it)}</div>`).join("")}
     ${Object.values(i.midias || {}).some(m => m.item === "geral") || i.obs ? `<h3 class="secao">Geral</h3>
       <div class="card">${i.obs ? `<p>${h(i.obs)}</p>` : ""}<div class="midias">${midiasDe("geral")}</div></div>` : ""}
     <button class="btn" id="dtZap">📲 Enviar resumo pelo WhatsApp</button>
@@ -1472,6 +1507,21 @@ function entrouNoApp() {
   Estado.rascunho = lerJSON(chaveDe(RASCUNHO_KEY), null);
   if (Estado.rascunho && !Estado.rascunho.modelo) Estado.rascunho = null;
   Estado.ouvir();
+  // os meus checklists ao vivo: o Início e o detalhe acompanham a manutenção sem recarregar
+  Estado._ouvintes.push(Dados.ouvirMinhas(Dados.usuario.email, meus => {
+    const r = Historico.aplicar(meus);
+    r.mudancas.forEach(m => {
+      const S = RESULTADOS[m.para];
+      toast(m.para === "liberado" ? "✅ " + m.equip + " voltou a operar" : S.ico + " " + m.equip + ": agora " + (m.para === "bloqueado" ? "em manutenção" : "com restrição"), m.para === "liberado" ? "ok" : "");
+      try { if (navigator.vibrate) navigator.vibrate(200); } catch (e) {}
+    });
+    const d = Estado.detalhe, novo = d && meus.find(x => x.id === d.id);
+    const andamento = x => JSON.stringify([x.resolucoes, x.solicitacoes, x.tratativa, x.midias]);
+    if (novo && Telas.atual && Telas.atual.nome === "detalhe" && Telas.atual.arg === d.id && !Resolver.itemId
+        && andamento(novo) !== andamento(d)) {
+      redesenhar(novo);
+    } else if (r.mudou) Telas.atualizarSeVisivel(["inicio"]);
+  }));
   Telas.ir("inicio", null, true);
   Midia.aoMudar = atualizarRede;
   Midia.processar();
