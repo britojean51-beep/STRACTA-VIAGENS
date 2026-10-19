@@ -124,6 +124,12 @@ A situação de toda a frota aparece no topo do **Painel** e na escolha do equip
 - Bloquear alguém: **Cadastros → Usuários → bloquear** (vale na hora para tudo o que
   ele tentar enviar).
 
+## Atualização automática
+Toda publicação chega **sozinha em todos os celulares**, inclusive com o app aberto:
+o app procura versão nova ao voltar para a tela e a cada 30 minutos, recarrega e
+mostra "App atualizado ✔". Se a pessoa estiver no meio de um checklist, ele espera
+ela sair dessa tela (o rascunho fica salvo). A versão aparece no fim da tela **Conta**.
+
 ## Sem sinal
 - Checklist, fotos e vídeos ficam guardados no celular e **sobem sozinhos** quando a
   rede volta. O topo mostra `sem sinal · 2` (2 arquivos esperando).

@@ -521,6 +521,29 @@ async function sair(page) {
     && man.st.every(x => x.endsWith(':200')), 'manifesto com ícones 192/512/maskable e todos existem (' + man.st.join(', ') + ')');
   await page.click('[data-ir="inicio"]');
 
+  console.log('11. atualização automática em todos os aparelhos');
+  // no meio de um checklist: espera
+  await page.click('[data-ir="novo"]');
+  await page.click('.equip:has-text("CB-12")');
+  await page.waitForSelector('.ck-item');
+  await page.evaluate(() => { window.__semRecarregar = 1; Atualizacao.chegou(); });
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => window.__semRecarregar === 1 && Atualizacao.pendente === true), 'versão nova no meio do checklist: espera (não recarrega)');
+  // saiu do checklist: recarrega sozinho; o rascunho continua salvo
+  await Promise.all([page.waitForEvent('load'), page.click('[data-ir="inicio"]')]);
+  await page.waitForSelector('#btnContinuar');
+  ok(await page.evaluate(() => window.__semRecarregar === undefined), 'ao sair do checklist o app recarregou sozinho e o rascunho continuou salvo');
+  await page.click('#btnDescartar'); await page.click('#mdlOk');
+  await page.waitForFunction(() => !document.querySelector('#btnContinuar'));
+  // no Início: recarrega na hora e avisa
+  await page.evaluate(() => { try { sessionStorage.setItem('__teste', '1'); } catch (e) {} });
+  await Promise.all([page.waitForEvent('load'), page.evaluate(() => { Atualizacao._antes = VERSAO; Atualizacao.chegou(); })]);
+  await page.waitForSelector('#btnNovo');
+  await page.evaluate(() => { sessionStorage.setItem('ck_atualizado_de', 'ck0'); });
+  await page.reload(); await page.waitForSelector('#btnNovo');
+  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('App atualizado'));
+  ok(true, 'no Início atualiza na hora e mostra "App atualizado ✔ versão …"');
+
   ok(await page.evaluate(() => getComputedStyle(document.body).backgroundColor) === 'rgb(255, 255, 255)',
     'fundo branco mesmo com o celular em modo escuro');
   ok(contrasteRuim.length === 0, 'contraste ≥ 4,5:1 em todas as telas fotografadas' + (contrasteRuim.length ? ': ' + contrasteRuim.join(' | ') : ''));

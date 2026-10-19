@@ -319,6 +319,7 @@ const Telas = {
     });
     if (fn) fn(arg);
     Instalar.preencher();
+    Atualizacao.talvezAgora();
   },
   atualizarSeVisivel(nomes) { if (this.atual && nomes.includes(this.atual.nome)) this.render(); }
 };
@@ -1401,6 +1402,47 @@ Render.conta = function () {
 /* ============================================================
    INÍCIO DO APP
    ============================================================ */
+/* ---------- atualização automática ----------
+   Toda publicação chega sozinha em todos os aparelhos, mesmo com o app aberto:
+   o app procura versão nova ao voltar para a tela e a cada 30 min; quando o
+   service worker novo assume, recarrega. No meio de um checklist ou de uma
+   resolução, espera a pessoa sair dessa tela (o rascunho já fica salvo). */
+const Atualizacao = {
+  pendente: false,
+  _reg: null,
+  iniciar() {
+    if (!("serviceWorker" in navigator)) return;
+    const tinhaControle = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(reg => { this._reg = reg; }).catch(() => {});
+    // primeira instalação também dispara controllerchange: aí não é atualização
+    navigator.serviceWorker.addEventListener("controllerchange", () => { if (tinhaControle) this.chegou(); });
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") this.procurar(); });
+    window.addEventListener("online", () => this.procurar());
+    setInterval(() => this.procurar(), 30 * 60000);
+    try {
+      const de = sessionStorage.getItem("ck_atualizado_de");
+      if (de && de !== VERSAO) setTimeout(() => toast("App atualizado ✔ versão " + VERSAO, "ok"), 600);
+      sessionStorage.removeItem("ck_atualizado_de");
+    } catch (e) {}
+  },
+  procurar() { if (this._reg && navigator.onLine) this._reg.update().catch(() => {}); },
+  ocupado() {
+    const t = Telas.atual && Telas.atual.nome;
+    // checklist em andamento, tela do resultado, resolução, janela aberta ou modelo em edição
+    return t === "checklist" || t === "resultado" || t === "cad-modelo" || !!Resolver.itemId || !!document.querySelector(".mdl-fundo");
+  },
+  chegou() {
+    if (this.ocupado()) { this.pendente = true; return; }
+    this.recarregar();
+  },
+  recarregar() {
+    try { sessionStorage.setItem("ck_atualizado_de", VERSAO); } catch (e) {}
+    location.reload();
+  },
+  /* chamado a cada troca de tela: atualização que esperava vai agora */
+  talvezAgora() { if (this.pendente && !this.ocupado()) this.recarregar(); }
+};
+
 function entrouNoApp() {
   document.body.classList.remove("tela-login");
   document.body.classList.toggle("admin", Dados.ehAdmin());
@@ -1428,7 +1470,7 @@ async function iniciar() {
   window.addEventListener("online", atualizarRede);
   window.addEventListener("offline", atualizarRede);
   setInterval(() => { if (Dados.usuario) Midia.processar(); }, 60000);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  Atualizacao.iniciar();
 
   const r = await Dados.iniciar();
   if (r.modo === "ok") return entrouNoApp();
