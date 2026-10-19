@@ -201,6 +201,15 @@ const Dados = {
       return d.exists ? { existe: true, dados: d.data() || {} } : { existe: false };
     } catch (e) { return null; }
   },
+  /* Os checklists desta pessoa (a regra só deixa listar os próprios).
+     Sem orderBy para não precisar de índice composto: ordena aqui. */
+  async minhas(email) {
+    try {
+      const snap = await this.col("inspecoes").where("criadoPor", "==", email).limit(300).get();
+      return snap.docs.map(d => Object.assign({ id: d.id }, d.data()))
+        .sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0)).slice(0, 40);
+    } catch (e) { return null; }
+  },
   async inspecoes(desdeMs) {
     const snap = await this.col("inspecoes").where("criadoEm", ">=", desdeMs)
       .orderBy("criadoEm", "desc").limit(1000).get();
