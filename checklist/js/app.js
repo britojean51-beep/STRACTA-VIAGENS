@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck11";
+const VERSAO = "ck12";
 const RASCUNHO_KEY = "ck_rascunho";
 const HISTORICO_KEY = "ck_historico";
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
@@ -21,6 +21,30 @@ const MODELOS_PADRAO = [
     ["Para-brisa e limpadores", false], ["Nível do óleo do motor", false], ["Nível da água do radiador", false],
     ["Tacógrafo", false], ["Triângulo, macaco e chave de roda", false], ["Carroceria / báscula", false],
     ["Documento do veículo (CRLV)", false], ["Limpeza e organização da cabine", false]] },
+  /* Folha de checklist de máquinas da empresa (22 itens), igual ao papel */
+  { id: "padrao-maquina-22", nome: "Máquina — checklist de segurança (22 itens)", tipo: "maquina", itens: [
+    ["Condição do condutor, CNH e treinamentos válidos", true],
+    ["Identificação da máquina (TAG) na traseira e dianteira, identificação da empresa e fita adesiva refletora", false],
+    ["Extintor de incêndio e cinto de segurança", true],
+    ["Vidros para-brisa, traseiro e laterais, limpador / lavador de para-brisas e para-sol", false],
+    ["Espelho retrovisores, interno e externos", false],
+    ["Acesso à máquina (degraus, escadas e alças) e estado geral da máquina / lataria", false],
+    ["Arrumação e limpeza da máquina", false],
+    ["Calços para estacionamento e cones de sinalização de segurança", false],
+    ["Estado geral dos pneus (talão, flanco e banda de rodagem) e tampa da válvula", true],
+    ["Partes rodantes, concha, dentes e lâmina", false],
+    ["Verificar vazamento de óleo na máquina em geral e estado das mangueiras", true],
+    ["Polos da bateria protegidos / enclausurados", false],
+    ["Proteção de partes móveis eficaz", true],
+    ["Óleo hidráulico, motor e água do radiador entre o nível mínimo e máximo", false],
+    ["Buzina e sinal sonoro de ré acoplado ao sistema de câmbio", true],
+    ["Rádio de comunicação", false],
+    ["Freio de estacionamento e de serviços", true],
+    ["Ar condicionado", false],
+    ["Faróis principais dianteiros e luzes de posição dianteiras e traseiras funcionando", false],
+    ["Luzes de freio e lanternas de marcha ré funcionando", false],
+    ["Luzes de setas e pisca alerta: dianteiras e traseiras funcionando", false],
+    ["Dispositivo de controle de ruído do escapamento e emissão de fumaça preta", false]] },
   { id: "padrao-maquina", nome: "Máquina — diário", tipo: "maquina", itens: [
     ["Vazamentos (óleo, hidráulico, combustível)", true], ["Mangueiras e conexões hidráulicas", true],
     ["Pneus ou esteiras", true], ["Freios", true], ["Alarme de ré", true], ["Cinto de segurança", true],
@@ -123,7 +147,12 @@ const Estado = {
   rascunho: null,
   urls: {},            // mid -> objectURL (miniaturas do aparelho)
 
-  modelosEfetivos() { return this.modelos.length ? this.modelos : MODELOS_PADRAO; },
+  /* Os da nuvem + os padrão que ainda não foram editados nem apagados.
+     Um padrão editado vira documento com o mesmo id; apagado fica marcado "removido". */
+  modelosEfetivos() {
+    const ids = new Set(this.modelos.map(m => m.id));
+    return this.modelos.filter(m => !m.removido).concat(MODELOS_PADRAO.filter(m => !ids.has(m.id)));
+  },
   modeloPara(equip) {
     const ms = this.modelosEfetivos();
     return (equip && equip.modeloId && ms.find(m => m.id === equip.modeloId))
@@ -958,7 +987,7 @@ Render.cadastros = function () {
   titulo("CADASTROS", "");
   app().innerHTML = `
     <button class="menu" data-ir="cad-equip"><span>🚛</span><div><b>Equipamentos</b><small>${Estado.equipamentos.length} cadastrado(s)</small></div></button>
-    <button class="menu" data-ir="cad-modelos"><span>📝</span><div><b>Modelos de checklist</b><small>${Estado.modelos.length || "padrão"} · itens e nível de cada um</small></div></button>
+    <button class="menu" data-ir="cad-modelos"><span>📝</span><div><b>Modelos de checklist</b><small>${Estado.modelosEfetivos().length} modelo(s) · itens e nível de cada um</small></div></button>
     <button class="menu" data-ir="cad-usuarios"><span>👥</span><div><b>Usuários</b><small>quem pode entrar e fazer checklist</small></div></button>`;
   app().onclick = ev => { const b = ev.target.closest("[data-ir]"); if (b) Telas.ir(b.dataset.ir); };
 };
@@ -1016,23 +1045,17 @@ Render["cad-equip"] = function (editId) {
 Render["cad-modelos"] = function () {
   titulo("MODELOS", "Itens de cada checklist");
   app().innerHTML = `
-    ${!Estado.modelos.length ? `<div class="card destaque"><b>Usando os modelos padrão</b>
-      <p class="mini">Caminhão e Máquina já vêm prontos. Para mudar os itens, copie-os para a nuvem e edite.</p>
-      <button class="btn" id="mdCopiar">Copiar modelos padrão para editar</button></div>` : ""}
-    ${Estado.modelosEfetivos().map(m => `<div class="item" ${m.padrao ? "" : `data-md="${h(m.id)}"`}>
+    <p class="muted mini">Toque num modelo para mudar os itens ou o nível de cada um. Os marcados "padrão" já vêm prontos no app.</p>
+    ${Estado.modelosEfetivos().map(m => `<div class="item" data-md="${h(m.id)}">
       <div><b>${h(m.nome)}</b><small>${h(TIPOS[m.tipo] || "")} · ${m.itens.length} itens · ${m.itens.filter(x => x.critico).length} críticos · ${m.itens.filter(x => !x.critico).length} com observação</small></div>
-      <div class="dir"><small>${m.padrao ? "padrão" : "editar ›"}</small></div></div>`).join("")}
+      <div class="dir"><small>${m.padrao ? "padrão · " : ""}editar ›</small></div></div>`).join("")}
     <button class="btn" id="mdNovo">➕ Novo modelo</button>`;
-  if ($("#mdCopiar")) $("#mdCopiar").onclick = () => {
-    MODELOS_PADRAO.forEach(m => Dados.salvar("modelos", m.id, { nome: m.nome, tipo: m.tipo, itens: m.itens }));
-    toast("Modelos copiados ✔", "ok");
-  };
   $("#mdNovo").onclick = () => Telas.ir("cad-modelo", null);
   app().onclick = ev => { const it = ev.target.closest("[data-md]"); if (it) Telas.ir("cad-modelo", it.dataset.md); };
 };
 
 Render["cad-modelo"] = function (id) {
-  const base = Estado.modelos.find(m => m.id === id);
+  const base = Estado.modelosEfetivos().find(m => m.id === id);   // padrão também: ao salvar vira da nuvem
   // edita uma cópia; só grava ao salvar
   if (!Render["cad-modelo"]._ed || Render["cad-modelo"]._id !== id) {
     Render["cad-modelo"]._id = id;
@@ -1091,14 +1114,16 @@ Render["cad-modelo"] = function (id) {
     m.itens = m.itens.filter(x => String(x.texto).trim());
     if (!m.nome.trim()) return toast("Dê um nome ao modelo.", "erro");
     if (!m.itens.length) return toast("Adicione pelo menos um item.", "erro");
-    Dados.salvar("modelos", base && base.id, { nome: m.nome.trim(), tipo: m.tipo, itens: m.itens })
+    Dados.salvar("modelos", base && base.id, { nome: m.nome.trim(), tipo: m.tipo, itens: m.itens, removido: false })
       .enviado.catch(() => toast("Não deu para salvar (permissão).", "erro"));
     Render["cad-modelo"]._ed = null;
     toast("Modelo salvo ✔", "ok"); Telas.voltar();
   };
   if (base) $("#mdApagar").onclick = async () => {
     if (!(await confirmar(base.nome, { titulo: "Apagar modelo?", ok: "Apagar", perigo: true }))) return;
-    Dados.remover("modelos", base.id).catch(() => {});
+    // padrão apagado fica marcado, senão voltaria a aparecer
+    if (MODELOS_PADRAO.some(x => x.id === base.id)) Dados.salvar("modelos", base.id, { removido: true }).enviado.catch(() => {});
+    else Dados.remover("modelos", base.id).catch(() => {});
     Render["cad-modelo"]._ed = null; Telas.voltar();
   };
 };

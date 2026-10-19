@@ -203,10 +203,14 @@ async function sair(page) {
     'na escolha, CB-12 aparece marcado "Em manutenção"');
   await page.click('.equip:has-text("ESC-03")');
   await page.waitForSelector('.ck-item');
-  ok(await page.$$eval('.ck-item', l => l.length) === 17, 'escavadeira usa o modelo de máquina');
-  await page.click('.ck-item:nth-child(12) [data-st="nok"]');
-  await page.fill('.ck-item:nth-child(12) .ck-obs', 'Dente da caçamba quebrado');
-  ok(!(await page.$('.ck-item:nth-child(12) .aviso-critico')), 'item com observação não conforme: sem "Acione a manutenção"');
+  const textos = await page.$$eval('.ck-item .ck-txt', l => l.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+  ok(textos.length === 22 && textos[0].includes('Condição do condutor, CNH e treinamentos válidos')
+    && textos[21].includes('Dispositivo de controle de ruído do escapamento e emissão de fumaça preta'),
+    'escavadeira usa o checklist de segurança de máquinas (22 itens, igual à folha)');
+  ok(await page.$$eval('.ck-item .critico', l => l.length) === 7, '7 itens críticos (condutor, extintor/cinto, pneus, vazamento, partes móveis, buzina/ré, freio)');
+  await page.click('.ck-item:nth-child(10) [data-st="nok"]');
+  await page.fill('.ck-item:nth-child(10) .ck-obs', 'Dente da caçamba quebrado');
+  ok(!(await page.$('.ck-item:nth-child(10) .aviso-critico')), 'item com observação não conforme: sem "Acione a manutenção"');
   page.once('filechooser', async fc => fc.setFiles(await foto(page)));
   await page.click('[data-foto="geral"]');
   await page.waitForSelector('.card .mini-midia img[src^="blob:"]');
@@ -345,8 +349,14 @@ async function sair(page) {
   ok(true, 'admin também apaga pelo detalhe');
   await page.click('[data-ir="cadastros"]');
   await page.click('[data-ir="cad-modelos"]');
-  await page.click('#mdCopiar');
   await page.waitForSelector('[data-md]');
+  const lista = await page.textContent('#app');
+  ok(lista.includes('Máquina — checklist de segurança (22 itens)') && lista.includes('Caminhão — diário'), 'modelos padrão aparecem, incluindo o de 22 itens');
+  // padrão apagado some (e não volta)
+  await page.click('[data-md="padrao-maquina"]');
+  await page.click('#mdApagar'); await page.click('#mdlOk');
+  await page.waitForFunction(() => !document.querySelector('[data-md="padrao-maquina"]'));
+  ok((await banco(page))['checklist_modelos/padrao-maquina'].removido === true, 'apagar um padrão marca como removido e ele some da lista');
   await page.click('[data-md="padrao-caminhao"]');
   ok((await page.textContent('#app')).includes('põe o equipamento em manutenção'), 'tela de modelo explica os níveis');
   // o freio (item 2) passa de Crítico para Operacional; item novo entra como Crítico
