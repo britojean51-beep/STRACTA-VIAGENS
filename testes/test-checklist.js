@@ -70,6 +70,23 @@ async function sair(page) {
   console.log('1. login rápido e acesso');
   await page.waitForSelector('#lgUsuario');
   await shot(page, '01-login');
+  const corpo = await page.textContent('body');
+  ok(!/STRACTA|🚛|👁|✅ CHECKLIST/.test(corpo) && corpo.includes('Checklist de Frota') && corpo.includes('Acesse sua conta'),
+    'login profissional: "Checklist de Frota", sem o nome STRACTA e sem emojis');
+  ok(await page.$eval('#lgEntrar', b => getComputedStyle(b).opacity) === '1' && !(await page.isVisible('#topo')) && !(await page.isVisible('#abas')),
+    'botão Entrar com cor cheia; topo e abas escondidos no login');
+  ok(!(await page.isVisible('#lgRede')), 'com internet não mostra aviso de rede');
+  await page.context().setOffline(true);
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+  await page.waitForSelector('#lgRede', { state: 'visible' });
+  await shot(page, '01b-login-sem-internet');
+  ok((await page.textContent('#lgRede')).includes('Sem internet'), 'sem internet: aviso claro no login');
+  await page.context().setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await page.waitForSelector('#lgRede', { state: 'hidden' });
+  await page.click('#lgOlho');
+  ok(await page.$eval('#lgSenha', e => e.type) === 'text' && await page.$eval('#lgOlho', e => e.getAttribute('aria-pressed')) === 'true', 'olho mostra a senha');
+  await page.click('#lgOlho');
   await page.fill('#lgUsuario', 'ze'); await page.fill('#lgSenha', '123456'); await page.click('#lgEntrar');
   await page.waitForFunction(() => document.querySelector('#lgErro').textContent.length > 0);
   ok((await page.textContent('#lgErro')).includes('não liberado'), 'quem não foi liberado não entra');
@@ -78,6 +95,9 @@ async function sair(page) {
   ok(true, 'senha errada avisa');
   await entrar(page, 'Jean');
   ok(await page.isVisible('[data-ir="painel"]'), 'gestor da frota entra como admin (vê Painel)');
+  ok(await page.$$eval('.aba span svg', l => l.length) === 5 && !/[🏠➕📊🗂👤]/.test(await page.textContent('#abas')), 'abas com ícones de traço (sem emoji)');
+  ok(!!(await page.$('#topo .logo svg')) && !(await page.textContent('#titulo')).includes('✅'), 'topo com o logo, sem emoji no título');
+  await shot(page, '01c-inicio');
   await page.reload();
   await page.waitForSelector('#btnNovo');
   ok(true, 'continua logado depois de fechar e abrir');
@@ -500,6 +520,29 @@ async function sair(page) {
   ok(man.m.icons.some(i => i.sizes === '192x192') && man.m.icons.some(i => i.sizes === '512x512') && man.m.icons.some(i => i.purpose === 'maskable')
     && man.st.every(x => x.endsWith(':200')), 'manifesto com ícones 192/512/maskable e todos existem (' + man.st.join(', ') + ')');
   await page.click('[data-ir="inicio"]');
+
+  console.log('11. atualização automática em todos os aparelhos');
+  // no meio de um checklist: espera
+  await page.click('[data-ir="novo"]');
+  await page.click('.equip:has-text("CB-12")');
+  await page.waitForSelector('.ck-item');
+  await page.evaluate(() => { window.__semRecarregar = 1; Atualizacao.chegou(); });
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => window.__semRecarregar === 1 && Atualizacao.pendente === true), 'versão nova no meio do checklist: espera (não recarrega)');
+  // saiu do checklist: recarrega sozinho; o rascunho continua salvo
+  await Promise.all([page.waitForEvent('load'), page.click('[data-ir="inicio"]')]);
+  await page.waitForSelector('#btnContinuar');
+  ok(await page.evaluate(() => window.__semRecarregar === undefined), 'ao sair do checklist o app recarregou sozinho e o rascunho continuou salvo');
+  await page.click('#btnDescartar'); await page.click('#mdlOk');
+  await page.waitForFunction(() => !document.querySelector('#btnContinuar'));
+  // no Início: recarrega na hora e avisa
+  await page.evaluate(() => { try { sessionStorage.setItem('__teste', '1'); } catch (e) {} });
+  await Promise.all([page.waitForEvent('load'), page.evaluate(() => { Atualizacao._antes = VERSAO; Atualizacao.chegou(); })]);
+  await page.waitForSelector('#btnNovo');
+  await page.evaluate(() => { sessionStorage.setItem('ck_atualizado_de', 'ck0'); });
+  await page.reload(); await page.waitForSelector('#btnNovo');
+  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('App atualizado'));
+  ok(true, 'no Início atualiza na hora e mostra "App atualizado ✔ versão …"');
 
   ok(await page.evaluate(() => getComputedStyle(document.body).backgroundColor) === 'rgb(255, 255, 255)',
     'fundo branco mesmo com o celular em modo escuro');

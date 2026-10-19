@@ -17,6 +17,7 @@ NODE_PATH=/opt/node22/lib/node_modules node test40.js
 NODE_PATH=/opt/node22/lib/node_modules node test41.js
 NODE_PATH=/opt/node22/lib/node_modules node test-checklist.js   # app /checklist (porta 8131)
 NODE_PATH=/opt/node22/lib/node_modules node test-separacao.js
+NODE_PATH=/opt/node22/lib/node_modules node test-atualizacao.js
 node simgs.js "Solicitações"      # roda o Codigo.gs de verdade sobre o que o app mandou
 ```
 
@@ -32,6 +33,7 @@ node simgs.js "Solicitações"      # roda o Codigo.gs de verdade sobre o que o 
 | `ck-sdk.js` | Firebase de mentira (Auth, Firestore com fila sem sinal, Storage) para o app `/checklist`. |
 | `test-checklist.js` | App `/checklist` de ponta a ponta: login, cadastros, checklist com foto, sem sinal, painel. Sirva em 8131. |
 | `contraste.js` | Mede o contraste de todo texto contra o fundo real. O checklist exige 4,5:1 (é usado ao sol). |
+| `test-atualizacao.js` | Service worker de verdade: versão nova publicada → app aberto recarrega sozinho. Sirva em 8131. |
 | `test-separacao.js` | Operador liberado só no checklist é barrado no app de frota. Sirva em 8130. |
 | `test40.js` | Solicitações de manutenção com foto (r47). |
 | `test41.js` | A aba Solicitações na planilha (r47). |
