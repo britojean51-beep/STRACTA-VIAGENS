@@ -156,15 +156,26 @@ body.tela-login main { padding: 0 0 24px; }
 .menu small { display: block; color: var(--muted); }
 
 .busca { margin: 0 0 10px; }
-.grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; margin-bottom: 12px; }
-.equip { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 6px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; }
-.equip span { font-size: 26px; }
-.equip b { font-size: 15px; }
-.equip small { font-size: 11px; color: var(--muted); text-align: center; }
-.equip:active { border-color: var(--brand); }
-.equip em { font-style: normal; margin-top: 4px; font-size: 10px; }
+.grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.equip { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 0 0 10px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; overflow: hidden; transition: transform .15s; }
+.equip .vis, .equip-vis .vis { display: flex; align-items: flex-end; justify-content: center; width: 100%; height: 88px; margin-bottom: 6px; background: #fff; border-bottom: 1px solid var(--line); overflow: hidden; }
+.vis img, .vis svg { width: 92%; height: 100%; object-fit: contain; object-position: center bottom; }
+.vis.foto img { width: 100%; object-fit: cover; object-position: center; }
+.equip b { font-size: 16px; }
+.equip small { font-size: 12px; color: var(--muted); text-align: center; padding: 0 6px; }
+.equip:active { border-color: var(--brand); transform: scale(.98); }
+.equip em { font-style: normal; margin-top: 4px; font-size: 11px; }
 .equip.sit-perigo { border: 2px solid var(--perigo); background: var(--perigo-bg); }
 .equip.sit-alerta { border: 2px solid var(--alerta); }
+/* ao tocar: o cartão afunda e o veículo sai andando para a direita */
+.equip.saindo { transform: scale(.97); border-color: var(--brand); }
+.equip.saindo .vis img, .equip.saindo .vis svg { animation: sair .6s cubic-bezier(.5, 0, .9, .4) forwards; }
+@keyframes sair { 0% { transform: none; } 18% { transform: translateX(-4%); } 100% { transform: translateX(130%); } }
+.foto-eq { display: flex; gap: 12px; align-items: center; margin: 4px 0 10px; }
+.foto-eq .equip-vis { flex: 0 0 120px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.foto-eq .equip-vis .vis { margin: 0; border: 0; }
+.foto-eq small { display: block; margin: 2px 0 6px; }
+.foto-eq .btn { flex: 0 0 auto; padding: 8px 10px; font-size: 13px; white-space: nowrap; }
 .frota .sit { margin: 8px 0; }
 .frota .sit .link { padding: 6px 4px; }
 .tag.sem { background: var(--card-2); color: var(--muted); border: 1px solid var(--line); }
