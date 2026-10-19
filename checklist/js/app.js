@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck16";
+const VERSAO = "ck17";
 const RASCUNHO_KEY = "ck_rascunho";
 const HISTORICO_KEY = "ck_historico";
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
@@ -121,6 +121,28 @@ const NIVEIS = {
   critico: "Crítico — defeito põe em manutenção",
   operacional: "Operacional com observação — defeito anotado, segue operando (restrição)"
 };
+
+/* ---------- ícones de traço (no lugar de emoji, para um visual de aplicativo) ---------- */
+const ic = d => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICONES = {
+  inicio: ic('<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h5v-6h4v6h5V9.5"/>'),
+  novo: ic('<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2.5h6V4"/><path d="M12 9v7M8.5 12.5h7"/>'),
+  painel: ic('<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>'),
+  cadastros: ic('<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/>'),
+  conta: ic('<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>'),
+  usuario: ic('<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>'),
+  cadeado: ic('<rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>'),
+  olho: ic('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  olhoFechado: ic('<path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.7 8.4 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.5 4.5-1.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'),
+  semRede: ic('<path d="M3 3l18 18"/><path d="M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.2-2.8M19 13a10 10 0 0 0-2.4-1.8M2 9.5a15 15 0 0 1 4.3-2.6M22 9.5A15 15 0 0 0 11 5.1"/><circle cx="12" cy="20" r="1"/>')
+};
+/* logo: o mesmo desenho do ícone do app (prancheta com ✓) */
+const LOGO = `<svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <rect x="120" y="84" width="272" height="352" rx="36" fill="#16223b" stroke="#ff7a1a" stroke-width="16"/>
+  <rect x="196" y="60" width="120" height="56" rx="20" fill="#ff7a1a"/>
+  <g stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="22">
+  <path d="M168 196l26 26 46-50" stroke="#22c55e"/><path d="M168 300l26 26 46-50" stroke="#22c55e"/>
+  <path d="M276 200h76M276 304h76" stroke="#93a2c4"/></g></svg>`;
 
 /* ---------- utilidades ---------- */
 const $ = s => document.querySelector(s);
@@ -321,47 +343,62 @@ const Render = {};
 
 /* ---------- login ---------- */
 Render.login = function (erro) {
-  titulo("✅ CHECKLIST", "MÁQUINAS E CAMINHÕES");
+  titulo("Checklist de Frota", "Máquinas e caminhões");
+  document.body.classList.add("tela-login");
   $("#abas").hidden = true;
   $("#btnVoltar").style.visibility = "hidden";
   app().innerHTML = `
+    <div class="marca">
+      <div class="marca-logo">${LOGO}</div>
+      <h1>Checklist de Frota</h1>
+      <p>Máquinas e caminhões</p>
+    </div>
     <form class="card login" id="fLogin" autocomplete="on">
-      <div class="login-ico">🚛</div>
-      <h2>Entrar</h2>
-      <p class="muted">Entre uma vez e o app lembra de você — inclusive sem sinal.</p>
-      <label>Usuário
+      <h2>Acesse sua conta</h2>
+      <label for="lgUsuario">Usuário</label>
+      <div class="campo-ico">${ICONES.usuario}
         <input name="usuario" id="lgUsuario" autocomplete="username" autocapitalize="none" spellcheck="false"
           value="${h(Dados.ultimoUsuario())}" placeholder="ex.: joao.silva" required />
-      </label>
-      <label>Senha
-        <div class="senha">
-          <input name="senha" id="lgSenha" type="password" autocomplete="current-password" required />
-          <button type="button" class="olho" id="lgOlho" aria-label="Mostrar senha">👁</button>
-        </div>
-      </label>
-      <p class="erro" id="lgErro">${h(erro || "")}</p>
-      <button class="btn btn-grande" id="lgEntrar">Entrar</button>
-      <p class="muted mini">Esqueceu a senha? Peça ao administrador para trocar.</p>
+      </div>
+      <label for="lgSenha">Senha</label>
+      <div class="campo-ico senha">${ICONES.cadeado}
+        <input name="senha" id="lgSenha" type="password" autocomplete="current-password" placeholder="Sua senha" required />
+        <button type="button" class="olho" id="lgOlho" aria-label="Mostrar senha" aria-pressed="false">${ICONES.olho}</button>
+      </div>
+      <div class="aviso-rede" id="lgRede" ${navigator.onLine ? "hidden" : ""}>${ICONES.semRede}
+        <span>Sem internet — o primeiro acesso neste celular precisa de sinal.</span></div>
+      <p class="erro" id="lgErro" role="alert">${h(erro || "")}</p>
+      <button class="btn btn-grande btn-entrar" id="lgEntrar">Entrar</button>
+      <p class="muted mini centro">Esqueceu a senha? Fale com o administrador.</p>
     </form>
-    <div data-slot-instalar="talvez"></div>`;
+    <div data-slot-instalar="talvez"></div>
+    <p class="versao">versão ${h(VERSAO)}</p>`;
   Instalar.preencher();
-  const u = $("#lgUsuario"), s = $("#lgSenha");
+  const u = $("#lgUsuario"), s = $("#lgSenha"), olho = $("#lgOlho");
   (u.value ? s : u).focus();
-  $("#lgOlho").onclick = () => { s.type = s.type === "password" ? "text" : "password"; };
+  olho.onclick = () => {
+    const mostrar = s.type === "password";
+    s.type = mostrar ? "text" : "password";
+    olho.innerHTML = mostrar ? ICONES.olhoFechado : ICONES.olho;
+    olho.setAttribute("aria-pressed", String(mostrar));
+    olho.setAttribute("aria-label", mostrar ? "Esconder senha" : "Mostrar senha");
+  };
   $("#fLogin").onsubmit = async ev => {
     ev.preventDefault();
     const b = $("#lgEntrar");
-    b.disabled = true; b.textContent = "Entrando…";
+    b.disabled = true; b.innerHTML = `<span class="girando" aria-hidden="true"></span> Entrando…`;
     const r = await Dados.entrar(u.value, s.value);
     if (r.ok) return entrouNoApp();
     b.disabled = false; b.textContent = "Entrar";
     $("#lgErro").textContent = r.erro;
   };
 };
+/* aviso de sem internet do login acompanha a rede */
+["online", "offline"].forEach(t => window.addEventListener(t, () => { const a = $("#lgRede"); if (a) a.hidden = navigator.onLine; }));
 
 /* ---------- início ---------- */
 Render.inicio = function () {
-  titulo("✅ CHECKLIST", "Olá, " + (Dados.usuario.nome || Dados.usuario.usuario));
+  titulo("Checklist de Frota", "Olá, " + (Dados.usuario.nome || Dados.usuario.usuario));
   const r = Estado.rascunho;
   const hist = Historico.lista();
   const hoje = diaDe(Date.now());
@@ -1365,6 +1402,7 @@ Render.conta = function () {
    INÍCIO DO APP
    ============================================================ */
 function entrouNoApp() {
+  document.body.classList.remove("tela-login");
   document.body.classList.toggle("admin", Dados.ehAdmin());
   document.body.classList.toggle("gestao", Dados.ehGestao());
   $("#abas").hidden = false;
@@ -1381,6 +1419,8 @@ function entrouNoApp() {
 
 async function iniciar() {
   $("#btnVoltar").onclick = () => Telas.voltar();
+  document.querySelectorAll(".aba[data-ir]").forEach(b => { const sp = b.querySelector("span"); if (sp && ICONES[b.dataset.ir]) sp.innerHTML = ICONES[b.dataset.ir]; });
+  const lg = document.querySelector("#topo .logo"); if (lg) lg.innerHTML = LOGO;
   $("#abas").onclick = ev => {
     const b = ev.target.closest("[data-ir]"); if (!b) return;
     Telas.ir(b.dataset.ir === "novo" && Estado.rascunho ? "checklist" : b.dataset.ir);

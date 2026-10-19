@@ -70,6 +70,23 @@ async function sair(page) {
   console.log('1. login rápido e acesso');
   await page.waitForSelector('#lgUsuario');
   await shot(page, '01-login');
+  const corpo = await page.textContent('body');
+  ok(!/STRACTA|🚛|👁|✅ CHECKLIST/.test(corpo) && corpo.includes('Checklist de Frota') && corpo.includes('Acesse sua conta'),
+    'login profissional: "Checklist de Frota", sem o nome STRACTA e sem emojis');
+  ok(await page.$eval('#lgEntrar', b => getComputedStyle(b).opacity) === '1' && !(await page.isVisible('#topo')) && !(await page.isVisible('#abas')),
+    'botão Entrar com cor cheia; topo e abas escondidos no login');
+  ok(!(await page.isVisible('#lgRede')), 'com internet não mostra aviso de rede');
+  await page.context().setOffline(true);
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+  await page.waitForSelector('#lgRede', { state: 'visible' });
+  await shot(page, '01b-login-sem-internet');
+  ok((await page.textContent('#lgRede')).includes('Sem internet'), 'sem internet: aviso claro no login');
+  await page.context().setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await page.waitForSelector('#lgRede', { state: 'hidden' });
+  await page.click('#lgOlho');
+  ok(await page.$eval('#lgSenha', e => e.type) === 'text' && await page.$eval('#lgOlho', e => e.getAttribute('aria-pressed')) === 'true', 'olho mostra a senha');
+  await page.click('#lgOlho');
   await page.fill('#lgUsuario', 'ze'); await page.fill('#lgSenha', '123456'); await page.click('#lgEntrar');
   await page.waitForFunction(() => document.querySelector('#lgErro').textContent.length > 0);
   ok((await page.textContent('#lgErro')).includes('não liberado'), 'quem não foi liberado não entra');
@@ -78,6 +95,9 @@ async function sair(page) {
   ok(true, 'senha errada avisa');
   await entrar(page, 'Jean');
   ok(await page.isVisible('[data-ir="painel"]'), 'gestor da frota entra como admin (vê Painel)');
+  ok(await page.$$eval('.aba span svg', l => l.length) === 5 && !/[🏠➕📊🗂👤]/.test(await page.textContent('#abas')), 'abas com ícones de traço (sem emoji)');
+  ok(!!(await page.$('#topo .logo svg')) && !(await page.textContent('#titulo')).includes('✅'), 'topo com o logo, sem emoji no título');
+  await shot(page, '01c-inicio');
   await page.reload();
   await page.waitForSelector('#btnNovo');
   ok(true, 'continua logado depois de fechar e abrir');

@@ -32,6 +32,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .voltar { background: none; border: 0; color: var(--text); font-size: 34px; line-height: 1; width: 36px; visibility: hidden; cursor: pointer; }
 .titulos { flex: 1; min-width: 0; }
+.topo .logo { display: flex; width: 32px; height: 32px; flex: 0 0 32px; }
+.topo .logo svg { width: 32px; height: 32px; }
 .titulos h1 { margin: 0; font-size: 17px; letter-spacing: .3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .titulos p { margin: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rede { font-size: 12px; font-weight: 700; padding: 4px 8px; border-radius: 99px; white-space: nowrap; }
@@ -48,13 +50,14 @@ main { padding: 14px; max-width: 760px; margin: 0 auto; }
   padding-bottom: env(safe-area-inset-bottom);
 }
 .aba { flex: 1; background: none; border: 0; padding: 8px 2px 10px; font-size: 11px; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; }
-.aba span { font-size: 22px; }
+.aba span { display: flex; height: 26px; align-items: center; }
+.aba svg { width: 24px; height: 24px; }
 .aba.ativa { color: var(--brand-forte); font-weight: 800; }
 .so-admin, .so-gestao { display: none; }
 body.admin .so-admin, body.gestao .so-gestao { display: flex; }
 
 /* ---- blocos ---- */
-.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin: 0 0 12px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin: 0 0 12px; box-shadow: 0 1px 2px rgba(15,23,42,.06); }
 .card > b { display: block; margin-bottom: 6px; }
 .destaque { border-color: var(--brand); }
 .alerta-borda { border-color: var(--alerta); }
@@ -94,12 +97,33 @@ textarea { resize: vertical; }
 .mini-bt { background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 13px; cursor: pointer; }
 
 /* ---- login ---- */
-.login { margin-top: 24px; }
-.login h2 { margin: 4px 0; }
-.login-ico { font-size: 44px; text-align: center; }
-.senha { position: relative; }
-.senha input { padding-right: 48px; }
-.olho { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); margin-top: 2px; background: none; border: 0; font-size: 20px; cursor: pointer; }
+/* tela de entrada: sem topo e sem abas, faixa da marca + cartão */
+body.tela-login { padding-bottom: 0; background: var(--card-2); min-height: 100vh; }
+html:has(body.tela-login) { background: var(--card-2); }
+body.tela-login .topo { display: none; }
+body.tela-login main { padding: 0 0 24px; }
+.marca { background: #0f172a; color: #fff; text-align: center; padding: calc(36px + env(safe-area-inset-top)) 20px 64px; border-bottom: 4px solid var(--brand); }
+.marca-logo { width: 76px; height: 76px; margin: 0 auto 14px; border-radius: 20px; box-shadow: 0 6px 18px rgba(0,0,0,.35); overflow: hidden; }
+.marca-logo svg { width: 100%; height: 100%; display: block; }
+.marca h1 { margin: 0; font-size: 26px; letter-spacing: .2px; }
+.marca p { margin: 6px 0 0; color: #c7d2e8; font-size: 15px; }
+.login { margin: -40px 16px 14px; padding: 22px 18px 16px; border-radius: 20px; box-shadow: 0 10px 30px rgba(15,23,42,.14); border-color: transparent; }
+.login h2 { margin: 0 0 10px; font-size: 21px; }
+.login label { margin: 14px 0 6px; font-weight: 600; color: var(--text); font-size: 14px; }
+.campo-ico { position: relative; }
+.campo-ico > svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; color: var(--muted); pointer-events: none; }
+.campo-ico input { margin: 0; padding-left: 46px; height: 54px; font-size: 17px; }
+.senha input { padding-right: 52px; }
+.olho { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; background: none; border: 0; border-radius: 10px; color: var(--muted); cursor: pointer; }
+.olho svg { width: 22px; height: 22px; }
+.aviso-rede { display: flex; gap: 10px; align-items: center; margin-top: 14px; padding: 10px 12px; border-radius: 12px; background: var(--alerta-bg); color: var(--alerta); font-weight: 600; font-size: 14px; }
+.aviso-rede svg { flex: 0 0 22px; }
+.btn-entrar { margin-top: 4px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.btn-entrar:disabled { opacity: 1; }
+.girando { width: 18px; height: 18px; border: 3px solid rgba(26,13,2,.25); border-top-color: var(--brand-txt); border-radius: 50%; animation: girar .8s linear infinite; }
+@keyframes girar { to { transform: rotate(360deg); } }
+.tela-login [data-slot-instalar] { margin: 0 16px; }
+.versao { text-align: center; font-size: 12px; color: var(--muted); margin: 12px 0 0; }
 
 /* ---- kpis ---- */
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 8px; margin-bottom: 8px; }
