@@ -203,6 +203,12 @@ const Dados = {
   },
   /* Os checklists desta pessoa (a regra só deixa listar os próprios).
      Sem orderBy para não precisar de índice composto: ordena aqui. */
+  /* os meus checklists ao vivo (mesma consulta de minhas); devolve como parar */
+  ouvirMinhas(email, cb) {
+    return this.col("inspecoes").where("criadoPor", "==", email).limit(300).onSnapshot(snap => {
+      cb(snap.docs.map(d => Object.assign({ id: d.id }, d.data())).sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0)).slice(0, 40));
+    }, () => {});
+  },
   async minhas(email) {
     try {
       const snap = await this.col("inspecoes").where("criadoPor", "==", email).limit(300).get();

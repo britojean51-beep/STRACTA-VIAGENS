@@ -280,3 +280,14 @@ body.tela-login main { padding: 0 0 24px; }
 .instalar .btn { margin-bottom: 0; }
 .ok-borda { border-color: var(--ok); }
 .add-midia { line-height: 1; }
+
+/* ---- acompanhar a manutenção (motorista/operador) ---- */
+.acompanhe { border-width: 2px; }
+.acompanhe.perigo { border-color: var(--perigo); }
+.acompanhe.alerta { border-color: var(--alerta); }
+.acompanhe.ok { border-color: var(--ok); }
+.acompanhe .linha-topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.acompanhe .linha-topo b { margin: 0; font-size: 17px; }
+.acompanhe p { margin: 8px 0 0; }
+.btn-acompanhar { margin: 10px 0 0; padding: 10px; font-size: 15px; }
+.aguardando { margin: 10px 0 0; font-weight: 600; color: var(--muted); }

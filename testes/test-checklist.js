@@ -259,6 +259,50 @@ async function sair(page) {
   ok(true, 'início passa para "enviado"');
   const filaIDB = await page.evaluate(() => Midia.pendentes());
   ok(filaIDB === 0, 'gaveta do aparelho esvaziou depois do envio');
+
+  console.log('4b. motorista acompanha a manutenção do caminhão dele (ao vivo)');
+  await page.waitForSelector('.acompanhe');
+  const cards = await page.$$eval('.acompanhe', l => l.map(e => e.textContent.replace(/\s+/g, ' ')));
+  ok(cards.length === 2 && cards.some(c => c.includes('CB-12') && c.includes('Em manutenção') && c.includes('0 de 2'))
+    && cards.some(c => c.includes('ESC-03') && c.includes('Com restrição')), 'Início: "Acompanhe hoje" com CB-12 em manutenção (0 de 2) e ESC-03 com restrição');
+  await page.click(`.acompanhe [data-ver="${insp.id}"]`);
+  await page.waitForSelector('#dtSituacao');
+  ok(!(await page.$('[data-resolver]')) && !(await page.$('[data-solicitar]')) && !(await page.$('#dtApagar')) && !(await page.$('[data-reabrir]')),
+    'motorista vê o andamento, mas sem Resolver/Solicitação/Apagar');
+  ok((await page.textContent('#app')).includes('Aguardando a manutenção') && (await page.textContent('#dtSituacao')).includes('atualiza sozinha'),
+    'itens em aberto aparecem como "Aguardando a manutenção"');
+  await shot(page, '15-motorista-acompanha');
+  // a gestora resolve o pneu e pede a lâmpada, de OUTRO celular: a tela do Zé muda sozinha
+  await page.evaluate(id => firebase.firestore().collection('checklist_inspecoes').doc(id).update({
+    'resolucoes.i1': { nota: 'Pneu trocado na borracharia', por: 'Ana Gestora', em: Date.now(), fotos: [] },
+    'solicitacoes.i5': { nota: 'Lâmpada do farol pedida', por: 'Ana Gestora', em: Date.now() } }), insp.id);
+  await page.waitForSelector('[data-item="i1"] .resolvido');
+  ok((await page.textContent('[data-item="i1"] .resolvido')).includes('Pneu trocado na borracharia')
+    && (await page.textContent('[data-item="i5"] .solicitado')).includes('Lâmpada do farol pedida'),
+    'sem recarregar: o detalhe mostra o pneu resolvido e a lâmpada solicitada');
+  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('agora com restrição'));
+  ok(true, 'aviso "CB-12: agora com restrição"');
+  await page.click('#btnVoltar');
+  await page.waitForSelector('.acompanhe');
+  const cb = await page.$eval(`.acompanhe:has([data-ver="${insp.id}"])`, e => e.textContent.replace(/\s+/g, ' '));
+  ok(cb.includes('Com restrição') && cb.includes('1 de 2') && cb.includes('1 aguardando peça'), 'cartão do CB-12: com restrição, 1 de 2 e 1 aguardando peça');
+  await shot(page, '16-acompanhe-hoje');
+  await page.evaluate(id => firebase.firestore().collection('checklist_inspecoes').doc(id).update({
+    'resolucoes.i5': { nota: 'Lâmpada trocada', por: 'Ana Gestora', em: Date.now(), fotos: [] } }), insp.id);
+  await page.waitForFunction(id => (document.querySelector(`.acompanhe:has([data-ver="${id}"])`) || {}).textContent.includes('Voltou a operar'), insp.id);
+  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('voltou a operar'));
+  ok(true, 'tudo resolvido: cartão verde "Voltou a operar" e aviso');
+  // checklist de outra pessoa: não abre
+  await page.evaluate(() => { const b = JSON.parse(localStorage.getItem('__ck_banco__'));
+    b['checklist_inspecoes/alheio'] = { criadoPor: 'beto@gp2t.local', criadoEm: Date.now(), resultado: 'liberado', equipamento: { prefixo: 'ZZ-9' }, itens: [] };
+    localStorage.setItem('__ck_banco__', JSON.stringify(b)); Telas.ir('detalhe', 'alheio'); });
+  await page.waitForSelector('#btnNovo');
+  ok((await page.textContent('#toast')).includes('outra pessoa'), 'motorista não abre checklist de outra pessoa');
+  // desfaz a simulação: o passo 5 é a gestora resolvendo de verdade
+  await page.evaluate(id => { const db = firebase.firestore(), del = firebase.firestore.FieldValue.delete();
+    db.collection('checklist_inspecoes').doc(id).update({ resolucoes: del, solicitacoes: del });
+    const b = JSON.parse(localStorage.getItem('__ck_banco__')); delete b['checklist_inspecoes/alheio']; localStorage.setItem('__ck_banco__', JSON.stringify(b)); }, insp.id);
+  await page.waitForTimeout(200);
   await sair(page);
 
   console.log('5. gestor no painel: vê tudo e resolve, mas não apaga');
