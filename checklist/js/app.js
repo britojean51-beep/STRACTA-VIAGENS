@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck12";
+const VERSAO = "ck13";
 const RASCUNHO_KEY = "ck_rascunho";
 const HISTORICO_KEY = "ck_historico";
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
@@ -655,8 +655,14 @@ Render.painel = async function () {
       (!p.busca || (nomeEquip(i.equipamento) + " " + (i.criadoNome || "")).toLowerCase().includes(p.busca.toLowerCase())));
     const todos = p.lista || [];
     // situação da frota: vem dos equipamentos, não do período escolhido
-    const porSit = { manutencao: [], restricao: [], operacional: [] };
-    Estado.equipamentos.forEach(e => porSit[situacaoDe(e)].push(e));
+    // "Operando" só quem fez checklist hoje; sem defeito em aberto e sem checklist hoje fica à parte
+    const hoje = diaDe(Date.now());
+    const fezHoje = new Set(todos.filter(i => diaDe(i.criadoEm) === hoje).map(i => (i.equipamento || {}).id).filter(Boolean));
+    const porSit = { manutencao: [], restricao: [], operacional: [], semChecklist: [] };
+    Estado.equipamentos.filter(e => e.ativo !== false).forEach(e => {
+      const sit = situacaoDe(e);
+      porSit[sit === "operacional" && !fezHoje.has(e.id) ? "semChecklist" : sit].push(e);
+    });
     app().innerHTML = `
       <div class="seg" id="pDias">
         ${[[1, "Hoje"], [7, "7 dias"], [30, "30 dias"]].map(([d, t]) => `<button data-d="${d}" class="${p.dias === d ? "on" : ""}">${t}</button>`).join("")}
@@ -672,6 +678,9 @@ Render.painel = async function () {
           <span class="tag ${SITUACOES[k].cls}">${SITUACOES[k].ico} ${SITUACOES[k].txt} (${porSit[k].length})</span>
           ${porSit[k].map(e => `<div class="link" data-abrir="${h(pendenciaMaisRecente(e))}">${h(nomeEquip(e))}</div>`).join("")}</div>` : "").join("")}
         <p class="mini"><span class="tag ok">✅ Operando (${porSit.operacional.length})</span></p>
+        ${porSit.semChecklist.length ? `<div class="sit sem">
+          <span class="tag sem">⏳ Sem checklist hoje (${porSit.semChecklist.length})</span>
+          <p class="mini nomes">${porSit.semChecklist.map(e => h(nomeEquip(e))).join(" · ")}</p></div>` : ""}
       </div>
       <input class="busca" id="pBusca" type="search" placeholder="🔎 Equipamento ou nome" value="${h(p.busca)}" />
       <div class="chips" id="pFiltro">
