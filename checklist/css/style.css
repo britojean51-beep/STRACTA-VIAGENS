@@ -250,3 +250,9 @@ textarea { resize: vertical; }
 .solicitado b { color: var(--alerta); }
 .solicitado p { margin: 6px 0 0; }
 .resolvendo.solicitando { border-color: var(--alerta); }
+
+/* ---- instalar o app ---- */
+.instalar { border: 2px solid var(--brand); }
+.instalar .btn { margin-bottom: 0; }
+.ok-borda { border-color: var(--ok); }
+.add-midia { line-height: 1; }
