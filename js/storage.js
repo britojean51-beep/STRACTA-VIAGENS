@@ -25,6 +25,8 @@ const DB = {
       estoque: { s10: 4250, s500: 0, arla: 500 }, // litros por tanque
       tipoEquip: {},                   // { "CB-17": "km_horimetro"|"horimetro" }
       turnoEquip: {},                  // { "CB-17": { inicio: "07:00", fim: "19:00" } }
+      regimeEquip: {},                 // { "CB-17": "ADM" } — qual contrato rege o caminhão
+      minimoEquip: {},                 // { "CB-17": 180 } — mínimo próprio, manda no regime
       status: {},                      // { "CB-17": "operando"|"reserva"|"manutencao"|"final_expediente" }
       operadorEquip: {},               // { "CB-17": "Saulo" } — quem está no equipamento
       proximaRevisao: {},              // { "CB-17": 20000 } — horímetro/KM alvo da próxima revisão
@@ -41,6 +43,16 @@ const DB = {
         metaViagens: 140,              // meta de viagens/dia da frota
         estoqueMin: 1000,              // litros: alerta de diesel baixo (cada tanque)
         estoqueArlaMin: 100,           // litros: alerta de ARLA baixo
+        /* Contrato dos caminhões: mínimo PAGO por mês, e o teto de desconto por
+           dia útil. ADM = 200h / 22 dias úteis = 9,09h, que é a conta dele.
+           A e B nascem vazios de propósito: o contrato é informação dele, e
+           regime sem horas simplesmente não entra no controle. */
+        horasPagasDia: 9.09,           // teto de desconto de manutenção por dia útil
+        regimes: {
+          ADM: { nome: "ADM (seg a sex)", minimo: 200, dias: "uteis" },
+          A:   { nome: "Turno A",         minimo: 0,   dias: "uteis" },
+          B:   { nome: "Turno B",         minimo: 0,   dias: "uteis" }
+        },
         sheetsUrl: SHEETS_URL_PADRAO,  // URL do Web App (Google Sheets) para sincronizar
         nuvem: true,                   // dados na nuvem: vem ligada de fábrica
         nuvemManual: false             // vira true quando alguém mexe na chavinha
@@ -73,6 +85,11 @@ const DB = {
     this._cache.proximaRevisao = data.proximaRevisao || {};
     this._cache.tipoEquip = data.tipoEquip || {};
     this._cache.turnoEquip = data.turnoEquip || {};
+    this._cache.regimeEquip = data.regimeEquip || {};     // { "CB-17": "ADM" }
+    this._cache.minimoEquip = data.minimoEquip || {};     // { "CB-17": 180 } — manda no regime
+    // regime gravado antes sem A/B ganha os que faltam, sem perder o que ele editou
+    this._cache.config.regimes = Object.assign(
+      {}, base.config.regimes, (data.config && data.config.regimes) || {});
     this._cache.operadorEquip = data.operadorEquip || {};
     this._cache.paradas = data.paradas || {};
     this._cache.versaoApp = data.versaoApp || null;
@@ -867,9 +884,11 @@ const DB = {
   },
   /* Horas paradas no mês, por tipo. Conta só o pedaço que cai DENTRO do mês:
      uma parada que começa dia 31 e acaba dia 1º não pode contar inteira nos dois. */
-  horasParadas(eq, chave, tipo) {
+  horasParadas(eq, chave, tipo, janela) {
     const p = this.load().paradas || {};
-    const j = this.janelaDoMes(chave);
+    // janela própria (um dia, por exemplo) ou o mês inteiro. O recorte da parada
+    // que atravessa a borda já está certo aqui; duplicar isso é ganhar divergência.
+    const j = janela || this.janelaDoMes(chave);
     let min = 0;
     Object.keys(p).forEach(id => {
       const x = p[id];
@@ -915,6 +934,131 @@ const DB = {
       corrente: this.janelaDoMes(chave).corrente
     };
   },
+  /* ============================================================
+     HORAS PAGAS — o contrato, e não a operação
+     O mínimo é PAGO: se o caminhão rodar menos, ele paga o mínimo de todo jeito;
+     se rodar mais, paga o que rodou. Manutenção abate o mínimo.
+     A base é HORA DIA (o que foi lançado), e não o horímetro — exigência dele.
+     ============================================================ */
+
+  /* Qual contrato rege o caminhão, e quanto é o mínimo dele. O mínimo próprio
+     manda no do regime: dono com contrato diferente não vira pedido novo. */
+  regimeDoEquip(eq) { return this.load().regimeEquip[eq] || "ADM"; },
+  setRegimeEquip(eq, r) {
+    const db = this.load();
+    if (r) db.regimeEquip[eq] = r; else delete db.regimeEquip[eq];
+    this.save();
+    this._nuvem(C => C.patch("frota", { regimeEquip: db.regimeEquip }));
+  },
+  setMinimoEquip(eq, v) {
+    const db = this.load();
+    const n = (v === "" || v == null) ? null : this.toN(v);
+    if (n != null && n > 0) db.minimoEquip[eq] = n; else delete db.minimoEquip[eq];
+    this.save();
+    this._nuvem(C => C.patch("frota", { minimoEquip: db.minimoEquip }));
+  },
+  minimoDoEquip(eq) {
+    const db = this.load();
+    if (db.minimoEquip[eq] > 0) return db.minimoEquip[eq];
+    const reg = db.config.regimes[this.regimeDoEquip(eq)];
+    return reg ? this.toN(reg.minimo) : 0;
+  },
+
+  /* Dias ÚTEIS (segunda a sexta) de um mês. `ateHoje` conta só os já decorridos,
+     que é o que faz o acompanhamento do mês em curso ser justo. */
+  diasUteisDoMes(chave, ateHoje) {
+    const [y, m] = String(chave).split("-").map(Number);
+    if (!y || !m) return 0;
+    const limite = ateHoje ? new Date() : null;
+    let n = 0;
+    for (let d = 1; d <= 31; d++) {
+      const dt = new Date(y, m - 1, d);
+      if (dt.getMonth() !== m - 1) break;                 // passou do fim do mês
+      if (limite && dt > limite) break;
+      const dow = dt.getDay();
+      if (dow >= 1 && dow <= 5) n++;                      // 0 domingo, 6 sábado
+    }
+    return n;
+  },
+
+  /* O desconto de manutenção, dia útil por dia útil, com teto de 9,09h em cada.
+     É a regra dele: "hora real, limitado a 9,09h de desconto, e se ficar em
+     manutenção desconta só o tempo de manutenção".
+
+     O teto é o que impede o absurdo: oficina da sexta 18h à segunda 7h são 61h
+     de relógio, mas comeu DOIS dias úteis — sábado e domingo não são dias de
+     ADM, e cada dia útil tocado desconta no máximo 9,09h. Dá 18,18h, não 61h. */
+  descontoManutencao(eq, chave) {
+    const [y, m] = String(chave).split("-").map(Number);
+    if (!y || !m) return 0;
+    const teto = this.toN(this.load().config.horasPagasDia) || 9.09;
+    const agora = Date.now();
+    let total = 0, dias = 0;
+    for (let d = 1; d <= 31; d++) {
+      const dt = new Date(y, m - 1, d);
+      if (dt.getMonth() !== m - 1) break;
+      const dow = dt.getDay();
+      if (dow === 0 || dow === 6) continue;               // sábado e domingo fora
+      const ini = new Date(y, m - 1, d, 0, 0).getTime();
+      const fim = Math.min(new Date(y, m - 1, d + 1, 0, 0).getTime(), agora);
+      if (fim <= ini) break;                              // dia ainda não começou
+      const h = this.horasParadas(eq, chave, "manutencao", { ini, fim });
+      if (h > 0) { total += Math.min(h, teto); dias++; }
+    }
+    return { horas: total, diasComParada: dias };
+  },
+
+  /* O fechamento de um caminhão num mês. Índice, ficha, planilha e imagem
+     chamam ESTA função — assim os quatro não podem contar histórias diferentes. */
+  pagamentoMes(eq, chave) {
+    const db = this.load();
+    const regime = this.regimeDoEquip(eq);
+    const minimoCheio = this.minimoDoEquip(eq);
+    const corrente = this.janelaDoMes(chave).corrente;
+    const uteisMes = this.diasUteisDoMes(chave, false);
+    const uteisAteHoje = this.diasUteisDoMes(chave, true);
+
+    /* No fechamento o mínimo é o do contrato, cheio. No mês em curso ele é
+       proporcional aos dias úteis já decorridos: senão, no dia 5 todo caminhão
+       apareceria 180h atrasado, e o número não serviria para acompanhar nada. */
+    const minimo = (corrente && uteisMes > 0)
+      ? minimoCheio * (uteisAteHoje / uteisMes)
+      : minimoCheio;
+
+    const d = this.descontoManutencao(eq, chave);
+    const manutencao = this.horasParadas(eq, chave, "manutencao");
+    const desconto = Math.min(d.horas, minimo);           // nunca deixa o mínimo negativo
+    const ajustado = Math.max(0, minimo - desconto);
+    const trabalhadas = this.horasDoDia(eq, chave);       // HORA DIA, não horímetro
+    const pagar = Math.max(trabalhadas, ajustado);
+
+    return {
+      equip: eq, chave, regime, ativo: minimoCheio > 0, corrente,
+      minimoCheio, minimo, manutencao, desconto, diasComParada: d.diasComParada,
+      ajustado, trabalhadas, pagar,
+      aMais: Math.max(0, trabalhadas - ajustado),
+      garantia: Math.max(0, ajustado - trabalhadas),
+      uteisMes, uteisAteHoje
+    };
+  },
+
+  /* Só os caminhões: getTipoEquip já separa por código (CB-xx). Escavadeira e
+     rolo não têm esse contrato, e "faltam 50h" neles seria barulho. */
+  caminhoes() {
+    return this.load().equipamentos.filter(eq => this.getTipoEquip(eq) === "km_horimetro");
+  },
+  pagamentoFrota(chave) {
+    const linhas = this.caminhoes().map(eq => this.pagamentoMes(eq, chave))
+      .filter(l => l.ativo);                              // regime sem horas fica fora
+    const soma = c => linhas.reduce((s, l) => s + l[c], 0);
+    return {
+      chave, linhas, corrente: this.janelaDoMes(chave).corrente,
+      trabalhadas: soma("trabalhadas"), manutencao: soma("manutencao"),
+      desconto: soma("desconto"), ajustado: soma("ajustado"),
+      pagar: soma("pagar"), aMais: soma("aMais"), garantia: soma("garantia")
+    };
+  },
+
   /* A frota inteira no mês. Índice e ficha usam esta mesma conta — assim os
      números não podem discordar entre as duas telas. */
   horasMes(chave) {

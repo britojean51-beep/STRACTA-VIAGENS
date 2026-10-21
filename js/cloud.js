@@ -98,7 +98,8 @@ const Cloud = {
     const inicial = [
       ["frota", { equipamentos: db.equipamentos, motoristas: db.motoristas,
                   abastecedores: db.abastecedores, tipoEquip: db.tipoEquip,
-                  turnoEquip: db.turnoEquip,
+                  turnoEquip: db.turnoEquip, regimeEquip: db.regimeEquip,
+                  minimoEquip: db.minimoEquip,
                   proximaRevisao: db.proximaRevisao, config: cfg }],
       ["operacao", { estado: db.estado, status: db.status,
                      operadorEquip: db.operadorEquip, paradas: db.paradas }],
@@ -195,6 +196,8 @@ const Cloud = {
       if (Array.isArray(d.abastecedores)) db.abastecedores = d.abastecedores;
       if (d.tipoEquip) db.tipoEquip = d.tipoEquip;
       if (d.turnoEquip) db.turnoEquip = d.turnoEquip;   // turno de cada equipamento
+      if (d.regimeEquip) db.regimeEquip = d.regimeEquip; // contrato de cada caminhão
+      if (d.minimoEquip) db.minimoEquip = d.minimoEquip; // mínimo próprio do caminhão
       if (d.proximaRevisao) db.proximaRevisao = d.proximaRevisao;
       if (d.versaoApp) db.versaoApp = d.versaoApp;   // atualização lançada pelo dono
       if (d.config) {
@@ -363,12 +366,17 @@ const Cloud = {
         }
       }
       const cfg = Object.assign({}, db.config); delete cfg.nuvem;
+      /* Faltavam turnoEquip, operadorEquip e paradas: "Enviar os dados deste
+         celular" deixava para trás justamente o que alimenta as horas do mês. */
       await gravar(this._cad("frota"), {
         equipamentos: db.equipamentos, motoristas: db.motoristas,
         abastecedores: db.abastecedores, tipoEquip: db.tipoEquip,
+        turnoEquip: db.turnoEquip, regimeEquip: db.regimeEquip,
+        minimoEquip: db.minimoEquip,
         proximaRevisao: db.proximaRevisao, config: cfg
       }, { merge: true });
-      await gravar(this._cad("operacao"), { estado: db.estado, status: db.status }, { merge: true });
+      await gravar(this._cad("operacao"), { estado: db.estado, status: db.status,
+        operadorEquip: db.operadorEquip, paradas: db.paradas }, { merge: true });
       await gravar(this._cad("estoque"), db.estoque, { merge: true });
       if (n) await lote.commit();
       await this.iniciar();

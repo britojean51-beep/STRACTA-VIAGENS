@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "21/10/2026 · r54 (L/h e L/ton no relatório e na imagem)";
+const VERSION = "21/10/2026 · r55 (horas pagas dos caminhões)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -2927,6 +2927,7 @@ function telaDashboard() {
       <div class="sub">${fmt(x[painelMetrica], met.dec)}${met.un}</div></div></div>`).join("");
 
   const hm = DB.horasMes(mesDeHoras());
+  const pg = DB.pagamentoFrota(mesDeHoras());
 
   // ---- status da frota ----
   const statusHtml = db.equipamentos.map(eq => {
@@ -3003,6 +3004,41 @@ function telaDashboard() {
       ).join("") || '<p class="empty">Nenhum equipamento na frota.</p>'}</div>
     </div>
 
+    <div class="spacer"></div>
+    <div class="card">
+      <h3>💰 Horas pagas no mês <span class="mini">(caminhões)</span></h3>
+      <p class="hint hint-forte">Conta de <b>contrato</b>, com a <b>hora dia</b> — não é o
+      horímetro. O mínimo é pago mesmo se o caminhão rodar menos; se rodar mais, paga o que rodou.
+      Manutenção abate o mínimo, no máximo <b>${fmt(db.config.horasPagasDia, 2)} h por dia útil</b>.${pg.corrente
+        ? ` <b>Mês em andamento:</b> o mínimo aqui é o proporcional aos dias úteis já passados — no
+           fechamento ele vira o do contrato inteiro.` : " <b>Mês fechado.</b>"}</p>
+      ${!pg.linhas.length ? '<p class="empty">Nenhum caminhão com mínimo definido. Configure em ⚙️ Configurações.</p>' : `
+      <div class="kpi-grid">
+        <div class="kpi k-green"><div class="k-label">💰 A pagar</div><div class="k-value">${fmt(pg.pagar, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-yellow"><div class="k-label">⏱️ Hora dia</div><div class="k-value">${fmt(pg.trabalhadas, 1)}<span class="k-unit"> h</span></div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="kpi-grid">
+        <div class="kpi k-red"><div class="k-label">🔧 Desconto da manutenção</div><div class="k-value">${fmt(pg.desconto, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-blue"><div class="k-label">📋 Mínimo ajustado</div><div class="k-value">${fmt(pg.ajustado, 1)}<span class="k-unit"> h</span></div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="itemlist">${pg.linhas.map(l => {
+        const etiqueta = l.garantia > 0.05
+          ? `<span class="pill pill-yellow">garantia ${fmtH(l.garantia)}</span>`
+          : l.aMais > 0.05 ? `<span class="pill pill-green">+${fmtH(l.aMais)}</span>`
+          : '<span class="pill pill-gray">no mínimo</span>';
+        return `<div class="itemrow" data-ficha="${l.equip}"><div class="info"><b>${l.equip}</b> ${etiqueta}
+          <div class="sub">💰 paga <b>${fmtH(l.pagar)}</b> · rodou ${fmtH(l.trabalhadas)} · mínimo ${fmtH(l.ajustado)}${
+            l.desconto > 0.05 ? ` (−${fmtH(l.desconto)} de ${l.diasComParada} dia(s) parado)` : ""}</div>
+          </div><span class="mini">ficha ›</span></div>`;
+      }).join("")}</div>
+      <div class="spacer"></div>
+      <p class="tag-total">Total da frota: ${fmtH(pg.pagar)} a pagar${pg.garantia > 0.05
+        ? ` · ${fmtH(pg.garantia)} de garantia (pago sem rodar)` : ""}${pg.aMais > 0.05
+        ? ` · ${fmtH(pg.aMais)} a mais` : ""}</p>`}
+    </div>
+
     <p class="section-title" style="margin-top:16px">Estoques dos tanques</p>
     <div class="kpi-grid">
       <div class="kpi k-yellow"><div class="k-label">🛢️ Diesel S-10</div><div class="k-value">${fmtL(db.estoque.s10)}<span class="k-unit"> L</span></div></div>
@@ -3063,7 +3099,40 @@ function telaDashboard() {
       <button class="btn btn-ghost btn-sm" id="btnCfg">Salvar metas</button>
     </div>
 
+    <div class="card">
+      <h3>💰 Horas pagas dos caminhões</h3>
+      <p class="hint">O <b>mínimo pago</b> de cada regime, e o <b>teto de desconto</b> da
+      manutenção por dia útil. No ADM, 200 h ÷ 22 dias úteis = 9,09 h por dia. Regime deixado em
+      <b>0</b> não entra no controle — nenhum caminhão dele aparece com garantia falsa.</p>
+      <div class="metas-grid">
+        ${Object.keys(db.config.regimes).map(k => `<div class="field">
+          <label>${db.config.regimes[k].nome} · mínimo (h)</label>
+          <input id="cfgReg_${k}" inputmode="decimal" value="${db.config.regimes[k].minimo}">
+        </div>`).join("")}
+        <div class="field"><label>Teto de desconto por dia útil (h)</label>
+          <input id="cfgPagasDia" inputmode="decimal" value="${db.config.horasPagasDia}"></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="btnCfgPagas">Salvar horas pagas</button>
+      <p class="hint" id="cfgPagasMsg" style="margin-top:8px"></p>
+    </div>
+
   `;
+
+  const btnPagas = $("#btnCfgPagas");
+  if (btnPagas) btnPagas.onclick = () => {
+    const regimes = {};
+    Object.keys(db.config.regimes).forEach(k => {
+      const campo = $("#cfgReg_" + k);
+      regimes[k] = Object.assign({}, db.config.regimes[k],
+        { minimo: campo ? num(campo.value) : db.config.regimes[k].minimo });
+    });
+    const teto = num($("#cfgPagasDia").value);
+    if (teto <= 0) { toast("O teto por dia tem de ser maior que zero", "err"); return; }
+    DB.setConfig({ regimes, horasPagasDia: teto });
+    const m = $("#cfgPagasMsg");
+    if (m) { m.textContent = "✅ Salvo. O Índice e as fichas já usam estes números."; m.style.color = "var(--green)"; }
+    toast("✔ Horas pagas salvas");
+  };
 
   $$("[data-ficha]").forEach(el => el.onclick = () => abrirFicha(el.dataset.ficha));
 
@@ -3182,6 +3251,7 @@ function telaFicha() {
   const f = DB.fichaEquipamento(eq);
 
   const hf = DB.horasMesEquip(eq, mesDeHoras());
+  const pf = DB.pagamentoMes(eq, mesDeHoras());
 
   // série de médias dos abastecimentos (últimos 8)
   const serieMedia = f.abast.slice(-8).map(a => ({ label: DB.fmtBR(a.iso).slice(0, 5), valor: num(a.media), rotulo: a.media }));
@@ -3210,6 +3280,20 @@ function telaFicha() {
           <input id="fkKm" inputmode="decimal" value="${medidores(eq).km ?? ""}" placeholder="ex: 12500">
         </div>
       </div>
+      ${medidores(eq).temKm ? `<div class="field-row">
+        <div class="field">
+          <label>Regime do contrato</label>
+          <select id="fkRegime">${Object.keys(DB.load().config.regimes).map(k => {
+            const r = DB.load().config.regimes[k];
+            return `<option value="${k}" ${DB.regimeDoEquip(eq) === k ? "selected" : ""}>${r.nome}${
+              r.minimo > 0 ? ` · ${fmt(r.minimo)} h` : " · sem horas"}</option>`;
+          }).join("")}</select>
+        </div>
+        <div class="field">
+          <label>Mínimo próprio (h) <span class="badge-auto">opcional</span></label>
+          <input id="fkMinimo" inputmode="decimal" value="${DB.load().minimoEquip[eq] ?? ""}" placeholder="usa o do regime">
+        </div>
+      </div>` : ""}
       <p class="hint">É aqui que se acerta o medidor sem precisar de lançamento — horímetro
       trocado, máquina nova, número digitado errado. Campo deixado <b>em branco não apaga</b> o
       que já está gravado. O número que ficar aqui já entra como inicial no próximo abastecimento.</p>
@@ -3297,6 +3381,40 @@ function telaFicha() {
       </div>
     </div>
 
+    ${!(medidores(eq).temKm && pf.ativo) ? "" : `
+    <div class="card">
+      <h3>💰 Horas pagas no mês</h3>
+      <p class="hint">A conta do <b>contrato</b>, aberta linha por linha para você conferir de
+      cabeça. A base é a <b>hora dia</b>, e não o horímetro.${pf.corrente
+        ? ` <b>Mês em andamento:</b> o mínimo está proporcional a ${fmtN1(pf.uteisAteHoje)} de
+           ${fmtN1(pf.uteisMes)} dias úteis.` : ""}</p>
+      <div class="kpi-grid">
+        <div class="kpi k-green"><div class="k-label">💰 A pagar</div><div class="k-value">${fmt(pf.pagar, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi ${pf.garantia > 0.05 ? "k-yellow" : "k-blue"}"><div class="k-label">${
+          pf.garantia > 0.05 ? "🟡 Garantia (pago sem rodar)" : "🟢 Rodou a mais"}</div><div class="k-value">${
+          fmt(pf.garantia > 0.05 ? pf.garantia : pf.aMais, 1)}<span class="k-unit"> h</span></div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="itemlist">
+        <div class="itemrow"><div class="info">📋 Mínimo do contrato · ${DB.load().config.regimes[pf.regime]
+          ? DB.load().config.regimes[pf.regime].nome : pf.regime}${DB.load().minimoEquip[eq]
+          ? ' <span class="pill pill-blue">próprio</span>' : ""}
+          <div class="sub">${fmtH(pf.minimo)}${pf.corrente
+            ? ` · contrato cheio ${fmtH(pf.minimoCheio)}` : ""}</div></div></div>
+        <div class="itemrow"><div class="info">🔧 Desconto da manutenção
+          <div class="sub">− ${fmtH(pf.desconto)}${pf.diasComParada
+            ? ` · ${pf.diasComParada} dia(s) útil(eis) com parada, no máximo ${fmt(DB.load().config.horasPagasDia, 2)} h cada` : ""}${
+            pf.manutencao > pf.desconto + 0.05
+              ? `<br><span class="mini">parou ${fmtH(pf.manutencao)} de relógio; o teto por dia e o fim de semana aparam o resto</span>` : ""}</div></div></div>
+        <div class="itemrow"><div class="info">📐 Mínimo ajustado
+          <div class="sub">${fmtH(pf.minimo)} − ${fmtH(pf.desconto)} = <b>${fmtH(pf.ajustado)}</b></div></div></div>
+        <div class="itemrow"><div class="info">⏱️ Hora dia trabalhada
+          <div class="sub">${fmtH(pf.trabalhadas)}</div></div></div>
+        <div class="itemrow"><div class="info"><b>💰 A pagar</b>
+          <div class="sub">o maior entre ${fmtH(pf.trabalhadas)} e ${fmtH(pf.ajustado)} = <b>${fmtH(pf.pagar)}</b></div></div></div>
+      </div>
+    </div>`}
+
     <div class="card">
       <h3>📈 Evolução da média (${f.unidadeMedia})</h3>
       ${serieMedia.length ? grafico(serieMedia, { tipo: "linha", cor: "#22c55e" }) : '<p class="empty">Sem abastecimentos registrados.</p>'}
@@ -3354,6 +3472,8 @@ function telaFicha() {
     DB.setProximaRevisao(eq, $("#fkRev").value.trim());
     DB.setOperadorEquip(eq, $("#fkOperador").value);
     DB.atualizarMedidor(eq, { horimetro: horiTxt, km: kmTxt });
+    if ($("#fkRegime")) DB.setRegimeEquip(eq, $("#fkRegime").value);
+    if ($("#fkMinimo")) DB.setMinimoEquip(eq, $("#fkMinimo").value.trim());
     Sync.pushEquipamento(eq);
     Sync.pushParadas();
     Sync.pushHorasMes(DB.garantirDiaAtual());   // o turno novo muda as horas do mês
