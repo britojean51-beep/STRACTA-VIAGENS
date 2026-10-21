@@ -228,7 +228,11 @@ const Sync = {
       "KM": m.horimetro === undefined && m.km === undefined ? (m.horKm || "") : vazioSeNulo(m.km),
       "Tipo": m.tipo || "",
       "Serviço Realizado": m.servico || "",
-      "Peças/Trocas": m.pecas || "",
+      /* O periodo parado, quando ele digita os horarios. Vai junto das pecas
+         porque a aba nao tem coluna propria e recolar o script custa a ele. */
+      "Peças/Trocas": [m.pecas || "", (m.entradaHora || m.saidaHora)
+        ? "Parada: " + [m.entradaHora, m.saidaHora].filter(Boolean).join(" às ") : ""]
+        .filter(Boolean).join(" · "),
       "Observação": m.observacoes || "",
       "Próxima Manutenção": DB.getProximaRevisao(m.equipamento) ?? ""
     };

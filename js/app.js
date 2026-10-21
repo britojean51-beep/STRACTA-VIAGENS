@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "11/10/2026 · r52 (editar horímetro e KM na ficha)";
+const VERSION = "21/10/2026 · r53 (manutenção com dia e hora · relatório em imagem)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -1665,6 +1665,24 @@ function telaManutencao() {
     <div class="card">
       <h3>🔧 Registrar manutenção</h3>
       <div class="field">
+        <label>Dia da manutenção</label>
+        <input type="date" id="mData" value="${dia}">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Entrou às <span class="badge-auto">opcional</span></label>
+          <input id="mHoraIni" type="time">
+        </div>
+        <div class="field">
+          <label>Saiu às <span class="badge-auto">opcional</span></label>
+          <input id="mHoraFim" type="time">
+        </div>
+      </div>
+      <p class="hint">Dá para lançar manutenção de <b>outro dia</b> sem abrir dia novo — o dia de
+      operação da frota não se mexe. Com os <b>dois horários</b>, o período entra fechado de uma
+      vez. Só o de entrada deixa o relógio correndo até alguém apontar Operando. Em branco, vale
+      o horário de agora.</p>
+      <div class="field">
         <label>Equipamento</label>
         <input id="mEquip" list="dlMEquip" placeholder="selecione ou digite" autocapitalize="characters" autocomplete="off">
         ${opcoesDatalist("dlMEquip", db.equipamentos)}
@@ -1711,7 +1729,7 @@ function telaManutencao() {
     </div>
 
     <div class="card">
-      <h3>📅 Manutenções de hoje (${DB.fmtBR(dia)})</h3>
+      <h3>📅 Manutenções do dia <span class="mini" id="mHojeDia">(${DB.fmtBR(dia)})</span></h3>
       <div id="mHoje"></div>
     </div>
 
@@ -1737,7 +1755,8 @@ function telaManutencao() {
     <div class="card">
       <h3>🕓 Histórico de manutenção</h3>
       <p class="hint">O relógio começa quando alguém aponta <b>Manutenção</b> e para quando aponta
-      <b>Operando</b> — não precisa anotar nada.</p>
+      <b>Operando</b>. Quando você preenche os horários aqui em cima, o período entra
+      exatamente como você digitou.</p>
       <div id="mParadas"></div>
     </div>
   `;
@@ -1762,6 +1781,7 @@ function telaManutencao() {
     if (DB.load().equipamentos.includes(v.trim())) carregarEquip();
   };
   selEquip.onchange = carregarEquip;
+  $("#mData").onchange = renderHoje;
 
   function renderRevisoes() {
     const box = $("#mRevisoes");
@@ -1781,16 +1801,22 @@ function telaManutencao() {
     $$("#mRevisoes [data-ficha]").forEach(el => el.onclick = () => abrirFicha(el.dataset.ficha));
   }
 
+  /* Segue o DIA ESCOLHIDO no formulário, e não o dia de operação: lançando a
+     manutenção de ontem, é a lista de ontem que ele precisa ver para conferir. */
   function renderHoje() {
-    const d = DB.getDia(dia);
+    const alvoDia = ($("#mData") && $("#mData").value) || dia;
+    const d = DB.getDia(alvoDia);
     const ms = d ? d.manutencoes : [];
+    const rot = $("#mHojeDia"); if (rot) rot.textContent = `(${DB.fmtBR(alvoDia)})`;
     const box = $("#mHoje");
-    if (!ms.length) { box.innerHTML = '<p class="empty">Sem manutenções hoje.</p>'; return; }
-    box.innerHTML = ms.map(m => `
-      <div class="itemrow"><div class="info"><b>${m.equipamento}</b>
-        <span class="pill pill-red">${m.tipo}</span>
+    if (!ms.length) { box.innerHTML = '<p class="empty">Sem manutenções neste dia.</p>'; return; }
+    box.innerHTML = ms.map(m => {
+      const hr = [m.entradaHora, m.saidaHora].filter(Boolean).join(" às ");
+      return `<div class="itemrow"><div class="info"><b>${m.equipamento}</b>
+        <span class="pill pill-red">${m.tipo}</span>${hr ? ` <span class="mini">🕓 ${hr}</span>` : ""}
         <div class="sub">${m.servico || "—"} · ${medidorDoRegistro(m)}</div>
-      </div></div>`).join("");
+      </div></div>`;
+    }).join("");
   }
 
   function renderParadas() {
@@ -1846,28 +1872,53 @@ function telaManutencao() {
     if (!eq) return;
     selEquip.value = eq;
     if (!serv) { toast("Descreva o serviço", "err"); return; }
+
+    /* O dia escolhido é o dia do registro. addManutencao cria o db.dias[iso] que
+       faltar SEM tocar no diaAtual — é isso que dispensa abrir dia novo. */
+    const data = $("#mData").value || dia;
+    const hIni = $("#mHoraIni").value, hFim = $("#mHoraFim").value;
+    if (data > DB.hojeISO()) { toast("O dia da manutenção não pode ser no futuro", "err"); return; }
+    if (hIni && hFim && hFim < hIni) { toast("A hora de saída é antes da de entrada", "err"); return; }
+
     const horiTxt = $("#mHori").value.trim();
     const kmTxt = medidores(eq).temKm ? $("#mKm").value.trim() : "";
     if (!await confirmarMedidorMenor(eq, horiTxt, kmTxt)) return;
 
-    const mreg = DB.addManutencao(dia, {
+    const mreg = DB.addManutencao(data, {
       equipamento: eq, tipo: $("#mTipo").value,
       servico: serv,
       horimetro: horiTxt === "" ? null : num(horiTxt),
       km: kmTxt === "" ? null : num(kmTxt),
+      entradaHora: hIni || "", saidaHora: hFim || "",
       observacoes: $("#mObs").value.trim()
     });
     // o medidor do equipamento anda junto com a manutenção
     DB.atualizarMedidor(eq, { horimetro: horiTxt, km: kmTxt });
-    // o dia é o dia de operação do app (o mesmo dos lançamentos), o horário é o relógio
-    DB.setStatus(eq, $("#mStatus").value, { dia, origem: "manutencao" });
+    /* Com horário digitado, o período é apontado à mão no dia escolhido; sem
+       horário, continua valendo o relógio por dentro do setStatus.
+
+       Período em aberto (só a hora de entrada) quer dizer máquina parada AGORA:
+       nesse caso a situação tem de ser Manutenção, senão o período ficaria
+       correndo sem ninguém conseguir fechá-lo — só o "Operando" fecha, e a
+       máquina já estaria marcada como operando. Ele é avisado no toast. */
+    const stEscolhido = $("#mStatus").value;
+    const emAberto = hIni && !hFim;
+    const stAplicar = emAberto ? "manutencao" : stEscolhido;
+    if (hIni) DB.registrarManutencao(eq, { dia: data, horaIni: hIni, horaFim: hFim });
+    DB.setStatus(eq, stAplicar, { dia: data, hora: hFim || hIni || undefined,
+      origem: "manutencao", semParada: !!hIni });
     DB.setProximaRevisao(eq, $("#mProxRev").value.trim());
-    Sync.pushManutencao(dia, mreg);
+    Sync.pushManutencao(data, mreg);
     Sync.pushEquipamento(eq);
-    Sync.pushResumoDia(dia);
+    Sync.pushResumoDia(data);
+    Sync.pushHorasMes(data);               // o período parado muda as horas do mês
     Sync.pushParadas();
-    toast("✔ Manutenção registrada");
+    let aviso = "✔ Manutenção registrada" + (data !== dia ? " em " + DB.fmtBR(data) : "");
+    if (emAberto && stEscolhido !== "manutencao")
+      aviso = `✔ Registrada · ${eq} fica em Manutenção até você lançar a hora de saída`;
+    toast(aviso);
     $("#mServico").value = ""; $("#mObs").value = "";
+    $("#mHoraIni").value = ""; $("#mHoraFim").value = "";
     carregarEquip();                       // os medidores voltam já com o novo valor
     renderRevisoes(); renderHoje(); renderParadas();
     terminouLancamento();
@@ -2083,6 +2134,10 @@ function telaRelatorio() {
         <button class="btn btn-primary btn-sm" id="btnPdf">📄 PDF</button>
       </div>
       <div class="spacer"></div>
+      <button class="btn btn-primary" id="btnImagem">🖼️ Mandar como imagem</button>
+      <p class="hint">Sai uma folha pronta para mandar no WhatsApp — com os totais, cada
+      equipamento, as viagens e as manutenções do dia.</p>
+      <div class="spacer"></div>
       <button class="btn btn-green" id="btnExcel">📊 Enviar planilha (Excel)</button>
     </div>
     <div class="report"><pre id="rTexto"></pre></div>
@@ -2122,6 +2177,14 @@ function telaRelatorio() {
     window.open(url, "_blank");
   };
   $("#btnPdf").onclick = () => { const a = alvo(); gerarPDF(a.dias, a.titulo, $("#rTexto").textContent); };
+  $("#btnImagem").onclick = async () => {
+    const a = alvo();
+    if (!a.dias.length) { toast("Escolha um dia com lançamento", "err"); return; }
+    const b = $("#btnImagem"); const antes = b.textContent;
+    b.disabled = true; b.textContent = "🖼️ Montando a folha…";
+    try { await compartilharFolha(a.dias, a.titulo); }
+    finally { b.disabled = false; b.textContent = antes; }
+  };
   $("#btnExcel").onclick = () => { const a = alvo(); exportarExcel(a.dias, `STRACTA · ${a.titulo}`); };
   render();
 }
@@ -2276,6 +2339,278 @@ function gerarPDF(dias, titulo, texto) {
   `;
   toast("Abrindo impressão · escolha \"Salvar como PDF\"");
   setTimeout(() => window.print(), 300);
+}
+
+/* ============================================================
+   RELATÓRIO EM IMAGEM — folha A4 desenhada no canvas
+   Sem biblioteca: o app é offline-first, e puxar html2canvas de um CDN
+   quebraria o uso sem internet e somaria ~200 KB ao cache do service worker.
+   A largura é fixa (proporção A4); a ALTURA é medida antes e cresce com o
+   conteúdo, com a folha A4 como mínimo — assim nenhuma linha é cortada.
+   ============================================================ */
+const FOLHA = {
+  W: 1240, MIN_H: 1754, M: 72,          // largura · altura mínima · margem
+  navy: "#12203c", laranja: "#ff7a1a", tinta: "#1a2234",
+  cinza: "#5b6679", linha: "#dde3ee", zebra: "#f6f8fc", papel: "#ffffff",
+  verde: "#15803d", vermelho: "#b91c1c",
+  fonte(px, peso) { return `${peso || 400} ${px}px -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`; }
+};
+
+/* Os dados da folha, já formatados. Sai do mesmo DB.resumoDia que alimenta o
+   relatório de texto: a imagem não pode contar uma história diferente dele. */
+function dadosDaFolha(dias, titulo) {
+  const lista = (Array.isArray(dias) ? dias : [dias]).slice().sort();
+  const varios = lista.length > 1;
+  const res = lista.map(iso => DB.resumoDia(iso));
+  const soma = c => res.reduce((s, x) => s + x[c], 0);
+  const diesel = soma("diesel"), km = soma("km"), viagens = soma("viagens");
+  const ton = soma("toneladas"), horas = soma("horas"), arla = soma("arla");
+  const equips = new Set(), manuts = new Set();
+  res.forEach(r => { r.operando.forEach(e => equips.add(e)); r.manutencao.forEach(e => manuts.add(e)); });
+
+  const totais = [
+    { rot: "DIESEL", val: fmtL(diesel), un: "L" },
+    { rot: "MÉDIA DA FROTA", val: fmt(diesel > 0 ? km / diesel : 0, 2), un: "km/L" },
+    { rot: "VIAGENS", val: fmt(viagens), un: "" },
+    { rot: "PRODUÇÃO", val: fmt(ton), un: "t" },
+    { rot: "KM RODADO", val: fmt(km), un: "km" },
+    { rot: "HORAS TRABALHADAS", val: fmt(horas, 1), un: "h" }
+  ];
+
+  // uma linha por equipamento (dia) ou uma por dia (período)
+  const linhas = [];
+  if (varios) {
+    lista.forEach((iso, i) => {
+      const r = res[i];
+      linhas.push({ a: DB.fmtBR(iso), b: `${r.operando.length} equip.`,
+        c: fmtL(r.diesel) + " L", d: fmt(r.horas, 1) + " h",
+        e: fmt(r.media, 2), f: fmt(r.viagens) });
+    });
+  } else {
+    const d = DB.getDia(lista[0]) || { abastecimentos: [], viagens: [] };
+    (d.abastecimentos || []).forEach(a => {
+      linhas.push({ a: a.equipamento, b: a.motorista || "—",
+        c: fmtL(a.litros) + " L", d: (a.horasTrabalhadas || "0") + " h",
+        e: `${a.media} ${a.unidadeMedia || "km/L"}`,
+        f: a.kmRodado ? fmt(a.kmRodado) + " km" : "—" });
+    });
+  }
+
+  // viagens detalhadas, agrupadas por equipamento
+  const viag = [];
+  if (!varios) {
+    const d = DB.getDia(lista[0]) || { viagens: [] };
+    const porEq = {};
+    (d.viagens || []).forEach(v => { (porEq[v.equipamento] ||= []).push(v); });
+    Object.keys(porEq).sort().forEach(eq => {
+      const vs = porEq[eq];
+      const q = vs.reduce((s, v) => s + DB.toN(v.quantidade), 0);
+      const p = vs.reduce((s, v) => s + DB.toN(v.pesoTotal), 0);
+      viag.push({ eq, total: `${fmt(q)} viagens${p > 0 ? " · " + fmt(p) + " t" : ""}`,
+        itens: vs.map(v => `${v.origem} → ${v.destino}: ${v.quantidade}${v.material ? " · " + v.material : ""}`) });
+    });
+  }
+
+  // manutenções: o serviço e o período parado, com os horários novos
+  const manut = [];
+  lista.forEach(iso => {
+    const d = DB.getDia(iso) || { manutencoes: [] };
+    (d.manutencoes || []).forEach(m => {
+      const p = DB.paradasDe(m.equipamento, 0).find(x => x.tipo === "manutencao" && x.entradaDia === iso);
+      manut.push({ eq: m.equipamento, tipo: m.tipo || "",
+        servico: m.servico || "—",
+        periodo: p ? `${p.entradaHora}${p.saidaHora ? " às " + p.saidaHora : " · em aberto"}${p.minutos ? " (" + DB.duracaoParada(p) + ")" : ""}` : "" });
+    });
+  });
+
+  return {
+    titulo: titulo || "RELATÓRIO DIÁRIO",
+    periodo: varios ? `${DB.fmtBR(lista[0])} a ${DB.fmtBR(lista[lista.length - 1])}` : DB.fmtBR(lista[0]),
+    varios, totais, linhas, viag, manut,
+    nEquip: equips.size, nManut: manuts.size, arla,
+    cabLinhas: varios ? ["DIA", "EQUIP.", "DIESEL", "HORAS", "MÉDIA", "VIAGENS"]
+                      : ["EQUIP.", "OPERADOR", "DIESEL", "HORAS", "MÉDIA", "KM"]
+  };
+}
+
+/* Mede a altura que o conteúdo pede, para a folha crescer em vez de cortar. */
+function alturaDaFolha(d) {
+  let h = FOLHA.M + 150;                       // faixa do topo
+  h += 118;                                    // título e período
+  h += Math.ceil(d.totais.length / 3) * 132 + 30;
+  h += 56 + 44 + d.linhas.length * 52 + 34;    // tabela
+  if (d.viag.length) { h += 56; d.viag.forEach(v => { h += 44 + v.itens.length * 38 + 12; }); h += 22; }
+  if (d.manut.length) h += 56 + d.manut.length * 76 + 22;
+  h += 120;                                    // rodapé
+  return Math.max(FOLHA.MIN_H, h);
+}
+
+/* Desenha a folha e devolve o canvas. `estilo` escolhe o acabamento do topo e
+   dos quadros de total — é o que estamos ajustando junto com ele. */
+function desenharFolha(d, estilo) {
+  const F = FOLHA, est = estilo || "faixa";
+  const cv = document.createElement("canvas");
+  cv.width = F.W; cv.height = alturaDaFolha(d);
+  const c = cv.getContext("2d");
+  const L = F.M, R = F.W - F.M, LARG = R - L;
+
+  c.fillStyle = F.papel; c.fillRect(0, 0, cv.width, cv.height);
+  c.textBaseline = "alphabetic";
+  const txt = (s, x, y, fonte, cor, alinha) => {
+    c.font = fonte; c.fillStyle = cor; c.textAlign = alinha || "left";
+    c.fillText(String(s), x, y);
+  };
+  /* Corta o texto que não cabe na coluna, com reticências. Sem isso, nome de
+     operador comprido invadiria a coluna do lado. */
+  const cortar = (s, max, fonte) => {
+    c.font = fonte;
+    let t = String(s);
+    if (c.measureText(t).width <= max) return t;
+    while (t.length > 1 && c.measureText(t + "…").width > max) t = t.slice(0, -1);
+    return t + "…";
+  };
+  const secao = (rot, y) => {
+    txt(rot, L, y, F.fonte(22, 700), F.navy);
+    c.fillStyle = F.laranja; c.fillRect(L, y + 12, 54, 4);
+    return y + 48;
+  };
+
+  let y = 0;
+
+  /* ---- topo ---- */
+  if (est === "faixa") {
+    // faixa cheia azul-marinho: mais presença, cara de documento timbrado
+    c.fillStyle = F.navy; c.fillRect(0, 0, F.W, 168);
+    c.fillStyle = F.laranja; c.fillRect(0, 168, F.W, 8);
+    txt("STRACTA MINERAÇÃO", L, 78, F.fonte(40, 800), "#ffffff");
+    txt("CONTROLE DE FROTA · GP2T", L, 118, F.fonte(21, 500), "#9fb0d0");
+    txt(d.periodo, R, 78, F.fonte(34, 800), "#ffffff", "right");
+    txt(d.titulo, R, 118, F.fonte(19, 600), F.laranja, "right");
+    y = 176 + 64;
+  } else {
+    // topo claro: só o nome, um filete laranja e muito branco. Mais sóbrio.
+    txt("STRACTA MINERAÇÃO", L, 96, F.fonte(42, 800), F.navy);
+    txt("CONTROLE DE FROTA · GP2T", L, 132, F.fonte(20, 500), F.cinza);
+    txt(d.periodo, R, 96, F.fonte(34, 800), F.navy, "right");
+    txt(d.titulo, R, 130, F.fonte(19, 600), F.laranja, "right");
+    c.fillStyle = F.laranja; c.fillRect(L, 158, LARG, 5);
+    y = 163 + 70;
+  }
+
+  /* ---- quadros de total: 3 por linha ---- */
+  const COLS = 3, GAP = 20;
+  const cw = (LARG - GAP * (COLS - 1)) / COLS, ch = 112;
+  d.totais.forEach((t, i) => {
+    const x = L + (i % COLS) * (cw + GAP);
+    const yy = y + Math.floor(i / COLS) * (ch + 20);
+    if (est === "faixa") {
+      c.fillStyle = F.zebra; c.fillRect(x, yy, cw, ch);
+      c.fillStyle = F.laranja; c.fillRect(x, yy, 5, ch);
+    } else {
+      c.strokeStyle = F.linha; c.lineWidth = 2; c.strokeRect(x + 1, yy + 1, cw - 2, ch - 2);
+    }
+    txt(t.rot, x + 22, yy + 36, F.fonte(15, 700), F.cinza);
+    txt(t.val, x + 22, yy + 86, F.fonte(40, 800), F.navy);
+    if (t.un) {
+      c.font = F.fonte(40, 800);
+      txt(" " + t.un, x + 22 + c.measureText(t.val).width, yy + 86, F.fonte(19, 600), F.cinza);
+    }
+  });
+  y += Math.ceil(d.totais.length / COLS) * (ch + 20) + 30;
+
+  /* ---- tabela por equipamento (ou por dia) ---- */
+  y = secao(d.varios ? "RESUMO POR DIA" : "POR EQUIPAMENTO", y);
+  const pesos = [0.17, 0.23, 0.15, 0.13, 0.17, 0.15];
+  const xs = []; let acc = L;
+  pesos.forEach(p => { xs.push(acc); acc += LARG * p; });
+  const alinhas = ["left", "left", "right", "right", "right", "right"];
+  const xDe = i => alinhas[i] === "right" ? xs[i] + LARG * pesos[i] - 14 : xs[i];
+
+  c.fillStyle = F.navy; c.fillRect(L, y, LARG, 44);
+  d.cabLinhas.forEach((h, i) => txt(h, xDe(i), y + 29, F.fonte(15, 700), "#ffffff", alinhas[i]));
+  y += 44;
+
+  if (!d.linhas.length) {
+    txt("Nenhum lançamento neste dia.", L + 14, y + 36, F.fonte(20, 500), F.cinza);
+    y += 60;
+  } else {
+    d.linhas.forEach((ln, i) => {
+      if (i % 2 === 1) { c.fillStyle = F.zebra; c.fillRect(L, y, LARG, 52); }
+      [ln.a, ln.b, ln.c, ln.d, ln.e, ln.f].forEach((v, j) => {
+        const fonte = j === 0 ? F.fonte(21, 700) : F.fonte(20, 400);
+        txt(cortar(v, LARG * pesos[j] - 20, fonte), xDe(j), y + 34, fonte,
+            j === 0 ? F.navy : F.tinta, alinhas[j]);
+      });
+      c.strokeStyle = F.linha; c.lineWidth = 1;
+      c.beginPath(); c.moveTo(L, y + 52); c.lineTo(R, y + 52); c.stroke();
+      y += 52;
+    });
+  }
+  y += 34;
+
+  /* ---- viagens detalhadas ---- */
+  if (d.viag.length) {
+    y = secao("VIAGENS", y);
+    d.viag.forEach(v => {
+      txt(v.eq, L, y + 26, F.fonte(21, 700), F.navy);
+      txt(v.total, R, y + 26, F.fonte(19, 600), F.laranja, "right");
+      y += 44;
+      v.itens.forEach(it => {
+        c.fillStyle = F.cinza; c.fillRect(L + 8, y + 13, 6, 6);
+        txt(cortar(it, LARG - 34, F.fonte(19, 400)), L + 26, y + 24, F.fonte(19, 400), F.tinta);
+        y += 38;
+      });
+      y += 12;
+    });
+    y += 22;
+  }
+
+  /* ---- manutenções do dia ---- */
+  if (d.manut.length) {
+    y = secao("MANUTENÇÃO", y);
+    d.manut.forEach(m => {
+      c.fillStyle = F.vermelho; c.fillRect(L, y + 6, 5, 52);
+      txt(m.eq, L + 20, y + 28, F.fonte(21, 700), F.navy);
+      if (m.tipo) txt(m.tipo, L + 20 + c.measureText(m.eq).width + 16, y + 28, F.fonte(17, 600), F.vermelho);
+      if (m.periodo) txt(m.periodo, R, y + 28, F.fonte(18, 600), F.cinza, "right");
+      txt(cortar(m.servico, LARG - 30, F.fonte(19, 400)), L + 20, y + 56, F.fonte(19, 400), F.tinta);
+      y += 76;
+    });
+    y += 22;
+  }
+
+  /* ---- rodapé ---- */
+  const yr = cv.height - 56;
+  c.strokeStyle = F.linha; c.lineWidth = 2;
+  c.beginPath(); c.moveTo(L, yr - 26); c.lineTo(R, yr - 26); c.stroke();
+  txt(`${d.nEquip} equipamento(s) operando · ${d.nManut} em manutenção`, L, yr, F.fonte(17, 500), F.cinza);
+  txt("GP2T · Gestão de Frota", R, yr, F.fonte(17, 600), F.navy, "right");
+  return cv;
+}
+
+
+/* Monta o PNG e manda. navigator.share leva direto para o WhatsApp no Android;
+   onde não existir (computador, navegador antigo), baixa o arquivo. */
+async function compartilharFolha(dias, titulo) {
+  let cv;
+  try { cv = desenharFolha(dadosDaFolha(dias, titulo), "faixa"); }
+  catch (e) { toast("Não consegui montar a imagem", "err"); return; }
+  const d0 = Array.isArray(dias) ? dias[0] : dias;
+  const nome = "STRACTA-" + String(titulo || "relatorio").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + "-" + d0 + ".png";
+  const blob = await new Promise(r => cv.toBlob(r, "image/png"));
+  if (!blob) { toast("Não consegui montar a imagem", "err"); return; }
+  const arq = new File([blob], nome, { type: "image/png" });
+  if (navigator.canShare && navigator.canShare({ files: [arq] })) {
+    try { await navigator.share({ files: [arq], title: titulo || "Relatório" }); return; }
+    catch (e) { if (e && e.name === "AbortError") return; }   // ele fechou o menu
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = nome; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast("🖼️ Imagem salva no aparelho");
 }
 
 /* ============================================================

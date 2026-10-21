@@ -504,6 +504,17 @@ const DB = {
     const hora = o.hora || this.horaAgora();
     let parada = null, id = null;
 
+    /* semParada: quem chamou já está cuidando do período à mão (a tela de
+       manutenção, com dia e horário digitados). Sem esta saída, o setStatus
+       abriria um SEGUNDO período em cima do que acabou de ser apontado, e as
+       horas de manutenção do mês contariam em dobro. */
+    if (o.semParada) {
+      db.status[eq] = st;
+      this.save();
+      this._nuvem(C => C.patch("operacao", { status: { [eq]: st } }));
+      return;
+    }
+
     if (st === "manutencao" && anterior !== "manutencao") {
       id = this._novoId();
       parada = {
@@ -579,6 +590,58 @@ const DB = {
     });
     return criados;
   },
+  /* Período de manutenção apontado À MÃO, com dia e horário escolhidos.
+     setStatus só abre o período quando o status MUDA para manutenção e só fecha
+     quando sai dela. Num lançamento retroativo o equipamento costuma já estar
+     Operando agora — a transição não acontece e nenhum período seria criado.
+     Daí esta função, em vez de um parâmetro novo no setStatus.
+
+     Com os dois horários nasce fechado (como o almoço); com só o início fica
+     aberto e fecha quando alguém apontar Operando.
+
+     A trava que não pode faltar: se já existe período ABERTO do equipamento,
+     FECHA ele em vez de abrir outro. Sem isso, dois apontamentos deixariam dois
+     períodos abertos e as horas de manutenção do mês contariam em dobro — e é a
+     conta que alimenta as horas disponíveis do Índice. */
+  registrarManutencao(eq, opts) {
+    const db = this.load();
+    const o = opts || {};
+    const dia = o.dia || this.hojeISO();
+    const ini = o.horaIni || "";
+    const fim = o.horaFim || "";
+    if (!eq || !ini) return null;
+    const mexidos = {};
+
+    /* Primeiro fecha o que estiver pendente. Período aberto esquecido conta
+       até agora nas horas do mês: deixar dois abertos dobraria a conta. Fecha
+       no início deste apontamento, que é o instante em que ele deixa de valer. */
+    const aberto = this._idParadaAberta(eq);
+    if (aberto) {
+      const r = db.paradas[aberto];
+      r.saidaDia = dia; r.saidaHora = ini;
+      r.minutos = this._minutosEntre(r.entradaDia, r.entradaHora, dia, ini);
+      mexidos[aberto] = r;
+    }
+
+    /* Agora o período que ele digitou: com os dois horários nasce fechado;
+       com só o início fica correndo até alguém apontar Operando. */
+    const id = this._novoId();
+    const reg = {
+      equipamento: eq, tipo: "manutencao",
+      entradaDia: dia, entradaHora: ini,
+      saidaDia: fim ? dia : null,
+      saidaHora: fim || null,
+      minutos: fim ? this._minutosEntre(dia, ini, dia, fim) : null,
+      origem: "manutencao", quem: this._quem()
+    };
+    db.paradas[id] = reg;
+    mexidos[id] = reg;
+
+    this.save();
+    this._nuvem(C => C.patch("operacao", { paradas: mexidos }));
+    return Object.assign({ id }, reg);
+  },
+
   removerParada(id) {
     const db = this.load();
     if (!db.paradas[id]) return false;
