@@ -113,7 +113,7 @@
     let l = Object.keys(b).filter(k => k.startsWith(this.path + "/") && !k.slice(this.path.length + 1).includes("/"))
       .map(k => ({ id: k.split("/").pop(), d: b[k] }));
     this.f.forEach(([t, c, op, v]) => {
-      if (t === "w") l = l.filter(x => op === ">=" ? x.d[c] >= v : op === "==" ? x.d[c] === v : true);
+      if (t === "w") l = l.filter(x => op === ">=" ? x.d[c] >= v : op === "<" ? x.d[c] < v : op === "==" ? x.d[c] === v : true);
       if (t === "o") l.sort((a, z) => (a.d[c] < z.d[c] ? -1 : 1) * (op === "desc" ? -1 : 1));
       if (t === "l") l = l.slice(0, c);
     });

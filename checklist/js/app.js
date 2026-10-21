@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck21";
+const VERSAO = "ck22";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -829,7 +829,7 @@ Render.resultado = function (a) {
 };
 
 /* ---------- painel (admin) ---------- */
-const Painel = { dias: 1, filtro: "todos", busca: "", lista: null, carregando: false };
+const Painel = { dia: "", filtro: "todos", busca: "", lista: null, carregando: false };
 
 Render.painel = async function () {
   titulo("PAINEL", "Checklists recebidos");
@@ -840,18 +840,26 @@ Render.painel = async function () {
         : p.filtro === "solicitado" ? solicitadosAbertos(i).length > 0 : statusPainel(i) === p.filtro)) &&
       (!p.busca || (nomeEquip(i.equipamento) + " " + (i.criadoNome || "")).toLowerCase().includes(p.busca.toLowerCase())));
     const todos = p.lista || [];
-    // situação da frota: vem dos equipamentos, não do período escolhido
-    // "Operando" só quem fez checklist hoje; sem defeito em aberto e sem checklist hoje fica à parte
-    const hoje = diaDe(Date.now());
-    const fezHoje = new Set(todos.filter(i => diaDe(i.criadoEm) === hoje).map(i => (i.equipamento || {}).id).filter(Boolean));
+    // situação da frota: só os checklists do dia escolhido (o mais recente de cada equipamento)
+    const hoje = diaDe(Date.now()), ehHoje = p.dia === hoje;
+    const ultimo = {};
+    todos.forEach(i => { const id = (i.equipamento || {}).id; if (id && (!ultimo[id] || i.criadoEm > ultimo[id].criadoEm)) ultimo[id] = i; });
     const porSit = { manutencao: [], restricao: [], operacional: [], semChecklist: [] };
+    const SIT = { bloqueado: "manutencao", restricao: "restricao", liberado: "operacional" };
     Estado.equipamentos.filter(e => e.ativo !== false).forEach(e => {
-      const sit = situacaoDe(e);
-      porSit[sit === "operacional" && !fezHoje.has(e.id) ? "semChecklist" : sit].push(e);
+      const i = ultimo[e.id];
+      porSit[i ? SIT[statusPainel(i)] || "operacional" : "semChecklist"].push({ e, i });
     });
+    // hoje, sem checklist: avisa se ainda tem defeito em aberto de outro dia
+    const deAntes = e => ehHoje && situacaoDe(e) !== "operacional" ? ` (${SITUACOES[situacaoDe(e)].ico} pendente de outro dia)` : "";
+    const [a, m, d] = p.dia.split("-");
+    const nomeDia = ehHoje ? "hoje" : p.dia === diaDe(Date.now() - 864e5) ? "ontem" : `${d}/${m}/${a}`;
     app().innerHTML = `
-      <div class="seg" id="pDias">
-        ${[[1, "Hoje"], [7, "7 dias"], [30, "30 dias"]].map(([d, t]) => `<button data-d="${d}" class="${p.dias === d ? "on" : ""}">${t}</button>`).join("")}
+      <div class="dia-sel" id="pDias">
+        <button data-passo="-1" aria-label="Dia anterior">‹</button>
+        <input type="date" id="pDia" value="${p.dia}" max="${hoje}" aria-label="Dia" />
+        <button data-passo="1" aria-label="Próximo dia" ${ehHoje ? "disabled" : ""}>›</button>
+        ${ehHoje ? "" : `<button data-passo="0" class="hoje">Hoje</button>`}
       </div>
       <div class="kpis">
         <div class="kpi"><b>${todos.length}</b><span>checklists</span></div>
@@ -859,14 +867,14 @@ Render.painel = async function () {
         <div class="kpi alerta"><b>${todos.filter(i => statusPainel(i) === "restricao").length}</b><span>restrição</span></div>
         <div class="kpi perigo"><b>${todos.filter(i => statusPainel(i) === "bloqueado").length}</b><span>manutenção</span></div>
       </div>
-      <div class="card frota" id="pFrota"><b>Situação da frota agora</b>
+      <div class="card frota" id="pFrota"><b>Situação da frota · ${nomeDia}</b>
         ${["manutencao", "restricao"].map(k => porSit[k].length ? `<div class="sit ${SITUACOES[k].cls}">
           <span class="tag ${SITUACOES[k].cls}">${SITUACOES[k].ico} ${SITUACOES[k].txt} (${porSit[k].length})</span>
-          ${porSit[k].map(e => `<div class="link" data-abrir="${h(pendenciaMaisRecente(e))}">${h(nomeEquip(e))}</div>`).join("")}</div>` : "").join("")}
+          ${porSit[k].map(x => `<div class="link" data-abrir="${h(x.i.id)}">${h(nomeEquip(x.e))}</div>`).join("")}</div>` : "").join("")}
         <p class="mini"><span class="tag ok">✅ Operando (${porSit.operacional.length})</span></p>
         ${porSit.semChecklist.length ? `<div class="sit sem">
-          <span class="tag sem">⏳ Sem checklist hoje (${porSit.semChecklist.length})</span>
-          <p class="mini nomes">${porSit.semChecklist.map(e => h(nomeEquip(e))).join(" · ")}</p></div>` : ""}
+          <span class="tag sem">⏳ Sem checklist ${ehHoje ? "hoje" : "no dia"} (${porSit.semChecklist.length})</span>
+          <p class="mini nomes">${porSit.semChecklist.map(x => h(nomeEquip(x.e)) + deAntes(x.e)).join(" · ")}</p></div>` : ""}
       </div>
       <input class="busca" id="pBusca" type="search" placeholder="🔎 Equipamento ou nome" value="${h(p.busca)}" />
       <div class="chips" id="pFiltro">
@@ -886,7 +894,14 @@ Render.painel = async function () {
       }).join("")}</div>
       ${p.lista && !l.length ? `<p class="vazio">Nenhum checklist neste filtro.</p>` : ""}
       ${l.length ? `<button class="btn btn-ghost" id="pCsv">⬇ Baixar planilha (CSV)</button>` : ""}`;
-    $("#pDias").onclick = ev => { const b = ev.target.closest("[data-d]"); if (b) { p.dias = +b.dataset.d; p.lista = null; carregar(); } };
+    const irDia = dia => { if (!dia || dia > hoje || dia === p.dia) return; p.dia = dia; p.lista = null; carregar(); };
+    $("#pDias").onclick = ev => {
+      const b = ev.target.closest("[data-passo]"); if (!b) return;
+      const n = +b.dataset.passo, dt = new Date(p.dia + "T12:00:00");
+      dt.setDate(dt.getDate() + n);
+      irDia(n ? diaDe(dt.getTime()) : hoje);
+    };
+    $("#pDia").onchange = ev => irDia(ev.target.value);
     $("#pFiltro").onclick = ev => { const b = ev.target.closest("[data-f]"); if (b) { p.filtro = b.dataset.f; desenhar(); } };
     const busca = $("#pBusca");
     busca.oninput = () => { p.busca = busca.value; const pos = busca.selectionStart; desenhar(); const nb = $("#pBusca"); nb.focus(); nb.setSelectionRange(pos, pos); };
@@ -903,9 +918,12 @@ Render.painel = async function () {
   };
   const carregar = async () => {
     p.carregando = true; p.erro = ""; desenhar();
-    const ini = new Date(); ini.setHours(0, 0, 0, 0); ini.setDate(ini.getDate() - (p.dias - 1));
+    const ini = new Date(p.dia + "T00:00:00"), fim = new Date(ini); fim.setDate(fim.getDate() + 1);
+    const dia = p.dia;
     try {
-      p.lista = await Dados.inspecoes(ini.getTime());
+      const lista = await Dados.inspecoes(ini.getTime(), fim.getTime());
+      if (dia !== p.dia) return;   // trocou de dia enquanto carregava
+      p.lista = lista;
       p.lista.forEach(i => {
         const eid = (i.equipamento || {}).id, e = Estado.equipamentos.find(x => x.id === eid);
         if (e && statusAtual(i) !== "liberado" && !(e.pendencias || {})[i.id]) Dados.abrirPendencia(eid, i.id, statusAtual(i));
@@ -915,6 +933,8 @@ Render.painel = async function () {
     p.carregando = false;
     if (Telas.atual.nome === "painel") desenhar();
   };
+  // começa no dia de hoje; o dia escolhido vale até virar o dia
+  if (p.hojeEra !== diaDe(Date.now())) { p.hojeEra = p.dia = diaDe(Date.now()); p.lista = null; }
   if (!p.lista) carregar(); else { desenhar(); carregar(); }
 };
 
@@ -929,7 +949,7 @@ function baixarCSV(lista) {
   const csv = "﻿" + [cab].concat(linhas).map(l => l.map(c => '"' + String(c == null ? "" : c).replace(/"/g, '""') + '"').join(";")).join("\r\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-  a.download = "checklists-" + diaDe(Date.now()) + ".csv";
+  a.download = "checklists-" + (Painel.dia || diaDe(Date.now())) + ".csv";
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }

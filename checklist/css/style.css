@@ -181,6 +181,11 @@ body.tela-login main { padding: 0 0 24px; }
 .tag.sem { background: var(--card-2); color: var(--muted); border: 1px solid var(--line); }
 .frota .nomes { margin: 6px 4px 0; color: var(--muted); }
 
+.dia-sel { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; }
+.dia-sel input { flex: 1; min-width: 0; margin: 0; text-align: center; font-weight: 700; }
+.dia-sel button { flex: 0 0 auto; min-width: 44px; height: 44px; background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 12px; font-size: 22px; cursor: pointer; }
+.dia-sel button:disabled { visibility: hidden; }   /* hoje: não há dia seguinte */
+.dia-sel .hoje { font-size: 14px; font-weight: 700; padding: 0 12px; background: var(--brand); color: var(--brand-txt); border-color: var(--brand); }
 .seg, .chips { display: flex; gap: 6px; margin-bottom: 10px; overflow-x: auto; }
 .seg button, .chips button { flex: 1; white-space: nowrap; background: var(--card); border: 1px solid var(--line); border-radius: 99px; padding: 8px 12px; font-size: 13px; cursor: pointer; }
 .chips button { flex: 0 0 auto; }

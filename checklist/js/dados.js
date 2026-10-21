@@ -216,8 +216,10 @@ const Dados = {
         .sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0)).slice(0, 40);
     } catch (e) { return null; }
   },
-  async inspecoes(desdeMs) {
-    const snap = await this.col("inspecoes").where("criadoEm", ">=", desdeMs)
+  async inspecoes(desdeMs, ateMs) {
+    let q = this.col("inspecoes").where("criadoEm", ">=", desdeMs);
+    if (ateMs) q = q.where("criadoEm", "<", ateMs);
+    const snap = await q
       .orderBy("criadoEm", "desc").limit(1000).get();
     return snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
   },
