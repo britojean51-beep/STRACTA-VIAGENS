@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "21/10/2026 · r53 (manutenção com dia e hora · relatório em imagem)";
+const VERSION = "21/10/2026 · r54 (L/h e L/ton no relatório e na imagem)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -1942,7 +1942,7 @@ function gerarRelatorioTexto(iso) {
   const viagPorEq = {};
   d.viagens.forEach(v => { (viagPorEq[v.equipamento] ||= []).push(v); });
 
-  let totalDiesel = 0, totalS10 = 0, totalS500 = 0, totalArla = 0, totalKm = 0, totalViagens = 0, totalPeso = 0;
+  let totalDiesel = 0, totalS10 = 0, totalS500 = 0, totalArla = 0, totalKm = 0, totalViagens = 0, totalPeso = 0, totalHoras = 0;
   const operando = new Set();
   const vLine = v => `  Origem ${v.origem} → Destino ${v.destino} = ${v.quantidade}${v.material ? " · " + v.material : ""}${v.pesoTotal ? " · " + fmt(v.pesoTotal) + " t" : ""}\n`;
 
@@ -1953,6 +1953,7 @@ function gerarRelatorioTexto(iso) {
     if (a.combustivel === "S-500") totalS500 += litros; else totalS10 += litros;
     totalArla += num(a.litrosArla);
     totalKm += num(a.kmRodado);
+    totalHoras += num(a.horasTrabalhadas);     // base do L/h da frota
     const und = a.unidadeMedia || "km/L";
     txt += `🚛 ${a.equipamento}\n`;
     txt += `Operador: ${a.motorista}\n`;
@@ -2015,6 +2016,7 @@ function gerarRelatorioTexto(iso) {
   txt += `ARLA 32: ${fmtL(totalArla)} L\n`;
   txt += `Total KM: ${fmt(totalKm)} km\n`;
   txt += `Média Frota: ${fmt(mediaFrota, 2)} km/L\n`;
+  if (totalHoras > 0) txt += `L/h Frota: ${fmt(totalDiesel / totalHoras, 2)} L/h\n`;
   txt += `Total Viagens: ${totalViagens}\n`;
   if (totalPeso > 0) txt += `Peso Transportado: ${fmt(totalPeso)} t\n`;
   const totalTon = [...operando].reduce((s, eq) => s + DB.tonEquipDia(eq, iso), 0);
@@ -2371,6 +2373,8 @@ function dadosDaFolha(dias, titulo) {
   const totais = [
     { rot: "DIESEL", val: fmtL(diesel), un: "L" },
     { rot: "MÉDIA DA FROTA", val: fmt(diesel > 0 ? km / diesel : 0, 2), un: "km/L" },
+    { rot: "CONSUMO POR HORA", val: fmt(horas > 0 ? diesel / horas : 0, 2), un: "L/h" },
+    { rot: "CONSUMO POR TONELADA", val: fmt(ton > 0 ? diesel / ton : 0, 2), un: "L/t" },
     { rot: "VIAGENS", val: fmt(viagens), un: "" },
     { rot: "PRODUÇÃO", val: fmt(ton), un: "t" },
     { rot: "KM RODADO", val: fmt(km), un: "km" },
@@ -2379,19 +2383,32 @@ function dadosDaFolha(dias, titulo) {
 
   // uma linha por equipamento (dia) ou uma por dia (período)
   const linhas = [];
+  /* A coluna de média carrega as TRÊS medidas: a principal do equipamento em
+     cima, e L/h + L/ton numa segunda linha menor. Numa folha de 1240 px não
+     cabem três colunas novas sem cortar nome de operador — empilhar cabe. */
   if (varios) {
     lista.forEach((iso, i) => {
       const r = res[i];
       linhas.push({ a: DB.fmtBR(iso), b: `${r.operando.length} equip.`,
         c: fmtL(r.diesel) + " L", d: fmt(r.horas, 1) + " h",
-        e: fmt(r.media, 2), f: fmt(r.viagens) });
+        e: fmt(r.media, 2) + " km/L",
+        eSub: [r.lh > 0 ? fmt(r.lh, 2) + " L/h" : "", r.lton > 0 ? fmt(r.lton, 2) + " L/t" : ""]
+          .filter(Boolean).join(" · "),
+        f: fmt(r.viagens) });
     });
   } else {
-    const d = DB.getDia(lista[0]) || { abastecimentos: [], viagens: [] };
+    const iso = lista[0];
+    const d = DB.getDia(iso) || { abastecimentos: [], viagens: [] };
     (d.abastecimentos || []).forEach(a => {
+      const lhA = DB.lhDoLancamento(a);
+      const ltonA = DB.ltonEquipDia(a.equipamento, iso);
+      const und = a.unidadeMedia || "km/L";
+      // na máquina de horímetro a média JÁ é o L/h: repetir embaixo confundiria
+      const sub = [und === "L/h" ? "" : (lhA > 0 ? fmt(lhA, 2) + " L/h" : ""),
+                   ltonA > 0 ? fmt(ltonA, 2) + " L/t" : ""].filter(Boolean).join(" · ");
       linhas.push({ a: a.equipamento, b: a.motorista || "—",
         c: fmtL(a.litros) + " L", d: (a.horasTrabalhadas || "0") + " h",
-        e: `${a.media} ${a.unidadeMedia || "km/L"}`,
+        e: `${a.media} ${und}`, eSub: sub,
         f: a.kmRodado ? fmt(a.kmRodado) + " km" : "—" });
     });
   }
@@ -2438,7 +2455,7 @@ function alturaDaFolha(d) {
   let h = FOLHA.M + 150;                       // faixa do topo
   h += 118;                                    // título e período
   h += Math.ceil(d.totais.length / 3) * 132 + 30;
-  h += 56 + 44 + d.linhas.length * 52 + 34;    // tabela
+  h += 56 + 44 + d.linhas.length * 62 + 34;    // tabela (linha com a 2ª medida)
   if (d.viag.length) { h += 56; d.viag.forEach(v => { h += 44 + v.itens.length * 38 + 12; }); h += 22; }
   if (d.manut.length) h += 56 + d.manut.length * 76 + 22;
   h += 120;                                    // rodapé
@@ -2520,7 +2537,7 @@ function desenharFolha(d, estilo) {
 
   /* ---- tabela por equipamento (ou por dia) ---- */
   y = secao(d.varios ? "RESUMO POR DIA" : "POR EQUIPAMENTO", y);
-  const pesos = [0.17, 0.23, 0.15, 0.13, 0.17, 0.15];
+  const pesos = [0.16, 0.20, 0.14, 0.11, 0.24, 0.15];
   const xs = []; let acc = L;
   pesos.forEach(p => { xs.push(acc); acc += LARG * p; });
   const alinhas = ["left", "left", "right", "right", "right", "right"];
@@ -2534,16 +2551,20 @@ function desenharFolha(d, estilo) {
     txt("Nenhum lançamento neste dia.", L + 14, y + 36, F.fonte(20, 500), F.cinza);
     y += 60;
   } else {
+    const ALT = 62;
     d.linhas.forEach((ln, i) => {
-      if (i % 2 === 1) { c.fillStyle = F.zebra; c.fillRect(L, y, LARG, 52); }
+      if (i % 2 === 1) { c.fillStyle = F.zebra; c.fillRect(L, y, LARG, ALT); }
       [ln.a, ln.b, ln.c, ln.d, ln.e, ln.f].forEach((v, j) => {
         const fonte = j === 0 ? F.fonte(21, 700) : F.fonte(20, 400);
-        txt(cortar(v, LARG * pesos[j] - 20, fonte), xDe(j), y + 34, fonte,
+        txt(cortar(v, LARG * pesos[j] - 20, fonte), xDe(j), y + 30, fonte,
             j === 0 ? F.navy : F.tinta, alinhas[j]);
       });
+      // L/h e L/ton embaixo da média, menores e em cinza
+      if (ln.eSub) txt(cortar(ln.eSub, LARG * pesos[4] - 20, F.fonte(15, 500)),
+                       xDe(4), y + 50, F.fonte(15, 500), F.cinza, alinhas[4]);
       c.strokeStyle = F.linha; c.lineWidth = 1;
-      c.beginPath(); c.moveTo(L, y + 52); c.lineTo(R, y + 52); c.stroke();
-      y += 52;
+      c.beginPath(); c.moveTo(L, y + ALT); c.lineTo(R, y + ALT); c.stroke();
+      y += ALT;
     });
   }
   y += 34;

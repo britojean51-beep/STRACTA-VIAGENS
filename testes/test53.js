@@ -134,8 +134,37 @@ const URL = 'http://localhost:8130/index.html';
   ok('o PNG sai com 1240 de largura', img.w === 1240, img.w + '×' + img.h);
   ok('e a folha tem pelo menos a altura de uma A4', img.h >= 1754, img.h);
   ok('o PNG tem conteúdo de verdade', img.png, String(img.png));
+  /* L/h e L/ton, nos dois lugares (r54) */
+  const medidas = await p.evaluate(() => {
+    const iso = DB.hojeISO();
+    const r = DB.resumoDia(iso);
+    const d = dadosDaFolha([iso], 'R');
+    const achar = rot => d.totais.find(t => t.rot === rot);
+    return {
+      lh: achar('CONSUMO POR HORA'), lton: achar('CONSUMO POR TONELADA'),
+      dbLh: fmt(r.lh, 2), dbLton: fmt(r.lton, 2),
+      subs: d.linhas.map(l => l.eSub),
+      texto: gerarRelatorioTexto(iso)
+    };
+  });
+  ok('a folha tem o quadro de L/h', !!medidas.lh && medidas.lh.un === 'L/h',
+     medidas.lh && medidas.lh.val + ' ' + medidas.lh.un);
+  ok('a folha tem o quadro de L/ton', !!medidas.lton && medidas.lton.un === 'L/t',
+     medidas.lton && medidas.lton.val + ' ' + medidas.lton.un);
+  ok('e os dois batem com o DB.resumoDia',
+     medidas.lh.val === medidas.dbLh && medidas.lton.val === medidas.dbLton,
+     `${medidas.lh.val}/${medidas.dbLh} · ${medidas.lton.val}/${medidas.dbLton}`);
+  ok('cada equipamento mostra L/h embaixo da média',
+     medidas.subs.some(x => x && x.includes('L/h')), JSON.stringify(medidas.subs.slice(0, 3)));
+  ok('o relatório de texto passa a ter o L/h da frota',
+     /L\/h Frota: \d/.test(medidas.texto),
+     (medidas.texto.match(/L\/h Frota:.*/) || ['não achei'])[0]);
+  ok('e continua com o L/Ton da frota',
+     /L\/Ton Frota: \d/.test(medidas.texto),
+     (medidas.texto.match(/L\/Ton Frota:.*/) || ['não achei'])[0]);
+
   ok('a folha traz as quatro partes que ele pediu',
-     img.linhas > 0 && img.viag > 0 && img.manut > 0 && img.totais.length === 6,
+     img.linhas > 0 && img.viag > 0 && img.manut > 0 && img.totais.length === 8,
      `${img.linhas} equip · ${img.viag} viagens · ${img.manut} manut · ${img.totais.length} totais`);
 
   // os números da folha batem com o relatório de texto
