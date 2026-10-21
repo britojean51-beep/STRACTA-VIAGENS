@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck20";
+const VERSAO = "ck21";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -748,6 +748,7 @@ function verMidia(url, tipo) {
 
 async function finalizar() {
   const r = Estado.rascunho;
+  if (!r) return;
   const faltam = r.modelo.itens.filter(it => !r.respostas[it.id]);
   if (faltam.length) {
     toast("Faltam " + faltam.length + " item(ns) para responder.", "erro");
@@ -767,12 +768,9 @@ async function finalizar() {
   const defeitos = itens.filter(i => i.st === "nok");
   const criticos = defeitos.filter(i => i.critico);
   const resultado = criticos.length ? "bloqueado" : defeitos.length ? "restricao" : "liberado";
-  const R = RESULTADOS[resultado];
-  if (!(await confirmar("", { titulo: "Enviar checklist?", ok: "Enviar", cancelar: "Voltar",
-    html: `<p><b>${h(nomeEquip(r.equip))}</b></p>
-      <p><span class="tag ${R.cls} tag-grande">${R.ico} ${R.txt}</span></p>
-      <p>${defeitos.length ? defeitos.length + " item(ns) não conforme(s):" : "Nenhum item não conforme."}</p>
-      ${defeitos.length ? `<ul>${defeitos.map(d => `<li>${h(d.texto)}${d.critico ? ' <span class="critico">CRÍTICO</span>' : ""}</li>`).join("")}</ul>` : ""}` }))) return;
+  // tudo respondido: finaliza e envia direto (a tela de resultado mostra o resumo)
+  if (finalizar.indo === r.id) return;   // toque duplo no botão: envia uma vez só
+  finalizar.indo = r.id;
 
   const agora = Date.now();
   const midias = {};

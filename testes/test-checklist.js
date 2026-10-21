@@ -187,19 +187,12 @@ async function sair(page) {
   await page.click('#btnContinuar'); await page.waitForSelector('.ck-item:nth-child(1).nok');
   ok(await page.inputValue('#ckKm') === '152340', 'rascunho sobrevive ao fechar o app no meio');
   ok(!(await page.isVisible('#inFoto')) && !(await page.isVisible('#inVideo')), 'campos "Escolher arquivo" ficam escondidos');
-  await page.click('#ckFinalizar');
-  await page.waitForSelector('.mdl');
-  const mdl = await page.textContent('.mdl');
-  ok(mdl.includes('Enviar checklist?') && mdl.includes('MANUTENÇÃO') && mdl.includes('Pneus') && mdl.includes('CRÍTICO')
-    && (await page.textContent('#mdlOk')) === 'Enviar' && (await page.textContent('#mdlCancel')) === 'Voltar',
-    'janela do app: título, resultado, itens não conformes e botões Enviar/Voltar');
-  await shot(page, '12-confirmar', false);
-  await page.click('#mdlCancel');
-  ok(!(await page.$('.mdl')) && !(await page.$('.resultado')), 'Voltar fecha a janela e não envia');
-  await page.click('#ckFinalizar');
-  await page.click('#mdlOk');
+  await page.$eval('#ckFinalizar', b => { b.click(); b.click(); });   // toque duplo
+  ok(!(await page.$('.mdl')), 'Finalizar envia direto, sem perguntar');
   await page.waitForSelector('.resultado');
   ok((await page.textContent('.resultado h2')).includes('MANUTENÇÃO'), 'defeito crítico = MANUTENÇÃO');
+  await page.waitForTimeout(300);
+  ok(Object.keys(await banco(page)).filter(k => k.startsWith('checklist_inspecoes/')).length === 1, 'toque duplo em Finalizar não envia duas vezes');
   ok((await page.textContent('.resultado .aviso-critico')).includes('Acione a manutenção'), 'tela final repete "Acione a manutenção"');
   await shot(page, '04-resultado');
   await page.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('__ck_banco__') || '{}')).filter(k => k.startsWith('checklist_fotos/')).length === 1);
@@ -239,7 +232,6 @@ async function sair(page) {
   await page.waitForSelector('.card .mini-midia img[src^="blob:"]');
   await page.click('#ckTudoOk');
   await page.click('#ckFinalizar');
-  await page.click('#mdlOk');
   await page.waitForSelector('.resultado');
   ok((await page.textContent('.resultado h2')).includes('OPERACIONAL COM OBSERVAÇÃO'), 'defeito não crítico = OPERACIONAL COM OBSERVAÇÃO');
   ok((await page.textContent('.resultado + p')).includes('Sem sinal'), 'avisa que ficou guardado');
@@ -483,7 +475,6 @@ async function sair(page) {
   await page.fill('.ck-item:nth-child(2) .ck-obs', 'Pedal duro');
   await page.click('#ckTudoOk');
   await page.click('#ckFinalizar');
-  await page.click('#mdlOk');
   await page.waitForSelector('.resultado');
   ok((await page.textContent('.resultado h2')).includes('OPERACIONAL COM OBSERVAÇÃO'), 'defeito em item "com observação" = OPERACIONAL COM OBSERVAÇÃO (segue operando)');
   await page.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem('__ck_banco__')))
