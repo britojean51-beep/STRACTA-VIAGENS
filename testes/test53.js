@@ -128,7 +128,9 @@ const URL = 'http://localhost:8130/index.html';
     const d = dadosDaFolha([DB.hojeISO()], 'RELATÓRIO DIÁRIO');
     const cv = desenharFolha(d, 'faixa');
     return { w: cv.width, h: cv.height, png: cv.toDataURL('image/png').length > 5000,
-             totais: d.totais.map(t => t.rot + '=' + t.val), linhas: d.linhas.length,
+             totais: d.totais.map(t => t.rot + '=' + t.val),
+             // r57: no diário são quadros; linhas é só do semanal/mensal
+             linhas: (d.quadros || []).length || d.linhas.length,
              viag: d.viag.length, manut: d.manut.length };
   });
   ok('o PNG sai com 1240 de largura', img.w === 1240, img.w + '×' + img.h);
@@ -143,7 +145,9 @@ const URL = 'http://localhost:8130/index.html';
     return {
       lh: achar('CONSUMO POR HORA'), lton: achar('CONSUMO POR TONELADA'),
       dbLh: fmt(r.lh, 2), dbLton: fmt(r.lton, 2),
-      subs: d.linhas.map(l => l.eSub),
+      // no diário o equipamento virou QUADRO (r57): o L/h saiu de linhas[].eSub
+      // e passou a ser um campo do quadro. A medida continua lá, em outro lugar.
+      subs: (d.quadros || []).map(q => q.campos.flat().map(([r, v]) => r + '=' + v).join(' · ')),
       texto: gerarRelatorioTexto(iso)
     };
   });
@@ -154,8 +158,8 @@ const URL = 'http://localhost:8130/index.html';
   ok('e os dois batem com o DB.resumoDia',
      medidas.lh.val === medidas.dbLh && medidas.lton.val === medidas.dbLton,
      `${medidas.lh.val}/${medidas.dbLh} · ${medidas.lton.val}/${medidas.dbLton}`);
-  ok('cada equipamento mostra L/h embaixo da média',
-     medidas.subs.some(x => x && x.includes('L/h')), JSON.stringify(medidas.subs.slice(0, 3)));
+  ok('cada equipamento mostra o L/h no quadro dele',
+     medidas.subs.some(x => x && /L\/h=\d/.test(x)), (medidas.subs[0] || '').slice(0, 90));
   ok('o relatório de texto passa a ter o L/h da frota',
      /L\/h Frota: \d/.test(medidas.texto),
      (medidas.texto.match(/L\/h Frota:.*/) || ['não achei'])[0]);

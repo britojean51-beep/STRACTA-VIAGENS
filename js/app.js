@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "21/10/2026 · r56 (peso total da rota)";
+const VERSION = "21/10/2026 · r57 (relatório completo por equipamento)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -234,6 +234,19 @@ function medidores(eq) {
     // "12.500 km · 1.200,5 h" — em máquina de horímetro, só a hora
     linha() { return (this.temKm ? this.kmTxt + " · " : "") + this.horTxt; }
   };
+}
+
+/* O motivo da manutenção do equipamento naquele dia: o serviço apontado, com o
+   período quando os horários foram digitados (r53). Devolve "" quando não houve
+   manutenção — o relatório não pode ganhar uma linha vazia por isso. */
+function motivoManutencao(eq, iso) {
+  const d = DB.getDia(iso) || { manutencoes: [] };
+  const ms = (d.manutencoes || []).filter(m => m.equipamento === eq);
+  if (!ms.length) return "";
+  return ms.map(m => {
+    const hr = [m.entradaHora, m.saidaHora].filter(Boolean).join(" às ");
+    return [m.tipo, m.servico].filter(Boolean).join(" · ") + (hr ? ` (${hr})` : "");
+  }).join(" | ");
 }
 
 /* Medidor que CAI é quase sempre dígito a menos — e um horímetro errado vira o
@@ -1966,9 +1979,13 @@ function gerarRelatorioTexto(iso) {
     const und = a.unidadeMedia || "km/L";
     txt += `🚛 ${a.equipamento}\n`;
     txt += `Operador: ${a.motorista}\n`;
-    txt += `Horímetro: ${a.horimetroFinal}\n`;
-    txt += `Horas Trabalhadas: ${a.horasTrabalhadas} h\n`;
-    if (und === "km/L") txt += `KM Rodado: ${fmt(a.kmRodado)} km\n`;
+    txt += `Horímetro: ${fmtN1(a.horimetroInicial)} → ${fmtN1(a.horimetroFinal)}\n`;
+    txt += `Horas (horímetro): ${a.horasTrabalhadas} h\n`;
+    // o KM só existe em equipamento com odômetro
+    if (und === "km/L") {
+      txt += `KM: ${fmt(a.kmInicial)} → ${fmt(a.kmFinal)}\n`;
+      txt += `KM Rodado: ${fmt(a.kmRodado)} km\n`;
+    }
     txt += `Combustível: ${a.combustivel || "S-10"} · ${fmtL(a.litros)} L\n`;
     if (a.litrosArla) txt += `ARLA 32: ${fmtL(a.litrosArla)} L\n`;
     txt += `Média: ${a.media} ${und}\n`;
@@ -1980,6 +1997,9 @@ function gerarRelatorioTexto(iso) {
       txt += `L/Ton: ${fmt(DB.ltonEquipDia(a.equipamento, iso), 2)} L/t\n`;
     }
     if (a.situacao) txt += `Situação: ${a.situacao}\n`;
+    // em manutenção, o motivo tem de aparecer: é a pergunta que todo mundo faz depois
+    const mot = motivoManutencao(a.equipamento, iso);
+    if (mot) txt += `Motivo: ${mot}\n`;
     const vs = viagPorEq[a.equipamento];
     if (vs && vs.length) {
       let sub = 0, subP = 0;
@@ -2005,7 +2025,10 @@ function gerarRelatorioTexto(iso) {
   // manutenções
   if (d.manutencoes.length) {
     txt += `🔧 MANUTENÇÃO\n`;
-    d.manutencoes.forEach(m => { txt += `${m.equipamento} · ${m.tipo}: ${m.servico}\n`; });
+    d.manutencoes.forEach(m => {
+      const hr = [m.entradaHora, m.saidaHora].filter(Boolean).join(" às ");
+      txt += `${m.equipamento} · ${m.tipo}: ${m.servico}${hr ? ` (${hr})` : ""}\n`;
+    });
     txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
   }
 
@@ -2405,20 +2428,42 @@ function dadosDaFolha(dias, titulo) {
           .filter(Boolean).join(" · "),
         f: fmt(r.viagens) });
     });
-  } else {
+  }
+
+  /* ---- No relatório DIÁRIO, cada equipamento virou um QUADRO com os onze campos.
+     Onze colunas não cabem numa linha de tabela a 1240 px sem cortar nome de
+     operador. No semanal e no mensal continua a tabela por dia: estes campos são
+     de lançamento, e um quadro por dia não significaria nada. ---- */
+  const quadros = [];
+  if (!varios) {
     const iso = lista[0];
-    const d = DB.getDia(iso) || { abastecimentos: [], viagens: [] };
+    const d = DB.getDia(iso) || { abastecimentos: [] };
     (d.abastecimentos || []).forEach(a => {
+      const und = a.unidadeMedia || "km/L";
+      const temKm = und === "km/L";
       const lhA = DB.lhDoLancamento(a);
       const ltonA = DB.ltonEquipDia(a.equipamento, iso);
-      const und = a.unidadeMedia || "km/L";
-      // na máquina de horímetro a média JÁ é o L/h: repetir embaixo confundiria
-      const sub = [und === "L/h" ? "" : (lhA > 0 ? fmt(lhA, 2) + " L/h" : ""),
-                   ltonA > 0 ? fmt(ltonA, 2) + " L/t" : ""].filter(Boolean).join(" · ");
-      linhas.push({ a: a.equipamento, b: a.motorista || "—",
-        c: fmtL(a.litros) + " L", d: (a.horasTrabalhadas || "0") + " h",
-        e: `${a.media} ${und}`, eSub: sub,
-        f: a.kmRodado ? fmt(a.kmRodado) + " km" : "—" });
+      const nada = "—";
+      quadros.push({
+        equip: a.equipamento,
+        operador: a.motorista || nada,
+        situacao: a.situacao || "",
+        motivo: motivoManutencao(a.equipamento, iso),
+        // os onze campos, já formatados e já com o "—" de quem não tem
+        campos: [
+          [["HORÍM. INICIAL", fmtN1(a.horimetroInicial)],
+           ["HORÍM. FINAL", fmtN1(a.horimetroFinal)],
+           ["HORAS (HORÍMETRO)", (a.horasTrabalhadas || "0") + " h"]],
+          [["KM INICIAL", temKm ? fmt(a.kmInicial) : nada],
+           ["KM FINAL", temKm ? fmt(a.kmFinal) : nada],
+           ["KM RODADOS", temKm && a.kmRodado ? fmt(a.kmRodado) + " km" : nada]],
+          [["DIESEL", fmtL(a.litros) + " L" + (a.litrosArla ? ` (+${fmtL(a.litrosArla)} ARLA)` : "")],
+           ["MÉDIA", `${a.media} ${und}`],
+           // em máquina de horímetro a média JÁ é o L/h: repetir confundiria
+           ["L/h", und === "L/h" ? nada : (lhA > 0 ? fmt(lhA, 2) : nada)],
+           ["L/TON", ltonA > 0 ? fmt(ltonA, 2) : nada]]
+        ]
+      });
     });
   }
 
@@ -2451,6 +2496,7 @@ function dadosDaFolha(dias, titulo) {
 
   return {
     titulo: titulo || "RELATÓRIO DIÁRIO",
+    quadros,
     periodo: varios ? `${DB.fmtBR(lista[0])} a ${DB.fmtBR(lista[lista.length - 1])}` : DB.fmtBR(lista[0]),
     varios, totais, linhas, viag, manut,
     nEquip: equips.size, nManut: manuts.size, arla,
@@ -2464,7 +2510,14 @@ function alturaDaFolha(d) {
   let h = FOLHA.M + 150;                       // faixa do topo
   h += 118;                                    // título e período
   h += Math.ceil(d.totais.length / 3) * 132 + 30;
-  h += 56 + 44 + d.linhas.length * 62 + 34;    // tabela (linha com a 2ª medida)
+  if (d.quadros && d.quadros.length) {
+    // um quadro por equipamento: cabeçalho + 3 faixas de campos + o motivo
+    h += 56;
+    d.quadros.forEach(q => { h += 54 + q.campos.length * 66 + (q.motivo ? 40 : 0) + 22; });
+    h += 12;
+  } else {
+    h += 56 + 44 + d.linhas.length * 62 + 34;  // tabela por dia (semanal e mensal)
+  }
   if (d.viag.length) { h += 56; d.viag.forEach(v => { h += 44 + v.itens.length * 38 + 12; }); h += 22; }
   if (d.manut.length) h += 56 + d.manut.length * 76 + 22;
   h += 120;                                    // rodapé
@@ -2544,8 +2597,50 @@ function desenharFolha(d, estilo) {
   });
   y += Math.ceil(d.totais.length / COLS) * (ch + 20) + 30;
 
-  /* ---- tabela por equipamento (ou por dia) ---- */
-  y = secao(d.varios ? "RESUMO POR DIA" : "POR EQUIPAMENTO", y);
+  /* ---- um quadro por equipamento (relatório diário) ---- */
+  if (d.quadros && d.quadros.length) {
+    y = secao("POR EQUIPAMENTO", y);
+    const corSit = sit => /manuten/i.test(sit) ? F.vermelho
+      : /reserva|parado/i.test(sit) ? "#b45309"
+      : /final/i.test(sit) ? F.cinza : F.verde;
+
+    d.quadros.forEach(q => {
+      const alt = 54 + q.campos.length * 66 + (q.motivo ? 40 : 0);
+      c.fillStyle = F.zebra; c.fillRect(L, y, LARG, alt);
+      c.fillStyle = corSit(q.situacao); c.fillRect(L, y, 6, alt);
+
+      // cabeçalho: equipamento, operador e a situação com a cor dela
+      txt(q.equip, L + 24, y + 36, F.fonte(26, 800), F.navy);
+      c.font = F.fonte(26, 800);
+      txt(q.operador, L + 24 + c.measureText(q.equip).width + 20, y + 36, F.fonte(20, 500), F.cinza);
+      if (q.situacao) txt(q.situacao, R - 16, y + 36, F.fonte(19, 700), corSit(q.situacao), "right");
+      c.strokeStyle = F.linha; c.lineWidth = 1;
+      c.beginPath(); c.moveTo(L + 24, y + 48); c.lineTo(R - 16, y + 48); c.stroke();
+
+      let yy = y + 54;
+      q.campos.forEach(faixa => {
+        const n = faixa.length, cw2 = (LARG - 44) / n;
+        faixa.forEach(([rot, val], i) => {
+          const x = L + 24 + i * cw2;
+          txt(cortar(rot, cw2 - 14, F.fonte(14, 700)), x, yy + 24, F.fonte(14, 700), F.cinza);
+          txt(cortar(String(val), cw2 - 14, F.fonte(22, 700)), x, yy + 54, F.fonte(22, 700), F.tinta);
+        });
+        yy += 66;
+      });
+
+      // em manutenção, o motivo tem de aparecer junto dos números dele
+      if (q.motivo) {
+        c.fillStyle = "#fde8e8"; c.fillRect(L + 24, yy, LARG - 40, 34);
+        txt(cortar("Motivo: " + q.motivo, LARG - 68, F.fonte(18, 600)), L + 36, yy + 23,
+            F.fonte(18, 600), F.vermelho);
+      }
+      y += alt + 22;
+    });
+    y += 12;
+  } else {
+
+  /* ---- tabela por dia (semanal e mensal) ---- */
+  y = secao("RESUMO POR DIA", y);
   const pesos = [0.16, 0.20, 0.14, 0.11, 0.24, 0.15];
   const xs = []; let acc = L;
   pesos.forEach(p => { xs.push(acc); acc += LARG * p; });
@@ -2577,6 +2672,7 @@ function desenharFolha(d, estilo) {
     });
   }
   y += 34;
+  }
 
   /* ---- viagens detalhadas ---- */
   if (d.viag.length) {
