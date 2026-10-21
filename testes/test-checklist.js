@@ -303,6 +303,12 @@ async function sair(page) {
   // um terceiro equipamento que nunca fez checklist
   await page.evaluate(() => { const b = JSON.parse(localStorage.getItem('__ck_banco__'));
     b['checklist_equipamentos/semck'] = { prefixo: 'PC-09', placa: '', tipo: 'maquina' };
+    // e um checklist dele de 3 dias atrás, ainda em manutenção
+    const d = new Date(); d.setDate(d.getDate() - 3); d.setHours(9, 0, 0, 0);
+    b['checklist_inspecoes/antigo'] = { equipamento: { id: 'semck', prefixo: 'PC-09', placa: '', tipo: 'maquina' }, criadoEm: d.getTime(),
+      criadoPor: 'carlos@gp2t.local', criadoNome: 'Carlos', resultado: 'bloqueado', defeitos: 1, tratativa: { status: 'aberto' },
+      itens: [{ id: 'x', texto: 'Esteira', critico: true, st: 'nok', obs: 'Rolete quebrado' }], midias: {} };
+    b['checklist_equipamentos/semck'].pendencias = { antigo: 'bloqueado' };
     localStorage.setItem('__ck_banco__', JSON.stringify(b)); });
   await entrar(page, 'ana');
   ok(await page.isVisible('[data-ir="painel"]') && !(await page.isVisible('[data-ir="cadastros"]')), 'gestor vê Painel, não vê Cadastros');
@@ -314,6 +320,22 @@ async function sair(page) {
     'situação da frota: CB-12 em manutenção, ESC-03 com restrição');
   ok(/Sem checklist hoje \(1\)\s*PC-09/.test(frota), 'equipamento sem checklist hoje NÃO conta como Operando: fica em "Sem checklist hoje"');
   await shot(page, '06-painel');
+  ok(frota.includes('PC-09 (🔧 pendente de outro dia)'), 'hoje sem checklist, mas com defeito de outro dia: avisa');
+  ok(!(await page.$('[data-d]')) && await page.isVisible('#pDia'), 'escolhe o dia (sem "7 dias" / "30 dias")');
+  const tres = await page.evaluate(() => { const d = new Date(); d.setDate(d.getDate() - 3); return diaDe(d.getTime()); });
+  await page.fill('#pDia', tres);
+  await page.waitForFunction(() => document.querySelectorAll('#pLista .item').length === 1);
+  const frota3 = await page.textContent('#pFrota');
+  ok(frota3.includes('Situação da frota · ' + tres.split('-').reverse().join('/')) && /Em manutenção \(1\)\s*PC-09/.test(frota3)
+    && frota3.includes('Sem checklist no dia (2)') && frota3.includes('Operando (0)') && (await page.textContent('#pLista')).includes('PC-09'),
+    'dia escolhido: só os checklists e a situação daquele dia');
+  await shot(page, '06b-painel-dia');
+  await page.click('[data-passo="-1"]');
+  await page.waitForSelector('#pLista + .vazio');
+  ok(await page.$$eval('#pLista .item', l => l.length) === 0, 'seta ‹ vai para o dia anterior');
+  await page.click('[data-passo="0"]');
+  await page.waitForFunction(() => document.querySelectorAll('#pLista .item').length === 2);
+  ok((await page.textContent('#pFrota')).includes('Situação da frota · hoje') && await page.isDisabled('[data-passo="1"]'), 'botão Hoje volta; não passa de hoje');
   await page.click('[data-f="bloqueado"]');
   ok(await page.$$eval('#pLista .item', l => l.length) === 1, 'filtro de bloqueados');
   await page.click('#pLista .item');
