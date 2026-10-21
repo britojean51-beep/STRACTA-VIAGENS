@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "21/10/2026 · r55b (parada não se perde ao religar a nuvem)";
+const VERSION = "21/10/2026 · r56 (peso total da rota)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -1468,8 +1468,8 @@ function telaViagens() {
           </datalist>
         </div>
         <div class="field">
-          <label>Peso por viagem (t) <span class="mini">opcional</span></label>
-          <input id="vPeso" inputmode="decimal" placeholder="ex: 30">
+          <label>Peso total da rota (t) <span class="mini">opcional</span></label>
+          <input id="vPeso" inputmode="decimal" placeholder="ex: 450">
         </div>
       </div>
       <p class="hint" id="vPesoTotal" style="display:none"></p>
@@ -1497,7 +1497,7 @@ function telaViagens() {
       box.innerHTML = '<p class="empty">Nenhuma rota adicionada.</p>';
     } else {
       box.innerHTML = viagensBuffer.map((v, i) => {
-        const pt = (Number(v.pesoViagem) || 0) * Number(v.quantidade);
+        const pt = DB.toN(v.pesoTotal);     // já é o total; rota antiga também o tem
         const extra = [v.material || null, pt > 0 ? `${fmt(pt)} t` : null].filter(Boolean).join(" · ");
         return `
         <div class="itemrow">
@@ -1556,11 +1556,19 @@ function telaViagens() {
     ).join("") + `<div class="spacer"></div><p class="tag-total">Total frota: ${total} viagens${pesoTotalFrota > 0 ? ` · ${fmt(pesoTotalFrota)} t` : ""}</p>` + barra;
   }
 
+  /* O total agora é digitado, então a dica vai no caminho contrário: mostra a
+     média por viagem. É o que pega o dedo errado na hora — 4.500 t em 15 viagens
+     dão 300 t por viagem, e dá para ver que sobrou um zero. */
   const previewPeso = () => {
-    const pt = num($("#vPeso").value) * num($("#vQtd").value);
+    const total = num($("#vPeso").value), qtd = num($("#vQtd").value);
     const el = $("#vPesoTotal");
-    if (pt > 0) { el.style.display = "block"; el.innerHTML = `⚖️ Peso total desta rota: <b>${fmt(pt)} t</b>`; }
-    else el.style.display = "none";
+    if (total > 0 && qtd > 0) {
+      el.style.display = "block";
+      el.innerHTML = `⚖️ <b>${fmt(total)} t</b> em ${fmt(qtd)} viagem(ns) = <b>${fmt(total / qtd, 1)} t</b> por viagem`;
+    } else if (total > 0) {
+      el.style.display = "block";
+      el.innerHTML = `⚖️ Peso total da rota: <b>${fmt(total)} t</b>`;
+    } else el.style.display = "none";
   };
   $("#vQtd").oninput = previewPeso;
   $("#vPeso").oninput = previewPeso;
@@ -1585,12 +1593,13 @@ function telaViagens() {
     if (mot === null) return;
     if (!orig || !dest) { toast("Informe origem e destino", "err"); return; }
     if (!qtd) { toast("Informe a quantidade", "err"); return; }
-    const pesoViagem = num($("#vPeso").value);
+    // o peso total é DIGITADO, não mais derivado de peso × quantidade
+    const pesoTotal = num($("#vPeso").value);
     viagensBuffer.push({
       equipamento: equip, motorista: mot,
       origem: orig.padStart(2, "0"), destino: dest.padStart(2, "0"), quantidade: qtd,
-      material: $("#vMat").value.trim(), pesoViagem: pesoViagem || null,
-      pesoTotal: pesoViagem ? pesoViagem * qtd : null
+      material: $("#vMat").value.trim(),
+      pesoTotal: pesoTotal || null
     });
     $("#vOrig").value = ""; $("#vDest").value = ""; $("#vQtd").value = ""; $("#vPeso").value = "";
     $("#vPesoTotal").style.display = "none";
@@ -2214,12 +2223,12 @@ function montarCSV(dias, titulo) {
   L.push("");
   // Viagens
   L.push(linha(["VIAGENS"]));
-  L.push(linha(["Data", "Equipamento", "Operador", "Origem", "Destino", "Qtd viagens", "Material", "Peso/viagem (t)", "Peso total (t)"]));
+  L.push(linha(["Data", "Equipamento", "Operador", "Origem", "Destino", "Qtd viagens", "Material", "Peso total (t)"]));
   lista.forEach(iso => {
     const d = DB.getDia(iso) || { viagens: [] };
     (d.viagens || []).forEach(v => L.push(linha([
       DB.fmtBR(iso), v.equipamento, v.motorista || "", v.origem, v.destino, v.quantidade,
-      v.material || "", v.pesoViagem != null ? fmt(v.pesoViagem) : "", v.pesoTotal != null ? fmt(v.pesoTotal) : ""
+      v.material || "", v.pesoTotal != null ? fmt(v.pesoTotal) : ""
     ])));
   });
   L.push("");

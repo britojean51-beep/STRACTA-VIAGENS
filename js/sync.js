@@ -57,7 +57,10 @@ const Sync = {
       "Destino": v.destino,
       "Viagens": v.quantidade,
       "Material": v.material || "",
-      "Peso/viagem (t)": v.pesoViagem ?? "",
+      /* O peso por viagem saiu do app: agora ele lança o TOTAL da rota. A coluna
+         fica na planilha dele porque o abrir() só cria coluna, nunca apaga — as
+         linhas antigas mantêm o valor, as novas vão em branco. */
+      "Peso/viagem (t)": "",
       "Peso total (t)": v.pesoTotal ?? ""
     };
   },
