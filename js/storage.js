@@ -153,6 +153,19 @@ const DB = {
     return v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
   },
 
+  /* Tonelagem e peso: a balança marca décimo e centésimo, e arredondar aqui
+     mentiria sobre a produção dele. Mesmo espírito do fmtL dos litros (r42):
+     mostra a casa que existe e esconde o zero à direita.
+       450 → "450"   450,5 → "450,5"   450,45 → "450,45"   3120,5 → "3.120,5"
+     Duas casas, e não uma: com uma, quem pesa 450,45 voltaria a ser arredondado
+     — o mesmo bug com outro nome. */
+  fmtT(n) {
+    const v = this.toN(n);
+    const cent = Math.round(v * 100) % 100;
+    const d = cent === 0 ? 0 : (cent % 10 === 0 ? 1 : 2);
+    return v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+  },
+
   save() {
     localStorage.setItem(DB_KEY, JSON.stringify(this._cache));
   },
