@@ -307,3 +307,8 @@ body.tela-login main { padding: 0 0 24px; }
 .acompanhe p { margin: 8px 0 0; }
 .btn-acompanhar { margin: 10px 0 0; padding: 10px; font-size: 15px; }
 .aguardando { margin: 10px 0 0; font-weight: 600; color: var(--muted); }
+/* visualizado pela gestão */
+.visto-card { display: flex; flex-direction: column; gap: 8px; }
+.visto-card p { margin: 0; }
+small .visto { display: block; color: var(--ok); font-weight: 600; }
+small .nao-visto { display: block; color: var(--brand-forte); font-weight: 700; }
