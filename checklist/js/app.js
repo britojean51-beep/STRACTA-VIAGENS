@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck22";
+const VERSAO = "ck23";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -115,6 +115,11 @@ function statusPainel(i) {
   return i.atual || (i.resolvido ? "liberado" : i.resultado);
 }
 /* o checklist em aberto mais recente que deixou o equipamento nessa situação */
+/* Quem da gestão marcou que viu o checklist (a chave é o e-mail com "," no lugar de ".") */
+const vistosDe = i => Object.values((i && i.vistos) || {}).sort((a, b) => a.em - b.em);
+const chaveVisto = email => String(email || "").replace(/\./g, ",");
+const textoVistos = v => v.map(x => x.por + " (" + dataHora(x.em) + ")").join(", ");
+
 function pendenciaMaisRecente(e) {
   const p = (e && e.pendencias) || {}, alvo = situacaoDe(e) === "manutencao" ? "bloqueado" : "restricao";
   return Object.keys(p).filter(k => p[k] === alvo).sort().pop() || "";
@@ -292,7 +297,8 @@ const Historico = {
     const nok = (d.itens || []).filter(x => x.st === "nok").length;
     return { id: d.id, equip: nomeEquip(d.equipamento), resultado: d.resultado, defeitos: d.defeitos || 0,
       criadoEm: d.criadoEm, enviado: true, atual, resolvido: atual === "liberado",
-      itensNok: nok, resolvidos: nok - itensAbertos(d).length, solicitados: solicitadosAbertos(d).length };
+      itensNok: nok, resolvidos: nok - itensAbertos(d).length, solicitados: solicitadosAbertos(d).length,
+      vistoPor: vistosDe(d).map(x => x.por) };
   },
   /* troca a lista pela do servidor; devolve o que mudou de situação */
   aplicar(meus) {
@@ -457,7 +463,8 @@ Render.inicio = function () {
         <div class="linha-topo"><b>${h(x.equip)}</b><span class="tag ${S.cls}">${S.ico} ${ok ? "Operando" : S === RESULTADOS.bloqueado ? "Em manutenção" : "Com restrição"}</span></div>
         <p class="mini">${ok ? "✅ Voltou a operar — tudo resolvido." :
           (x.itensNok != null ? `${x.resolvidos} de ${x.itensNok} item(ns) resolvido(s)` : "Aguardando a manutenção")
-          + (x.solicitados ? ` · 🛒 ${x.solicitados} aguardando peça` : "")}</p>
+          + (x.solicitados ? ` · 🛒 ${x.solicitados} aguardando peça` : "")}
+          <br>${x.vistoPor && x.vistoPor.length ? "👁 Visto por " + h(x.vistoPor.join(", ")) : "Ainda não visualizado pela gestão"}</p>
         <button class="btn btn-ghost btn-acompanhar" data-ver="${h(x.id)}">Ver andamento ›</button></div>`;
     }).join("") : ""}
     <p class="muted mini" data-pendentes></p>
@@ -466,7 +473,7 @@ Render.inicio = function () {
     ${hist.length ? hist.slice(0, 20).map(x => {
       const R = RESULTADOS[statusPainel(x)] || RESULTADOS.liberado;
       return `<div class="item ${R.cls}" ${x.enviado ? `data-ver="${h(x.id)}"` : ""}>
-        <div><b>${h(x.equip)}</b><small>${dataHora(x.criadoEm)} · ${x.defeitos || 0} não conforme(s)${statusPainel(x) !== x.resultado ? " · era " + ((RESULTADOS[x.resultado] || R).txt.toLowerCase()) : ""}</small></div>
+        <div><b>${h(x.equip)}</b><small>${dataHora(x.criadoEm)} · ${x.defeitos || 0} não conforme(s)${statusPainel(x) !== x.resultado ? " · era " + ((RESULTADOS[x.resultado] || R).txt.toLowerCase()) : ""}${x.vistoPor && x.vistoPor.length ? " · 👁 visto" : ""}</small></div>
         <div class="dir"><span class="tag ${R.cls}">${R.ico} ${R.txt}</span>
         <small>${statusPainel(x) === "liberado" && x.resultado !== "liberado" ? "✔ resolvido" : statusPainel(x) !== x.resultado ? "◐ em andamento" : x.enviado ? "✔ enviado" : "⏳ na fila"}</small></div></div>`;
     }).join("") : `<p class="vazio">Nenhum checklist feito neste aparelho ainda.</p>`}`;
@@ -886,7 +893,8 @@ Render.painel = async function () {
       <div id="pLista">${l.map(i => {
         const R = RESULTADOS[statusPainel(i)] || RESULTADOS.liberado;
         return `<div class="item ${R.cls}" data-abrir="${h(i.id)}">
-          <div><b>${h(nomeEquip(i.equipamento))}</b><small>${dataHora(i.criadoEm)} · ${h(i.criadoNome)}${PERFIS[i.criadoPerfil] ? " (" + PERFIS[i.criadoPerfil].toLowerCase() + ")" : ""}${statusPainel(i) !== i.resultado ? " · era " + RESULTADOS[i.resultado].txt.toLowerCase() : ""}</small></div>
+          <div><b>${h(nomeEquip(i.equipamento))}</b><small>${dataHora(i.criadoEm)} · ${h(i.criadoNome)}${PERFIS[i.criadoPerfil] ? " (" + PERFIS[i.criadoPerfil].toLowerCase() + ")" : ""}${statusPainel(i) !== i.resultado ? " · era " + RESULTADOS[i.resultado].txt.toLowerCase() : ""}
+            ${vistosDe(i).length ? `<span class="visto">👁 ${h(vistosDe(i).map(x => x.por).join(", "))}</span>` : `<span class="nao-visto">● não visualizado</span>`}</small></div>
           <div class="dir">${Dados.ehAdmin() ? `<button class="apagar" data-apagar="${h(i.id)}" aria-label="Apagar checklist">🗑</button>` : ""}<span class="tag ${R.cls}">${R.ico} ${i.defeitos || 0}</span>
           <small>${statusPainel(i) === "liberado" && i.resultado !== "liberado" ? "✔ resolvido" : statusPainel(i) !== i.resultado ? "◐ em andamento" : i.tratativa ? "⏳ aberto" : ""}
           ${solicitadosAbertos(i).length ? " · 🛒 " + solicitadosAbertos(i).length + " solicitado(s)" : ""}
@@ -958,6 +966,18 @@ function baixarCSV(lista) {
 /* Resolução por item: o que está sendo resolvido agora (nota + fotos ainda no aparelho) */
 const Resolver = { inspId: "", itemId: "", nota: "", mids: [], modo: "resolver" };   // modo: resolver | solicitar
 
+/* Gestão marca que viu o checklist: aparece para todos (painel, detalhe e o Início de quem fez) */
+async function marcarVisto(i) {
+  const v = { por: Dados.usuario.nome || Dados.usuario.usuario, em: Date.now() };
+  const k = chaveVisto(Dados.usuario.email);
+  i.vistos = Object.assign({}, i.vistos, { [k]: v });
+  const p = (Painel.lista || []).find(x => x.id === i.id); if (p && p !== i) p.vistos = i.vistos;
+  desenharDetalhe(i);
+  toast("👁 Marcado como visualizado", "ok");
+  try { await Dados.atualizarInspecao(i.id, { ["vistos." + k]: v }); }
+  catch (e) { toast("Não deu para salvar (" + ((e && e.code) || "sem sinal") + ").", "erro"); }
+}
+
 Render.detalhe = async function (id) {
   titulo("CHECKLIST", "");
   app().innerHTML = `<p class="carregando">Carregando…</p>`;
@@ -982,6 +1002,10 @@ function desenharDetalhe(i) {
   const nok = (i.itens || []).filter(x => x.st === "nok");
   const resolvidos = nok.filter(x => legado || res[x.id]).length;
   titulo(nomeEquip(i.equipamento), dataHora(i.criadoEm));
+  const vistos = vistosDe(i), euVi = !!((i.vistos || {})[chaveVisto(Dados.usuario.email)]);
+  // os que pedem atenção primeiro: não conforme em aberto (crítico antes), depois os já resolvidos, depois os ok
+  const peso = it => it.st !== "nok" ? 3 : (legado || res[it.id]) ? 2 : it.critico ? 0 : 1;
+  const ordenados = (i.itens || []).map((it, n) => [it, n]).sort((a, b) => peso(a[0]) - peso(b[0]) || a[1] - b[1]).map(x => x[0]);
   const midiasDe = item => Object.entries(i.midias || {}).filter(([, m]) => m.item === item).map(([mid, m]) =>
     `<button class="mini-midia remota" data-path="${h(m.path)}" data-tipo="${m.tipo}" ${m.ok ? "" : "disabled"}>
       ${m.ok ? (m.tipo === "video" ? `<span class="play">▶</span>` : `<img data-thumb="${h(m.path)}" alt="foto" />`)
@@ -1029,6 +1053,10 @@ function desenharDetalhe(i) {
       ${i.geo ? `<p><a href="https://maps.google.com/?q=${i.geo.lat},${i.geo.lng}" target="_blank" rel="noopener">📍 ver no mapa</a></p>` : ""}
       ${i.pendentes > 0 ? `<p class="mini">⏳ ${i.pendentes} foto(s) ainda subindo</p>` : ""}
     </div>
+    <div class="card visto-card" id="dtVisto">
+      ${vistos.length ? `<p>👁 <b>Visualizado</b> por ${h(textoVistos(vistos))}</p>` : `<p class="muted">👁 Ainda não visualizado pela gestão.</p>`}
+      ${Dados.ehGestao() && !euVi ? `<button class="btn" id="dtMarcarVisto">👁 Marcar como visualizado</button>` : ""}
+    </div>
     ${nok.length ? `<div class="card ${A.cls === "ok" ? "" : "alerta-borda"}" id="dtSituacao">
       <b>Agora: <span class="tag ${A.cls}">${A.ico} ${A.txt}</span></b>
       <p class="mini">${resolvidos} de ${nok.length} item(ns) não conforme(s) resolvido(s).
@@ -1037,7 +1065,7 @@ function desenharDetalhe(i) {
       ${legado && Dados.ehGestao() ? `<button class="btn btn-ghost" id="dtReabrir">Reabrir</button>` : ""}
     </div>` : ""}
     <h3 class="secao">Itens</h3>
-    ${(i.itens || []).map(it => `<div class="ck-item ${it.st} ${it.st === "nok" && (legado || res[it.id]) ? "feito" : ""} leitura" data-item="${h(it.id)}">
+    ${ordenados.map(it => `<div class="ck-item ${it.st} ${it.st === "nok" && (legado || res[it.id]) ? "feito" : ""} leitura" data-item="${h(it.id)}">
       <div class="ck-txt"><span class="stico">${it.st === "ok" ? "✔" : it.st === "nok" ? "✖" : "–"}</span>${h(it.texto)}
       ${it.critico ? ' <span class="critico">CRÍTICO</span>' : ""}</div>
       ${it.obs ? `<p class="obs">${h(it.obs)}</p>` : ""}
@@ -1074,6 +1102,7 @@ function desenharDetalhe(i) {
       Object.assign(Resolver, { inspId: i.id, itemId: abrir.dataset.resolver, nota: "", mids: [], modo: "resolver" });
       return redesenhar(i, abrir.dataset.resolver);
     }
+    if (alvo.id === "dtMarcarVisto") return marcarVisto(i);
     if (alvo.id === "rsCancelar") { await cancelarResolucao(); return redesenhar(i); }
     if (alvo.id === "rsFoto") return fotoResolucao(i);
     if (alvo.id === "rsGaleria") return fotoResolucao(i, true);

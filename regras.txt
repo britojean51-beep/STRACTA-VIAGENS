@@ -126,7 +126,7 @@ service cloud.firestore {
       allow read: if ckGestao() || (ckLiberado() && (resource == null || resource.data.criadoPor == meuEmail()));
       allow create: if ckLiberado() && request.resource.data.criadoPor == meuEmail();
       allow update: if ckAdmin()
-        || (ckGestao() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tratativa', 'resolucoes', 'solicitacoes', 'midias', 'pendentes']))
+        || (ckGestao() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tratativa', 'resolucoes', 'solicitacoes', 'midias', 'pendentes', 'vistos']))
         || (ckLiberado() && resource.data.criadoPor == meuEmail()
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['midias', 'pendentes']));
       allow delete: if ckAdmin();

@@ -315,6 +315,7 @@ async function sair(page) {
   await page.click('[data-ir="painel"]');
   await page.waitForSelector('[data-abrir]');
   ok(await page.$$eval('#pLista .item', l => l.length) === 2, 'painel mostra os 2 checklists de hoje');
+  ok((await page.textContent('#pLista')).includes('● não visualizado'), 'painel marca o que ainda não foi visualizado');
   const frota = await page.textContent('#pFrota');
   ok(/Em manutenção \(1\)\s*CB-12/.test(frota) && /Com restrição \(1\)\s*ESC-03/.test(frota) && frota.includes('Operando (0)'),
     'situação da frota: CB-12 em manutenção, ESC-03 com restrição');
@@ -347,6 +348,14 @@ async function sair(page) {
   await shot(page, '07-detalhe');
   ok(await page.$$eval('[data-resolver]', l => l.map(b => b.dataset.resolver).join()) === 'i1,i5', 'cada item não conforme tem "Resolver este item"');
   ok(!(await page.$('#dtResolver')), 'não existe mais o botão geral de resolver');
+  const ordem = await page.$$eval('.ck-item', l => l.map(e => e.dataset.item));
+  ok(ordem[0] === 'i1' && ordem[1] === 'i5' && ordem.length === 18, 'itens em atenção primeiro (crítico, depois observação), os ok depois');
+  ok((await page.textContent('#dtVisto')).includes('Ainda não visualizado'), 'detalhe: ainda não visualizado');
+  await page.click('#dtMarcarVisto');
+  await page.waitForFunction(id => ((JSON.parse(localStorage.getItem('__ck_banco__'))['checklist_inspecoes/' + id].vistos || {})['ana@gp2t,local'] || {}).por === 'Ana Gestora', insp.id);
+  ok((await page.textContent('#dtVisto')).includes('Visualizado por Ana Gestora') && !(await page.$('#dtMarcarVisto')),
+    'gestora marca como visualizado: grava com nome e hora, e o botão some');
+  await shot(page, '07b-visto');
   // 1) resolve o crítico (pneu), com nota e foto
   await page.click('[data-resolver="i1"]');
   await page.fill('#rsNota', 'Pneu trocado');
@@ -365,6 +374,7 @@ async function sair(page) {
   ok(true, 'foto da correção subiu e ficou ligada ao item');
   await page.waitForFunction(() => document.querySelector('[data-item="i1"] .resolvido img') && document.querySelector('[data-item="i1"] .resolvido img').src.startsWith('data:image/jpeg'));
   ok((await page.textContent('[data-item="i1"] .resolvido')).includes('Pneu trocado'), 'item resolvido mostra nota e foto');
+  ok((await page.$$eval('.ck-item', l => l.map(e => e.dataset.item))).slice(0, 2).join() === 'i5,i1', 'resolvido desce: o que ainda está em aberto fica em cima');
   // 1b) solicitação no farol: registra o pedido, o item continua em aberto
   await page.click('[data-solicitar="i5"]');
   await page.click('#slConfirmar');
@@ -512,13 +522,15 @@ async function sair(page) {
   await page.evaluate(() => { const b = JSON.parse(localStorage.getItem('__ck_banco__'));
     b['checklist_inspecoes/outroCel'] = { criadoPor: 'jean@gp2t.local', criadoNome: 'Jean', criadoEm: Date.now() - 60000,
       resultado: 'bloqueado', defeitos: 1, equipamento: { prefixo: 'XX-01' }, tratativa: { status: 'aberto' },
-      itens: [{ id: 'i1', texto: 'Pneus', critico: true, st: 'nok', obs: 'furado' }] };
+      itens: [{ id: 'i1', texto: 'Pneus', critico: true, st: 'nok', obs: 'furado' }],
+      vistos: { 'ana@gp2t,local': { por: 'Ana Gestora', em: Date.now() - 30000 } } };
     localStorage.setItem('__ck_banco__', JSON.stringify(b)); });
   await page.reload();
   await page.waitForSelector('#btnNovo');
   await page.waitForFunction(() => Historico.lista().some(x => x.id === 'outroCel'));
   await page.waitForFunction(() => document.querySelector('#app').textContent.includes('XX-01'));
   ok(true, 'checklist que ele fez em outro celular aparece no Início');
+  ok((await page.textContent('#app')).includes('👁 Visto por Ana Gestora'), 'quem fez vê no Início que a gestão visualizou');
   // "outro celular" apaga direto no servidor
   await page.evaluate(() => { const b = JSON.parse(localStorage.getItem('__ck_banco__')); delete b['checklist_inspecoes/outroCel'];
     localStorage.setItem('__ck_banco__', JSON.stringify(b)); });
