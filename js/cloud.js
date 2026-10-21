@@ -112,7 +112,31 @@ const Cloud = {
       if (nome === "frota" && !gestor) continue;
       try {
         const doc = await this._cad(nome).get();
-        if (!doc.exists) await this._cad(nome).set(dados, { merge: true });
+        if (!doc.exists) { await this._cad(nome).set(dados, { merge: true }); continue; }
+
+        /* O documento já existe, então NÃO sobrescrevo: um aparelho velho
+           empurraria horímetro e status antigos por cima dos novos.
+
+           Mas as PARADAS são exceção, e precisam subir. O ouvinte de "operacao"
+           troca db.paradas inteiro pelo que vem da nuvem; parada criada com a
+           nuvem desligada só existe no aparelho, e morria calada na primeira
+           leitura depois de religar. Agora ela não morre: desde o r55 a parada
+           alimenta o DESCONTO DE MANUTENÇÃO das horas pagas, e parada perdida
+           é dinheiro pago a mais.
+
+           Subir é seguro porque paradas é um mapa por id e o merge do Firestore
+           funde chave por chave: o que já está lá não se mexe, e o que falta
+           entra. Parada apagada de propósito não volta — removerParada apaga do
+           aparelho e manda o marcador de exclusão, então ela não está aqui para
+           ser reenviada. */
+        if (nome === "operacao" && db.paradas && Object.keys(db.paradas).length) {
+          const naNuvem = (doc.data() || {}).paradas || {};
+          const faltando = {};
+          Object.keys(db.paradas).forEach(id => { if (!naNuvem[id]) faltando[id] = db.paradas[id]; });
+          if (Object.keys(faltando).length) {
+            await this._cad("operacao").set({ paradas: faltando }, { merge: true });
+          }
+        }
       } catch (e) { this._falha(e, "preparar cadastro/" + nome); }
     }
   },
