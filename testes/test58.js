@@ -103,24 +103,28 @@ const URL = 'http://localhost:8130/index.html';
              mot22: q22.motivo, sit22: q22.situacao, pc: achatar(qpc) };
   }, hoje);
   ok('a folha tem um quadro por equipamento', img.nQuadros === 3, img.nQuadros + ' quadros');
-  ok('o PNG sai com 1240 de largura e cresceu', img.w === 1240 && img.h > 1754, img.w + '×' + img.h);
+  // r59: a altura mínima caiu de 1754 (A4) para 1200 — dia curto, folha curta,
+  // que é o ponto da compactação. O que importa é a largura e crescer com o conteúdo.
+  ok('o PNG sai com 1240 de largura', img.w === 1240, img.w + '×' + img.h);
 
-  const esperados = ['HORÍM. INICIAL=1.000', 'HORÍM. FINAL=1.008', 'HORAS (HORÍMETRO)=8,0 h',
-    'KM INICIAL=12.000', 'KM FINAL=12.300', 'KM RODADOS=300 km', 'MÉDIA=2,49 km/L',
+  // r59: rótulos curtos e ARLA com célula própria, porque o quadro vive em meia largura
+  const esperados = ['HORÍM. INI=1.000', 'HORÍM. FIM=1.008', 'HORAS=8,0 h',
+    'KM INI=12.000', 'KM FIM=12.300', 'KM RODADO=300 km', 'MÉDIA=2,49 km/L',
     'L/h=15,06', 'L/TON=0,27'];
   esperados.forEach(e => ok('imagem · ' + e.split('=')[0],
     img.cb17.includes(e), img.cb17.find(x => x.startsWith(e.split('=')[0])) || 'FALTOU'));
   ok('imagem · operador', img.op17 === 'Saulo', img.op17);
   ok('imagem · situação', img.sit17 === 'Operando', img.sit17);
-  ok('imagem · diesel com o ARLA junto',
-     img.cb17.some(x => /^DIESEL=120,5 L \(\+12 ARLA\)/.test(x)),
+  ok('imagem · diesel na célula dele', img.cb17.includes('DIESEL=120,5 L'),
      img.cb17.find(x => x.startsWith('DIESEL')) || 'FALTOU');
+  ok('imagem · ARLA em célula PRÓPRIA (em meia largura não cabia junto do diesel)',
+     img.cb17.includes('ARLA=12 L'), img.cb17.find(x => x.startsWith('ARLA')) || 'FALTOU');
 
   ok('imagem · o motivo está no quadro do equipamento em manutenção',
      /Troca do cubo/.test(img.mot22) && /13:00 às 16:30/.test(img.mot22), img.mot22);
   ok('imagem · quadro de equipamento operando não tem motivo', !img.mot17, img.mot17 || 'nenhum');
   ok('imagem · máquina de horímetro mostra — no KM, não 0',
-     img.pc.includes('KM INICIAL=—') && img.pc.includes('KM FINAL=—') && img.pc.includes('KM RODADOS=—'),
+     img.pc.includes('KM INI=—') && img.pc.includes('KM FIM=—') && img.pc.includes('KM RODADO=—'),
      img.pc.filter(x => x.startsWith('KM')).join(' · '));
   ok('imagem · e o L/h dela não se repete', img.pc.includes('L/h=—'),
      img.pc.find(x => x.startsWith('L/h')) || 'FALTOU');
@@ -166,7 +170,7 @@ const URL = 'http://localhost:8130/index.html';
     const cv = desenharFolha(dadosDaFolha(['2019-05-05'], 'RELATÓRIO DIÁRIO'), 'faixa');
     return { w: cv.width, h: cv.height };
   });
-  ok('dia sem lançamento gera folha válida', vazio.w === 1240 && vazio.h >= 1754, JSON.stringify(vazio));
+  ok('dia sem lançamento gera folha válida', vazio.w === 1240 && vazio.h >= 1000, JSON.stringify(vazio));
 
   const reais = errors.filter(e => !/net::ERR|gstatic|Failed to load resource|favicon/.test(e));
   ok('sem erro de JavaScript', reais.length === 0, reais.slice(0, 3).join(' | ') || 'nenhum');

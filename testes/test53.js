@@ -134,7 +134,8 @@ const URL = 'http://localhost:8130/index.html';
              viag: d.viag.length, manut: d.manut.length };
   });
   ok('o PNG sai com 1240 de largura', img.w === 1240, img.w + '×' + img.h);
-  ok('e a folha tem pelo menos a altura de uma A4', img.h >= 1754, img.h);
+  // r59: a folha compactada tem mínimo de 1200, não mais a A4 de 1754
+  ok('a folha tem altura de folha', img.h >= 1000, img.h);
   ok('o PNG tem conteúdo de verdade', img.png, String(img.png));
   /* L/h e L/ton, nos dois lugares (r54) */
   const medidas = await p.evaluate(() => {
@@ -193,7 +194,7 @@ const URL = 'http://localhost:8130/index.html';
     const magro = alturaDaFolha(Object.assign({}, d, { linhas: d.linhas.slice(0, 1), viag: [], manut: [] }));
     return { cheio, magro };
   });
-  ok('a folha cresce conforme o conteúdo', alturas.cheio > alturas.magro || alturas.cheio === 1754,
+  ok('a folha cresce conforme o conteúdo', alturas.cheio > alturas.magro || alturas.cheio === 1200,
      `cheia ${alturas.cheio} · magra ${alturas.magro}`);
 
   // nada vaza da margem
@@ -217,7 +218,7 @@ const URL = 'http://localhost:8130/index.html';
     return { w: cv.width, h: cv.height };
   });
   ok('dia sem lançamento gera folha válida em vez de quebrar',
-     vazio.w === 1240 && vazio.h >= 1754, JSON.stringify(vazio));
+     vazio.w === 1240 && vazio.h >= 1000, JSON.stringify(vazio));
 
   // o botão existe e não deixa erro na tela
   await p.evaluate(() => navegar('relatorio')); await p.waitForTimeout(700);

@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "21/10/2026 · r58 (tonelagem sem arredondar)";
+const VERSION = "21/10/2026 · r59 (folha de imagem compactada)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -2386,7 +2386,10 @@ function gerarPDF(dias, titulo, texto) {
    conteúdo, com a folha A4 como mínimo — assim nenhuma linha é cortada.
    ============================================================ */
 const FOLHA = {
-  W: 1240, MIN_H: 1754, M: 72,          // largura · altura mínima · margem
+  /* A altura É a qualidade: o WhatsApp reduz o lado maior para ~1600 px, então
+     cada pixel de altura encolhe o texto de todo mundo. A largura é de graça —
+     por isso a margem é apertada e os quadros vão em duas colunas. */
+  W: 1240, MIN_H: 1200, M: 48,          // largura · altura mínima · margem
   navy: "#12203c", laranja: "#ff7a1a", tinta: "#1a2234",
   cinza: "#5b6679", linha: "#dde3ee", zebra: "#f6f8fc", papel: "#ffffff",
   verde: "#15803d", vermelho: "#b91c1c",
@@ -2452,16 +2455,22 @@ function dadosDaFolha(dias, titulo) {
         operador: a.motorista || nada,
         situacao: a.situacao || "",
         motivo: motivoManutencao(a.equipamento, iso),
-        // os onze campos, já formatados e já com o "—" de quem não tem
+        /* Os campos em três faixas: medidor, rodagem, consumo. Os rótulos são
+           curtos e o ARLA tem célula própria porque o quadro vive em MEIA
+           largura (r59) — "120,5 L (+12 ARLA)" numa célula de 132 px seria
+           cortado em "120,5 L (+1…", que é pior que não mostrar.
+           A faixa de 3 é a mais larga, e é onde mora a média com a unidade
+           ("2,49 km/L" não caberia numa célula de 4). */
         campos: [
-          [["HORÍM. INICIAL", fmtN1(a.horimetroInicial)],
-           ["HORÍM. FINAL", fmtN1(a.horimetroFinal)],
-           ["HORAS (HORÍMETRO)", (a.horasTrabalhadas || "0") + " h"]],
-          [["KM INICIAL", temKm ? fmt(a.kmInicial) : nada],
-           ["KM FINAL", temKm ? fmt(a.kmFinal) : nada],
-           ["KM RODADOS", temKm && a.kmRodado ? fmt(a.kmRodado) + " km" : nada]],
-          [["DIESEL", fmtL(a.litros) + " L" + (a.litrosArla ? ` (+${fmtL(a.litrosArla)} ARLA)` : "")],
-           ["MÉDIA", `${a.media} ${und}`],
+          [["HORÍM. INI", fmtN1(a.horimetroInicial)],
+           ["HORÍM. FIM", fmtN1(a.horimetroFinal)],
+           ["HORAS", (a.horasTrabalhadas || "0") + " h"],
+           ["DIESEL", fmtL(a.litros) + " L"]],
+          [["KM INI", temKm ? fmt(a.kmInicial) : nada],
+           ["KM FIM", temKm ? fmt(a.kmFinal) : nada],
+           ["KM RODADO", temKm && a.kmRodado ? fmt(a.kmRodado) + " km" : nada],
+           ["ARLA", a.litrosArla ? fmtL(a.litrosArla) + " L" : nada]],
+          [["MÉDIA", `${a.media} ${und}`],
            // em máquina de horímetro a média JÁ é o L/h: repetir confundiria
            ["L/h", und === "L/h" ? nada : (lhA > 0 ? fmt(lhA, 2) : nada)],
            ["L/TON", ltonA > 0 ? fmt(ltonA, 2) : nada]]
@@ -2510,21 +2519,36 @@ function dadosDaFolha(dias, titulo) {
 
 /* Mede a altura que o conteúdo pede, para a folha crescer em vez de cortar. */
 function alturaDaFolha(d) {
-  let h = FOLHA.M + 150;                       // faixa do topo
-  h += 118;                                    // título e período
-  h += Math.ceil(d.totais.length / 3) * 132 + 30;
+  /* Este orçamento tem de BATER com o desenho. Ele orçava 118 px para um
+     "título e período" que a faixa azul já contém, e 120 de rodapé quando o
+     desenho usa 82: eram ~156 px de canvas em branco no fim da folha, que
+     ninguém pediu e que só pioravam o encolhimento do WhatsApp. */
+  let h = 128 + 48;                            // faixa do topo + respiro
+  h += Math.ceil(d.totais.length / 3) * 96 + 22;   // quadros de total
+
   if (d.quadros && d.quadros.length) {
-    // um quadro por equipamento: cabeçalho + 3 faixas de campos + o motivo
-    h += 56;
-    d.quadros.forEach(q => { h += 54 + q.campos.length * 66 + (q.motivo ? 40 : 0) + 22; });
-    h += 12;
+    // dois equipamentos por linha; o ímpar que sobra ocupa a linha inteira
+    h += 44;
+    const linhas = Math.ceil(d.quadros.length / 2);
+    for (let i = 0; i < d.quadros.length; i += 2) {
+      const par = d.quadros.slice(i, i + 2);
+      h += Math.max(...par.map(q => alturaDoQuadro(q))) + 16;
+    }
+    h += 8;
   } else {
-    h += 56 + 44 + d.linhas.length * 62 + 34;  // tabela por dia (semanal e mensal)
+    h += 44 + 40 + d.linhas.length * 58 + 24;  // tabela por dia (semanal e mensal)
   }
-  if (d.viag.length) { h += 56; d.viag.forEach(v => { h += 44 + v.itens.length * 38 + 12; }); h += 22; }
-  if (d.manut.length) h += 56 + d.manut.length * 76 + 22;
-  h += 120;                                    // rodapé
+
+  if (d.viag.length) { h += 44; d.viag.forEach(v => { h += 36 + v.itens.length * 34 + 8; }); h += 14; }
+  if (d.manut.length) h += 44 + d.manut.length * 64 + 14;
+  h += 72;                                     // rodapé
   return Math.max(FOLHA.MIN_H, h);
+}
+
+/* A altura de um quadro de equipamento. Numa função só porque o orçamento e o
+   desenho precisam concordar — duas contas separadas divergiriam. */
+function alturaDoQuadro(q) {
+  return 46 + q.campos.length * 62 + (q.motivo ? 34 : 0);
 }
 
 /* Desenha a folha e devolve o canvas. `estilo` escolhe o acabamento do topo e
@@ -2552,9 +2576,9 @@ function desenharFolha(d, estilo) {
     return t + "…";
   };
   const secao = (rot, y) => {
-    txt(rot, L, y, F.fonte(22, 700), F.navy);
-    c.fillStyle = F.laranja; c.fillRect(L, y + 12, 54, 4);
-    return y + 48;
+    txt(rot, L, y + 2, F.fonte(21, 700), F.navy);
+    c.fillStyle = F.laranja; c.fillRect(L, y + 12, 50, 4);
+    return y + 44;
   };
 
   let y = 0;
@@ -2562,84 +2586,111 @@ function desenharFolha(d, estilo) {
   /* ---- topo ---- */
   if (est === "faixa") {
     // faixa cheia azul-marinho: mais presença, cara de documento timbrado
-    c.fillStyle = F.navy; c.fillRect(0, 0, F.W, 168);
-    c.fillStyle = F.laranja; c.fillRect(0, 168, F.W, 8);
-    txt("STRACTA MINERAÇÃO", L, 78, F.fonte(40, 800), "#ffffff");
-    txt("CONTROLE DE FROTA · GP2T", L, 118, F.fonte(21, 500), "#9fb0d0");
-    txt(d.periodo, R, 78, F.fonte(34, 800), "#ffffff", "right");
-    txt(d.titulo, R, 118, F.fonte(19, 600), F.laranja, "right");
-    y = 176 + 64;
+    c.fillStyle = F.navy; c.fillRect(0, 0, F.W, 122);
+    c.fillStyle = F.laranja; c.fillRect(0, 122, F.W, 6);
+    txt("STRACTA MINERAÇÃO", L, 56, F.fonte(36, 800), "#ffffff");
+    txt("CONTROLE DE FROTA · GP2T", L, 92, F.fonte(19, 500), "#9fb0d0");
+    txt(d.periodo, R, 56, F.fonte(32, 800), "#ffffff", "right");
+    txt(d.titulo, R, 92, F.fonte(18, 600), F.laranja, "right");
+    y = 128 + 48;
   } else {
     // topo claro: só o nome, um filete laranja e muito branco. Mais sóbrio.
-    txt("STRACTA MINERAÇÃO", L, 96, F.fonte(42, 800), F.navy);
-    txt("CONTROLE DE FROTA · GP2T", L, 132, F.fonte(20, 500), F.cinza);
-    txt(d.periodo, R, 96, F.fonte(34, 800), F.navy, "right");
-    txt(d.titulo, R, 130, F.fonte(19, 600), F.laranja, "right");
-    c.fillStyle = F.laranja; c.fillRect(L, 158, LARG, 5);
-    y = 163 + 70;
+    txt("STRACTA MINERAÇÃO", L, 62, F.fonte(36, 800), F.navy);
+    txt("CONTROLE DE FROTA · GP2T", L, 94, F.fonte(19, 500), F.cinza);
+    txt(d.periodo, R, 62, F.fonte(32, 800), F.navy, "right");
+    txt(d.titulo, R, 92, F.fonte(18, 600), F.laranja, "right");
+    c.fillStyle = F.laranja; c.fillRect(L, 110, LARG, 5);
+    y = 128 + 48;
   }
 
   /* ---- quadros de total: 3 por linha ---- */
-  const COLS = 3, GAP = 20;
-  const cw = (LARG - GAP * (COLS - 1)) / COLS, ch = 112;
+  const COLS = 3, GAP = 14;
+  const cw = (LARG - GAP * (COLS - 1)) / COLS, ch = 82;
   d.totais.forEach((t, i) => {
     const x = L + (i % COLS) * (cw + GAP);
-    const yy = y + Math.floor(i / COLS) * (ch + 20);
+    const yy = y + Math.floor(i / COLS) * (ch + 14);
     if (est === "faixa") {
       c.fillStyle = F.zebra; c.fillRect(x, yy, cw, ch);
       c.fillStyle = F.laranja; c.fillRect(x, yy, 5, ch);
     } else {
       c.strokeStyle = F.linha; c.lineWidth = 2; c.strokeRect(x + 1, yy + 1, cw - 2, ch - 2);
     }
-    txt(t.rot, x + 22, yy + 36, F.fonte(15, 700), F.cinza);
-    txt(t.val, x + 22, yy + 86, F.fonte(40, 800), F.navy);
+    txt(cortar(t.rot, cw - 30, F.fonte(13, 700)), x + 16, yy + 26, F.fonte(13, 700), F.cinza);
+    txt(t.val, x + 16, yy + 68, F.fonte(38, 800), F.navy);
     if (t.un) {
-      c.font = F.fonte(40, 800);
-      txt(" " + t.un, x + 22 + c.measureText(t.val).width, yy + 86, F.fonte(19, 600), F.cinza);
+      c.font = F.fonte(38, 800);
+      txt(" " + t.un, x + 16 + c.measureText(t.val).width, yy + 68, F.fonte(18, 600), F.cinza);
     }
   });
-  y += Math.ceil(d.totais.length / COLS) * (ch + 20) + 30;
+  y += Math.ceil(d.totais.length / COLS) * (ch + 14) + 22;
 
-  /* ---- um quadro por equipamento (relatório diário) ---- */
+  /* ---- os quadros de equipamento, DOIS POR LINHA ----
+     Eram metade da altura da folha (51,5%), e altura é o que o WhatsApp
+     encolhe. Em duas colunas a mesma informação custa metade dos pixels. */
   if (d.quadros && d.quadros.length) {
     y = secao("POR EQUIPAMENTO", y);
     const corSit = sit => /manuten/i.test(sit) ? F.vermelho
       : /reserva|parado/i.test(sit) ? "#b45309"
       : /final/i.test(sit) ? F.cinza : F.verde;
+    const VAO = 20;
 
-    d.quadros.forEach(q => {
-      const alt = 54 + q.campos.length * 66 + (q.motivo ? 40 : 0);
-      c.fillStyle = F.zebra; c.fillRect(L, y, LARG, alt);
-      c.fillStyle = corSit(q.situacao); c.fillRect(L, y, 6, alt);
+    /* Desenha um quadro em (x, y) com a largura dada. A largura entra como
+       parâmetro porque o ímpar que sobra ocupa a linha inteira — sozinho em
+       meia largura ele deixaria justamente o buraco de que ele reclamou. */
+    const quadro = (q, x, yq, larg, altLinha) => {
+      // o fundo usa a altura da LINHA, para os dois quadros fecharem embaixo juntos
+      const alt = altLinha || alturaDoQuadro(q);
+      c.fillStyle = F.zebra; c.fillRect(x, yq, larg, alt);
+      c.fillStyle = corSit(q.situacao); c.fillRect(x, yq, 5, alt);
 
-      // cabeçalho: equipamento, operador e a situação com a cor dela
-      txt(q.equip, L + 24, y + 36, F.fonte(26, 800), F.navy);
+      const px = x + 18, pr = x + larg - 14;
+      txt(q.equip, px, yq + 31, F.fonte(26, 800), F.navy);
       c.font = F.fonte(26, 800);
-      txt(q.operador, L + 24 + c.measureText(q.equip).width + 20, y + 36, F.fonte(20, 500), F.cinza);
-      if (q.situacao) txt(q.situacao, R - 16, y + 36, F.fonte(19, 700), corSit(q.situacao), "right");
+      const xOp = px + c.measureText(q.equip).width + 14;
+      // a situação tem prioridade na direita; o operador usa o que sobrar
+      c.font = F.fonte(17, 700);
+      const largSit = q.situacao ? c.measureText(q.situacao).width + 12 : 0;
+      txt(cortar(q.operador, Math.max(40, pr - xOp - largSit), F.fonte(18, 500)),
+          xOp, yq + 31, F.fonte(18, 500), F.cinza);
+      if (q.situacao) txt(q.situacao, pr, yq + 31, F.fonte(17, 700), corSit(q.situacao), "right");
       c.strokeStyle = F.linha; c.lineWidth = 1;
-      c.beginPath(); c.moveTo(L + 24, y + 48); c.lineTo(R - 16, y + 48); c.stroke();
+      c.beginPath(); c.moveTo(px, yq + 42); c.lineTo(pr, yq + 42); c.stroke();
 
-      let yy = y + 54;
+      let yy = yq + 46;
       q.campos.forEach(faixa => {
-        const n = faixa.length, cw2 = (LARG - 44) / n;
+        const n = faixa.length, cw2 = (larg - 32) / n;
         faixa.forEach(([rot, val], i) => {
-          const x = L + 24 + i * cw2;
-          txt(cortar(rot, cw2 - 14, F.fonte(14, 700)), x, yy + 24, F.fonte(14, 700), F.cinza);
-          txt(cortar(String(val), cw2 - 14, F.fonte(22, 700)), x, yy + 54, F.fonte(22, 700), F.tinta);
+          const xc = px + i * cw2;
+          txt(cortar(rot, cw2 - 10, F.fonte(13, 700)), xc, yy + 20, F.fonte(13, 700), F.cinza);
+          txt(cortar(String(val), cw2 - 10, F.fonte(24, 700)), xc, yy + 50, F.fonte(24, 700), F.tinta);
         });
-        yy += 66;
+        yy += 62;
       });
 
       // em manutenção, o motivo tem de aparecer junto dos números dele
       if (q.motivo) {
-        c.fillStyle = "#fde8e8"; c.fillRect(L + 24, yy, LARG - 40, 34);
-        txt(cortar("Motivo: " + q.motivo, LARG - 68, F.fonte(18, 600)), L + 36, yy + 23,
-            F.fonte(18, 600), F.vermelho);
+        c.fillStyle = "#fde8e8"; c.fillRect(px, yy, larg - 32, 30);
+        txt(cortar("Motivo: " + q.motivo, larg - 56, F.fonte(15, 600)), px + 10, yy + 21,
+            F.fonte(15, 600), F.vermelho);
       }
-      y += alt + 22;
-    });
-    y += 12;
+      return alt;
+    };
+
+    const meia = (LARG - VAO) / 2;
+    for (let i = 0; i < d.quadros.length; i += 2) {
+      const par = d.quadros.slice(i, i + 2);
+      let alt;
+      if (par.length === 1) {
+        alt = quadro(par[0], L, y, LARG);          // o último sozinho: linha inteira
+      } else {
+        // as duas colunas da linha ficam com a mesma altura, a do maior
+        const altLinha = Math.max(alturaDoQuadro(par[0]), alturaDoQuadro(par[1]));
+        par.forEach((q, j) => quadro(q, L + j * (meia + VAO), y, meia, altLinha));
+        alt = altLinha;
+      }
+      y += alt + 16;
+    }
+    y += 8;
   } else {
 
   /* ---- tabela por dia (semanal e mensal) ---- */
@@ -2650,70 +2701,71 @@ function desenharFolha(d, estilo) {
   const alinhas = ["left", "left", "right", "right", "right", "right"];
   const xDe = i => alinhas[i] === "right" ? xs[i] + LARG * pesos[i] - 14 : xs[i];
 
-  c.fillStyle = F.navy; c.fillRect(L, y, LARG, 44);
-  d.cabLinhas.forEach((h, i) => txt(h, xDe(i), y + 29, F.fonte(15, 700), "#ffffff", alinhas[i]));
-  y += 44;
+  c.fillStyle = F.navy; c.fillRect(L, y, LARG, 40);
+  d.cabLinhas.forEach((h, i) => txt(h, xDe(i), y + 27, F.fonte(14, 700), "#ffffff", alinhas[i]));
+  y += 40;
 
   if (!d.linhas.length) {
-    txt("Nenhum lançamento neste dia.", L + 14, y + 36, F.fonte(20, 500), F.cinza);
-    y += 60;
+    txt("Nenhum lançamento neste dia.", L + 14, y + 32, F.fonte(19, 500), F.cinza);
+    y += 52;
   } else {
-    const ALT = 62;
+    const ALT = 58;
     d.linhas.forEach((ln, i) => {
       if (i % 2 === 1) { c.fillStyle = F.zebra; c.fillRect(L, y, LARG, ALT); }
       [ln.a, ln.b, ln.c, ln.d, ln.e, ln.f].forEach((v, j) => {
-        const fonte = j === 0 ? F.fonte(21, 700) : F.fonte(20, 400);
-        txt(cortar(v, LARG * pesos[j] - 20, fonte), xDe(j), y + 30, fonte,
+        const fonte = j === 0 ? F.fonte(20, 700) : F.fonte(19, 400);
+        txt(cortar(v, LARG * pesos[j] - 18, fonte), xDe(j), y + 28, fonte,
             j === 0 ? F.navy : F.tinta, alinhas[j]);
       });
       // L/h e L/ton embaixo da média, menores e em cinza
-      if (ln.eSub) txt(cortar(ln.eSub, LARG * pesos[4] - 20, F.fonte(15, 500)),
-                       xDe(4), y + 50, F.fonte(15, 500), F.cinza, alinhas[4]);
+      if (ln.eSub) txt(cortar(ln.eSub, LARG * pesos[4] - 18, F.fonte(14, 500)),
+                       xDe(4), y + 47, F.fonte(14, 500), F.cinza, alinhas[4]);
       c.strokeStyle = F.linha; c.lineWidth = 1;
       c.beginPath(); c.moveTo(L, y + ALT); c.lineTo(R, y + ALT); c.stroke();
       y += ALT;
     });
   }
-  y += 34;
+  y += 24;
   }
 
   /* ---- viagens detalhadas ---- */
   if (d.viag.length) {
     y = secao("VIAGENS", y);
     d.viag.forEach(v => {
-      txt(v.eq, L, y + 26, F.fonte(21, 700), F.navy);
-      txt(v.total, R, y + 26, F.fonte(19, 600), F.laranja, "right");
-      y += 44;
+      txt(v.eq, L, y + 22, F.fonte(21, 700), F.navy);
+      txt(v.total, R, y + 22, F.fonte(19, 600), F.laranja, "right");
+      y += 36;
       v.itens.forEach(it => {
-        c.fillStyle = F.cinza; c.fillRect(L + 8, y + 13, 6, 6);
-        txt(cortar(it, LARG - 34, F.fonte(19, 400)), L + 26, y + 24, F.fonte(19, 400), F.tinta);
-        y += 38;
+        c.fillStyle = F.cinza; c.fillRect(L + 6, y + 11, 5, 5);
+        txt(cortar(it, LARG - 30, F.fonte(20, 400)), L + 22, y + 23, F.fonte(20, 400), F.tinta);
+        y += 34;
       });
-      y += 12;
+      y += 8;
     });
-    y += 22;
+    y += 14;
   }
 
   /* ---- manutenções do dia ---- */
   if (d.manut.length) {
     y = secao("MANUTENÇÃO", y);
     d.manut.forEach(m => {
-      c.fillStyle = F.vermelho; c.fillRect(L, y + 6, 5, 52);
-      txt(m.eq, L + 20, y + 28, F.fonte(21, 700), F.navy);
-      if (m.tipo) txt(m.tipo, L + 20 + c.measureText(m.eq).width + 16, y + 28, F.fonte(17, 600), F.vermelho);
-      if (m.periodo) txt(m.periodo, R, y + 28, F.fonte(18, 600), F.cinza, "right");
-      txt(cortar(m.servico, LARG - 30, F.fonte(19, 400)), L + 20, y + 56, F.fonte(19, 400), F.tinta);
-      y += 76;
+      c.fillStyle = F.vermelho; c.fillRect(L, y + 4, 5, 46);
+      txt(m.eq, L + 18, y + 24, F.fonte(20, 700), F.navy);
+      c.font = F.fonte(20, 700);
+      if (m.tipo) txt(m.tipo, L + 18 + c.measureText(m.eq).width + 14, y + 24, F.fonte(16, 600), F.vermelho);
+      if (m.periodo) txt(m.periodo, R, y + 24, F.fonte(17, 600), F.cinza, "right");
+      txt(cortar(m.servico, LARG - 28, F.fonte(19, 400)), L + 18, y + 48, F.fonte(19, 400), F.tinta);
+      y += 64;
     });
-    y += 22;
+    y += 14;
   }
 
   /* ---- rodapé ---- */
-  const yr = cv.height - 56;
+  const yr = cv.height - 30;
   c.strokeStyle = F.linha; c.lineWidth = 2;
-  c.beginPath(); c.moveTo(L, yr - 26); c.lineTo(R, yr - 26); c.stroke();
-  txt(`${d.nEquip} equipamento(s) operando · ${d.nManut} em manutenção`, L, yr, F.fonte(17, 500), F.cinza);
-  txt("GP2T · Gestão de Frota", R, yr, F.fonte(17, 600), F.navy, "right");
+  c.beginPath(); c.moveTo(L, yr - 22); c.lineTo(R, yr - 22); c.stroke();
+  txt(`${d.nEquip} equipamento(s) operando · ${d.nManut} em manutenção`, L, yr, F.fonte(16, 500), F.cinza);
+  txt("GP2T · Gestão de Frota", R, yr, F.fonte(16, 600), F.navy, "right");
   return cv;
 }
 
