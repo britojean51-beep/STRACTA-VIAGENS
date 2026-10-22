@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck24";
+const VERSAO = "ck25";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -1263,10 +1263,13 @@ function zapDetalhe(i) {
   const R = RESULTADOS[i.resultado] || RESULTADOS.liberado, A = RESULTADOS[statusAtual(i)];
   const res = i.resolucoes || {};
   const def = (i.itens || []).filter(x => x.st === "nok");
+  const oks = (i.itens || []).filter(x => x.st === "ok"), nas = (i.itens || []).filter(x => x.st !== "ok" && x.st !== "nok");
   const txt = `*CHECKLIST ${R.txt}* ${R.ico}\n🚛 ${nomeEquip(i.equipamento)}\n👤 ${i.criadoNome}\n🕒 ${dataHora(i.criadoEm)}`
     + (i.km != null ? `\nKM: ${i.km}` : "") + (i.horimetro != null ? `\nHorímetro: ${i.horimetro}` : "")
     + (def.length ? `\n\n*Não conformes (${def.length}):*\n` + def.map(d => `• ${d.texto}${d.critico ? " (CRÍTICO)" : ""}${d.obs ? " — " + d.obs : ""}`
       + (res[d.id] ? `\n   ✅ Resolvido: ${res[d.id].nota}` : (i.solicitacoes || {})[d.id] ? `\n   🛒 Solicitado: ${i.solicitacoes[d.id].nota}` : "")).join("\n") : "\n\nSem não conformes.")
+    + (oks.length ? `\n\n*Itens OK (${oks.length}):*\n` + oks.map(d => `✅ ${d.texto}`).join("\n") : "")
+    + (nas.length ? `\n\n*Não se aplica (${nas.length}):*\n` + nas.map(d => `– ${d.texto}`).join("\n") : "")
     + (def.length ? `\n\n*Agora:* ${A.ico} ${A.txt}` : "")
     + (i.obs ? `\n\nObs.: ${i.obs}` : "");
   window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
