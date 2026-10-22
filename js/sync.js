@@ -57,7 +57,10 @@ const Sync = {
       "Destino": v.destino,
       "Viagens": v.quantidade,
       "Material": v.material || "",
-      "Peso/viagem (t)": v.pesoViagem ?? "",
+      /* O peso por viagem saiu do app: agora ele lança o TOTAL da rota. A coluna
+         fica na planilha dele porque o abrir() só cria coluna, nunca apaga — as
+         linhas antigas mantêm o valor, as novas vão em branco. */
+      "Peso/viagem (t)": "",
       "Peso total (t)": v.pesoTotal ?? ""
     };
   },
@@ -74,7 +77,7 @@ const Sync = {
       "Consumo total (L)": this._n(r.diesel),
       "Horas totais": this._n(r.horas, 1),
       "L/h": this._n(r.lh, 2),
-      "Produção (t)": this._n(r.toneladas),
+      "Produção (t)": this._n(r.toneladas, 2),
       "L/Ton": this._n(r.lton, 2),
       "Diesel S-10 (L)": this._n(r.dieselS10),
       "Diesel S-500 (L)": this._n(r.dieselS500),
@@ -94,7 +97,7 @@ const Sync = {
       "Consumo (L)": this._n(e.diesel),
       "Horas": this._n(e.horas, 1),
       "L/h": this._n(e.lh, 2),
-      "Produção (t)": this._n(e.toneladas),
+      "Produção (t)": this._n(e.toneladas, 2),
       "L/Ton": this._n(e.lton, 2),
       "KM": this._n(e.km),
       "Média km/L": this._n(e.media, 2),
@@ -109,7 +112,7 @@ const Sync = {
       "Consumo (L)": this._n(o.diesel),
       "Horas": this._n(o.horas, 1),
       "L/h": this._n(o.lh, 2),
-      "Produção (t)": this._n(o.toneladas),
+      "Produção (t)": this._n(o.toneladas, 2),
       "L/Ton": this._n(o.lton, 2),
       "Viagens": o.viagens
     }));
@@ -125,7 +128,7 @@ const Sync = {
       "Consumo total (L)": this._n(r.diesel),
       "Horas totais": this._n(r.horas, 1),
       "L/h": this._n(r.lh, 2),
-      "Produção (t)": this._n(r.toneladas),
+      "Produção (t)": this._n(r.toneladas, 2),
       "L/Ton": this._n(r.lton, 2),
       "Diesel S-10 (L)": this._n(r.dieselS10),
       "Diesel S-500 (L)": this._n(r.dieselS500),
@@ -167,7 +170,7 @@ const Sync = {
       "Consumo total (L)": this._n(r.diesel),
       "Horas totais": this._n(r.horas, 1),
       "L/h": this._n(r.lh, 2),
-      "Produção (t)": this._n(r.toneladas),
+      "Produção (t)": this._n(r.toneladas, 2),
       "L/Ton": this._n(r.lton, 2),
       "Diesel S-10 (L)": this._n(r.dieselS10),
       "Diesel S-500 (L)": this._n(r.dieselS500),
@@ -228,7 +231,11 @@ const Sync = {
       "KM": m.horimetro === undefined && m.km === undefined ? (m.horKm || "") : vazioSeNulo(m.km),
       "Tipo": m.tipo || "",
       "Serviço Realizado": m.servico || "",
-      "Peças/Trocas": m.pecas || "",
+      /* O periodo parado, quando ele digita os horarios. Vai junto das pecas
+         porque a aba nao tem coluna propria e recolar o script custa a ele. */
+      "Peças/Trocas": [m.pecas || "", (m.entradaHora || m.saidaHora)
+        ? "Parada: " + [m.entradaHora, m.saidaHora].filter(Boolean).join(" às ") : ""]
+        .filter(Boolean).join(" · "),
       "Observação": m.observacoes || "",
       "Próxima Manutenção": DB.getProximaRevisao(m.equipamento) ?? ""
     };

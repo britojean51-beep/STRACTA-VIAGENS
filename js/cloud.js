@@ -98,7 +98,8 @@ const Cloud = {
     const inicial = [
       ["frota", { equipamentos: db.equipamentos, motoristas: db.motoristas,
                   abastecedores: db.abastecedores, tipoEquip: db.tipoEquip,
-                  turnoEquip: db.turnoEquip,
+                  turnoEquip: db.turnoEquip, regimeEquip: db.regimeEquip,
+                  minimoEquip: db.minimoEquip,
                   proximaRevisao: db.proximaRevisao, config: cfg }],
       ["operacao", { estado: db.estado, status: db.status,
                      operadorEquip: db.operadorEquip, paradas: db.paradas }],
@@ -111,7 +112,31 @@ const Cloud = {
       if (nome === "frota" && !gestor) continue;
       try {
         const doc = await this._cad(nome).get();
-        if (!doc.exists) await this._cad(nome).set(dados, { merge: true });
+        if (!doc.exists) { await this._cad(nome).set(dados, { merge: true }); continue; }
+
+        /* O documento já existe, então NÃO sobrescrevo: um aparelho velho
+           empurraria horímetro e status antigos por cima dos novos.
+
+           Mas as PARADAS são exceção, e precisam subir. O ouvinte de "operacao"
+           troca db.paradas inteiro pelo que vem da nuvem; parada criada com a
+           nuvem desligada só existe no aparelho, e morria calada na primeira
+           leitura depois de religar. Agora ela não morre: desde o r55 a parada
+           alimenta o DESCONTO DE MANUTENÇÃO das horas pagas, e parada perdida
+           é dinheiro pago a mais.
+
+           Subir é seguro porque paradas é um mapa por id e o merge do Firestore
+           funde chave por chave: o que já está lá não se mexe, e o que falta
+           entra. Parada apagada de propósito não volta — removerParada apaga do
+           aparelho e manda o marcador de exclusão, então ela não está aqui para
+           ser reenviada. */
+        if (nome === "operacao" && db.paradas && Object.keys(db.paradas).length) {
+          const naNuvem = (doc.data() || {}).paradas || {};
+          const faltando = {};
+          Object.keys(db.paradas).forEach(id => { if (!naNuvem[id]) faltando[id] = db.paradas[id]; });
+          if (Object.keys(faltando).length) {
+            await this._cad("operacao").set({ paradas: faltando }, { merge: true });
+          }
+        }
       } catch (e) { this._falha(e, "preparar cadastro/" + nome); }
     }
   },
@@ -195,6 +220,8 @@ const Cloud = {
       if (Array.isArray(d.abastecedores)) db.abastecedores = d.abastecedores;
       if (d.tipoEquip) db.tipoEquip = d.tipoEquip;
       if (d.turnoEquip) db.turnoEquip = d.turnoEquip;   // turno de cada equipamento
+      if (d.regimeEquip) db.regimeEquip = d.regimeEquip; // contrato de cada caminhão
+      if (d.minimoEquip) db.minimoEquip = d.minimoEquip; // mínimo próprio do caminhão
       if (d.proximaRevisao) db.proximaRevisao = d.proximaRevisao;
       if (d.versaoApp) db.versaoApp = d.versaoApp;   // atualização lançada pelo dono
       if (d.config) {
@@ -363,12 +390,17 @@ const Cloud = {
         }
       }
       const cfg = Object.assign({}, db.config); delete cfg.nuvem;
+      /* Faltavam turnoEquip, operadorEquip e paradas: "Enviar os dados deste
+         celular" deixava para trás justamente o que alimenta as horas do mês. */
       await gravar(this._cad("frota"), {
         equipamentos: db.equipamentos, motoristas: db.motoristas,
         abastecedores: db.abastecedores, tipoEquip: db.tipoEquip,
+        turnoEquip: db.turnoEquip, regimeEquip: db.regimeEquip,
+        minimoEquip: db.minimoEquip,
         proximaRevisao: db.proximaRevisao, config: cfg
       }, { merge: true });
-      await gravar(this._cad("operacao"), { estado: db.estado, status: db.status }, { merge: true });
+      await gravar(this._cad("operacao"), { estado: db.estado, status: db.status,
+        operadorEquip: db.operadorEquip, paradas: db.paradas }, { merge: true });
       await gravar(this._cad("estoque"), db.estoque, { merge: true });
       if (n) await lote.commit();
       await this.iniciar();

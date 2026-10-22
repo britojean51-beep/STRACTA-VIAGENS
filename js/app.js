@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "22/10/2026 · r53 (segurança e LGPD)";
+const VERSION = "22/10/2026 · r60 (segurança e LGPD)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -37,6 +37,9 @@ const fmt = (n, d = 0) => Number(n).toLocaleString("pt-BR", { minimumFractionDig
 const fmtL = n => DB.fmtL(n);
 /* Mesma regra, para contagens: 31 dias fica "31", e meio mês fica "12,9". */
 const fmtN1 = n => DB.fmtL(n);
+/* Tonelagem e peso, com a casa decimal que a balança deu (ver DB.fmtT).
+   fmt(x) sem casa decimal ARREDONDA — 450,5 t virava 451 t. */
+const fmtT = n => DB.fmtT(n);
 /* Valor de campo decimal: guardado com ponto, mostrado com vírgula. */
 const dec = v => (v === null || v === undefined || v === "") ? "" : String(v).replace(".", ",");
 
@@ -234,6 +237,19 @@ function medidores(eq) {
     // "12.500 km · 1.200,5 h" — em máquina de horímetro, só a hora
     linha() { return (this.temKm ? this.kmTxt + " · " : "") + this.horTxt; }
   };
+}
+
+/* O motivo da manutenção do equipamento naquele dia: o serviço apontado, com o
+   período quando os horários foram digitados (r53). Devolve "" quando não houve
+   manutenção — o relatório não pode ganhar uma linha vazia por isso. */
+function motivoManutencao(eq, iso) {
+  const d = DB.getDia(iso) || { manutencoes: [] };
+  const ms = (d.manutencoes || []).filter(m => m.equipamento === eq);
+  if (!ms.length) return "";
+  return ms.map(m => {
+    const hr = [m.entradaHora, m.saidaHora].filter(Boolean).join(" às ");
+    return [m.tipo, m.servico].filter(Boolean).join(" · ") + (hr ? ` (${hr})` : "");
+  }).join(" | ");
 }
 
 /* Medidor que CAI é quase sempre dígito a menos — e um horímetro errado vira o
@@ -1195,7 +1211,7 @@ function telaAbastecimento() {
       <div class="field-row">
         <div class="field">
           <label>Produção (toneladas) <span class="mini">pá/carreg.</span></label>
-          <input id="fTon" inputmode="decimal" value="${dec(ed?.toneladas)}" placeholder="ex: 320">
+          <input id="fTon" inputmode="decimal" value="${dec(ed?.toneladas)}" placeholder="ex: 320,5">
         </div>
         <div class="field">
           <label id="fLtonLabel">L/Ton</label>
@@ -1469,8 +1485,8 @@ function telaViagens() {
           </datalist>
         </div>
         <div class="field">
-          <label>Peso por viagem (t) <span class="mini">opcional</span></label>
-          <input id="vPeso" inputmode="decimal" placeholder="ex: 30">
+          <label>Peso total da rota (t) <span class="mini">opcional</span></label>
+          <input id="vPeso" inputmode="decimal" placeholder="ex: 450">
         </div>
       </div>
       <p class="hint" id="vPesoTotal" style="display:none"></p>
@@ -1498,7 +1514,7 @@ function telaViagens() {
       box.innerHTML = '<p class="empty">Nenhuma rota adicionada.</p>';
     } else {
       box.innerHTML = viagensBuffer.map((v, i) => {
-        const pt = (Number(v.pesoViagem) || 0) * Number(v.quantidade);
+        const pt = DB.toN(v.pesoTotal);     // já é o total; rota antiga também o tem
         const extra = [v.material || null, pt > 0 ? `${fmt(pt)} t` : null].filter(Boolean).join(" · ");
         return `
         <div class="itemrow">
@@ -1539,7 +1555,7 @@ function telaViagens() {
       const rotas = Object.values(porRota).map(g =>
         `Origem ${g.origem} → Destino ${g.destino} = ${g.qtd}` +
         (g.mats.size ? ` · ${[...g.mats].join(", ")}` : "") +
-        (g.peso > 0 ? ` · ${fmt(g.peso)} t` : "")
+        (g.peso > 0 ? ` · ${fmtT(g.peso)} t` : "")
       );
       return { eq, sub, peso, rotas };
     }).sort((a, b) => b.sub - a.sub);
@@ -1552,16 +1568,24 @@ function telaViagens() {
       <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>` : "";
 
     box.innerHTML = linhas.map((l, i) =>
-      `<div class="itemrow"><div class="info">${i === 0 ? "🥇 " : ""}<b>${l.eq}</b> = ${l.sub} viagens${l.peso > 0 ? ` · ${fmt(l.peso)} t` : ""}
+      `<div class="itemrow"><div class="info">${i === 0 ? "🥇 " : ""}<b>${l.eq}</b> = ${l.sub} viagens${l.peso > 0 ? ` · ${fmtT(l.peso)} t` : ""}
         ${l.rotas.map(r => `<div class="sub">${r}</div>`).join("")}</div></div>`
-    ).join("") + `<div class="spacer"></div><p class="tag-total">Total frota: ${total} viagens${pesoTotalFrota > 0 ? ` · ${fmt(pesoTotalFrota)} t` : ""}</p>` + barra;
+    ).join("") + `<div class="spacer"></div><p class="tag-total">Total frota: ${total} viagens${pesoTotalFrota > 0 ? ` · ${fmtT(pesoTotalFrota)} t` : ""}</p>` + barra;
   }
 
+  /* O total agora é digitado, então a dica vai no caminho contrário: mostra a
+     média por viagem. É o que pega o dedo errado na hora — 4.500 t em 15 viagens
+     dão 300 t por viagem, e dá para ver que sobrou um zero. */
   const previewPeso = () => {
-    const pt = num($("#vPeso").value) * num($("#vQtd").value);
+    const total = num($("#vPeso").value), qtd = num($("#vQtd").value);
     const el = $("#vPesoTotal");
-    if (pt > 0) { el.style.display = "block"; el.innerHTML = `⚖️ Peso total desta rota: <b>${fmt(pt)} t</b>`; }
-    else el.style.display = "none";
+    if (total > 0 && qtd > 0) {
+      el.style.display = "block";
+      el.innerHTML = `⚖️ <b>${fmt(total)} t</b> em ${fmt(qtd)} viagem(ns) = <b>${fmt(total / qtd, 1)} t</b> por viagem`;
+    } else if (total > 0) {
+      el.style.display = "block";
+      el.innerHTML = `⚖️ Peso total da rota: <b>${fmt(total)} t</b>`;
+    } else el.style.display = "none";
   };
   $("#vQtd").oninput = previewPeso;
   $("#vPeso").oninput = previewPeso;
@@ -1586,12 +1610,13 @@ function telaViagens() {
     if (mot === null) return;
     if (!orig || !dest) { toast("Informe origem e destino", "err"); return; }
     if (!qtd) { toast("Informe a quantidade", "err"); return; }
-    const pesoViagem = num($("#vPeso").value);
+    // o peso total é DIGITADO, não mais derivado de peso × quantidade
+    const pesoTotal = num($("#vPeso").value);
     viagensBuffer.push({
       equipamento: equip, motorista: mot,
       origem: orig.padStart(2, "0"), destino: dest.padStart(2, "0"), quantidade: qtd,
-      material: $("#vMat").value.trim(), pesoViagem: pesoViagem || null,
-      pesoTotal: pesoViagem ? pesoViagem * qtd : null
+      material: $("#vMat").value.trim(),
+      pesoTotal: pesoTotal || null
     });
     $("#vOrig").value = ""; $("#vDest").value = ""; $("#vQtd").value = ""; $("#vPeso").value = "";
     $("#vPesoTotal").style.display = "none";
@@ -1666,6 +1691,24 @@ function telaManutencao() {
     <div class="card">
       <h3>🔧 Registrar manutenção</h3>
       <div class="field">
+        <label>Dia da manutenção</label>
+        <input type="date" id="mData" value="${dia}">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Entrou às <span class="badge-auto">opcional</span></label>
+          <input id="mHoraIni" type="time">
+        </div>
+        <div class="field">
+          <label>Saiu às <span class="badge-auto">opcional</span></label>
+          <input id="mHoraFim" type="time">
+        </div>
+      </div>
+      <p class="hint">Dá para lançar manutenção de <b>outro dia</b> sem abrir dia novo — o dia de
+      operação da frota não se mexe. Com os <b>dois horários</b>, o período entra fechado de uma
+      vez. Só o de entrada deixa o relógio correndo até alguém apontar Operando. Em branco, vale
+      o horário de agora.</p>
+      <div class="field">
         <label>Equipamento</label>
         <input id="mEquip" list="dlMEquip" placeholder="selecione ou digite" autocapitalize="characters" autocomplete="off">
         ${opcoesDatalist("dlMEquip", db.equipamentos)}
@@ -1712,7 +1755,7 @@ function telaManutencao() {
     </div>
 
     <div class="card">
-      <h3>📅 Manutenções de hoje (${DB.fmtBR(dia)})</h3>
+      <h3>📅 Manutenções do dia <span class="mini" id="mHojeDia">(${DB.fmtBR(dia)})</span></h3>
       <div id="mHoje"></div>
     </div>
 
@@ -1738,7 +1781,8 @@ function telaManutencao() {
     <div class="card">
       <h3>🕓 Histórico de manutenção</h3>
       <p class="hint">O relógio começa quando alguém aponta <b>Manutenção</b> e para quando aponta
-      <b>Operando</b> — não precisa anotar nada.</p>
+      <b>Operando</b>. Quando você preenche os horários aqui em cima, o período entra
+      exatamente como você digitou.</p>
       <div id="mParadas"></div>
     </div>
   `;
@@ -1763,6 +1807,7 @@ function telaManutencao() {
     if (DB.load().equipamentos.includes(v.trim())) carregarEquip();
   };
   selEquip.onchange = carregarEquip;
+  $("#mData").onchange = renderHoje;
 
   function renderRevisoes() {
     const box = $("#mRevisoes");
@@ -1782,16 +1827,22 @@ function telaManutencao() {
     $$("#mRevisoes [data-ficha]").forEach(el => el.onclick = () => abrirFicha(el.dataset.ficha));
   }
 
+  /* Segue o DIA ESCOLHIDO no formulário, e não o dia de operação: lançando a
+     manutenção de ontem, é a lista de ontem que ele precisa ver para conferir. */
   function renderHoje() {
-    const d = DB.getDia(dia);
+    const alvoDia = ($("#mData") && $("#mData").value) || dia;
+    const d = DB.getDia(alvoDia);
     const ms = d ? d.manutencoes : [];
+    const rot = $("#mHojeDia"); if (rot) rot.textContent = `(${DB.fmtBR(alvoDia)})`;
     const box = $("#mHoje");
-    if (!ms.length) { box.innerHTML = '<p class="empty">Sem manutenções hoje.</p>'; return; }
-    box.innerHTML = ms.map(m => `
-      <div class="itemrow"><div class="info"><b>${m.equipamento}</b>
-        <span class="pill pill-red">${m.tipo}</span>
+    if (!ms.length) { box.innerHTML = '<p class="empty">Sem manutenções neste dia.</p>'; return; }
+    box.innerHTML = ms.map(m => {
+      const hr = [m.entradaHora, m.saidaHora].filter(Boolean).join(" às ");
+      return `<div class="itemrow"><div class="info"><b>${m.equipamento}</b>
+        <span class="pill pill-red">${m.tipo}</span>${hr ? ` <span class="mini">🕓 ${hr}</span>` : ""}
         <div class="sub">${m.servico || "—"} · ${medidorDoRegistro(m)}</div>
-      </div></div>`).join("");
+      </div></div>`;
+    }).join("");
   }
 
   function renderParadas() {
@@ -1847,28 +1898,53 @@ function telaManutencao() {
     if (!eq) return;
     selEquip.value = eq;
     if (!serv) { toast("Descreva o serviço", "err"); return; }
+
+    /* O dia escolhido é o dia do registro. addManutencao cria o db.dias[iso] que
+       faltar SEM tocar no diaAtual — é isso que dispensa abrir dia novo. */
+    const data = $("#mData").value || dia;
+    const hIni = $("#mHoraIni").value, hFim = $("#mHoraFim").value;
+    if (data > DB.hojeISO()) { toast("O dia da manutenção não pode ser no futuro", "err"); return; }
+    if (hIni && hFim && hFim < hIni) { toast("A hora de saída é antes da de entrada", "err"); return; }
+
     const horiTxt = $("#mHori").value.trim();
     const kmTxt = medidores(eq).temKm ? $("#mKm").value.trim() : "";
     if (!await confirmarMedidorMenor(eq, horiTxt, kmTxt)) return;
 
-    const mreg = DB.addManutencao(dia, {
+    const mreg = DB.addManutencao(data, {
       equipamento: eq, tipo: $("#mTipo").value,
       servico: serv,
       horimetro: horiTxt === "" ? null : num(horiTxt),
       km: kmTxt === "" ? null : num(kmTxt),
+      entradaHora: hIni || "", saidaHora: hFim || "",
       observacoes: $("#mObs").value.trim()
     });
     // o medidor do equipamento anda junto com a manutenção
     DB.atualizarMedidor(eq, { horimetro: horiTxt, km: kmTxt });
-    // o dia é o dia de operação do app (o mesmo dos lançamentos), o horário é o relógio
-    DB.setStatus(eq, $("#mStatus").value, { dia, origem: "manutencao" });
+    /* Com horário digitado, o período é apontado à mão no dia escolhido; sem
+       horário, continua valendo o relógio por dentro do setStatus.
+
+       Período em aberto (só a hora de entrada) quer dizer máquina parada AGORA:
+       nesse caso a situação tem de ser Manutenção, senão o período ficaria
+       correndo sem ninguém conseguir fechá-lo — só o "Operando" fecha, e a
+       máquina já estaria marcada como operando. Ele é avisado no toast. */
+    const stEscolhido = $("#mStatus").value;
+    const emAberto = hIni && !hFim;
+    const stAplicar = emAberto ? "manutencao" : stEscolhido;
+    if (hIni) DB.registrarManutencao(eq, { dia: data, horaIni: hIni, horaFim: hFim });
+    DB.setStatus(eq, stAplicar, { dia: data, hora: hFim || hIni || undefined,
+      origem: "manutencao", semParada: !!hIni });
     DB.setProximaRevisao(eq, $("#mProxRev").value.trim());
-    Sync.pushManutencao(dia, mreg);
+    Sync.pushManutencao(data, mreg);
     Sync.pushEquipamento(eq);
-    Sync.pushResumoDia(dia);
+    Sync.pushResumoDia(data);
+    Sync.pushHorasMes(data);               // o período parado muda as horas do mês
     Sync.pushParadas();
-    toast("✔ Manutenção registrada");
+    let aviso = "✔ Manutenção registrada" + (data !== dia ? " em " + DB.fmtBR(data) : "");
+    if (emAberto && stEscolhido !== "manutencao")
+      aviso = `✔ Registrada · ${eq} fica em Manutenção até você lançar a hora de saída`;
+    toast(aviso);
     $("#mServico").value = ""; $("#mObs").value = "";
+    $("#mHoraIni").value = ""; $("#mHoraFim").value = "";
     carregarEquip();                       // os medidores voltam já com o novo valor
     renderRevisoes(); renderHoje(); renderParadas();
     terminouLancamento();
@@ -1892,9 +1968,9 @@ function gerarRelatorioTexto(iso) {
   const viagPorEq = {};
   d.viagens.forEach(v => { (viagPorEq[v.equipamento] ||= []).push(v); });
 
-  let totalDiesel = 0, totalS10 = 0, totalS500 = 0, totalArla = 0, totalKm = 0, totalViagens = 0, totalPeso = 0;
+  let totalDiesel = 0, totalS10 = 0, totalS500 = 0, totalArla = 0, totalKm = 0, totalViagens = 0, totalPeso = 0, totalHoras = 0;
   const operando = new Set();
-  const vLine = v => `  Origem ${v.origem} → Destino ${v.destino} = ${v.quantidade}${v.material ? " · " + v.material : ""}${v.pesoTotal ? " · " + fmt(v.pesoTotal) + " t" : ""}\n`;
+  const vLine = v => `  Origem ${v.origem} → Destino ${v.destino} = ${v.quantidade}${v.material ? " · " + v.material : ""}${v.pesoTotal ? " · " + fmtT(v.pesoTotal) + " t" : ""}\n`;
 
   d.abastecimentos.forEach(a => {
     operando.add(a.equipamento);
@@ -1903,12 +1979,17 @@ function gerarRelatorioTexto(iso) {
     if (a.combustivel === "S-500") totalS500 += litros; else totalS10 += litros;
     totalArla += num(a.litrosArla);
     totalKm += num(a.kmRodado);
+    totalHoras += num(a.horasTrabalhadas);     // base do L/h da frota
     const und = a.unidadeMedia || "km/L";
     txt += `🚛 ${a.equipamento}\n`;
     txt += `Operador: ${a.motorista}\n`;
-    txt += `Horímetro: ${a.horimetroFinal}\n`;
-    txt += `Horas Trabalhadas: ${a.horasTrabalhadas} h\n`;
-    if (und === "km/L") txt += `KM Rodado: ${fmt(a.kmRodado)} km\n`;
+    txt += `Horímetro: ${fmtN1(a.horimetroInicial)} → ${fmtN1(a.horimetroFinal)}\n`;
+    txt += `Horas (horímetro): ${a.horasTrabalhadas} h\n`;
+    // o KM só existe em equipamento com odômetro
+    if (und === "km/L") {
+      txt += `KM: ${fmt(a.kmInicial)} → ${fmt(a.kmFinal)}\n`;
+      txt += `KM Rodado: ${fmt(a.kmRodado)} km\n`;
+    }
     txt += `Combustível: ${a.combustivel || "S-10"} · ${fmtL(a.litros)} L\n`;
     if (a.litrosArla) txt += `ARLA 32: ${fmtL(a.litrosArla)} L\n`;
     txt += `Média: ${a.media} ${und}\n`;
@@ -1916,16 +1997,19 @@ function gerarRelatorioTexto(iso) {
     if (und !== "L/h" && lhAb > 0) txt += `Consumo: ${fmt(lhAb, 2)} L/h\n`;
     const tonEq = DB.tonEquipDia(a.equipamento, iso);
     if (tonEq > 0) {
-      txt += `Produção: ${fmt(tonEq)} t\n`;
+      txt += `Produção: ${fmtT(tonEq)} t\n`;
       txt += `L/Ton: ${fmt(DB.ltonEquipDia(a.equipamento, iso), 2)} L/t\n`;
     }
     if (a.situacao) txt += `Situação: ${a.situacao}\n`;
+    // em manutenção, o motivo tem de aparecer: é a pergunta que todo mundo faz depois
+    const mot = motivoManutencao(a.equipamento, iso);
+    if (mot) txt += `Motivo: ${mot}\n`;
     const vs = viagPorEq[a.equipamento];
     if (vs && vs.length) {
       let sub = 0, subP = 0;
       txt += `Viagens:\n`;
       vs.forEach(v => { sub += Number(v.quantidade); subP += Number(v.pesoTotal) || 0; txt += vLine(v); });
-      txt += `Total: ${sub} viagens${subP > 0 ? ` · ${fmt(subP)} t` : ""}\n`;
+      txt += `Total: ${sub} viagens${subP > 0 ? ` · ${fmtT(subP)} t` : ""}\n`;
       totalViagens += sub; totalPeso += subP;
     }
     txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
@@ -1938,14 +2022,17 @@ function gerarRelatorioTexto(iso) {
     let sub = 0, subP = 0;
     txt += `🚛 ${eq}\nViagens:\n`;
     vs.forEach(v => { sub += Number(v.quantidade); subP += Number(v.pesoTotal) || 0; txt += vLine(v); });
-    txt += `Total: ${sub} viagens${subP > 0 ? ` · ${fmt(subP)} t` : ""}\n\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+    txt += `Total: ${sub} viagens${subP > 0 ? ` · ${fmtT(subP)} t` : ""}\n\n━━━━━━━━━━━━━━━━━━━━\n\n`;
     totalViagens += sub; totalPeso += subP;
   });
 
   // manutenções
   if (d.manutencoes.length) {
     txt += `🔧 MANUTENÇÃO\n`;
-    d.manutencoes.forEach(m => { txt += `${m.equipamento} · ${m.tipo}: ${m.servico}\n`; });
+    d.manutencoes.forEach(m => {
+      const hr = [m.entradaHora, m.saidaHora].filter(Boolean).join(" às ");
+      txt += `${m.equipamento} · ${m.tipo}: ${m.servico}${hr ? ` (${hr})` : ""}\n`;
+    });
     txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
   }
 
@@ -1965,8 +2052,9 @@ function gerarRelatorioTexto(iso) {
   txt += `ARLA 32: ${fmtL(totalArla)} L\n`;
   txt += `Total KM: ${fmt(totalKm)} km\n`;
   txt += `Média Frota: ${fmt(mediaFrota, 2)} km/L\n`;
+  if (totalHoras > 0) txt += `L/h Frota: ${fmt(totalDiesel / totalHoras, 2)} L/h\n`;
   txt += `Total Viagens: ${totalViagens}\n`;
-  if (totalPeso > 0) txt += `Peso Transportado: ${fmt(totalPeso)} t\n`;
+  if (totalPeso > 0) txt += `Peso Transportado: ${fmtT(totalPeso)} t\n`;
   const totalTon = [...operando].reduce((s, eq) => s + DB.tonEquipDia(eq, iso), 0);
   if (totalTon > 0) txt += `L/Ton Frota: ${fmt(totalDiesel / totalTon, 2)} L/t\n`;
   txt += `Equipamentos Operando: ${String(operando.size).padStart(2, "0")}\n`;
@@ -2005,12 +2093,12 @@ function gerarRelatorioPeriodo(dias, titulo) {
   txt += `ARLA 32: ${fmtL(arla)} L\n`;
   txt += `Horas Trabalhadas: ${fmt(horas, 1)} h\n`;
   txt += `L/h: ${fmt(lh, 2)}\n`;
-  txt += `Produção: ${fmt(ton)} t\n`;
+  txt += `Produção: ${fmtT(ton)} t\n`;
   txt += `L/Ton: ${fmt(lton, 2)}\n`;
   txt += `Total KM: ${fmt(km)} km\n`;
   txt += `Média Frota: ${fmt(media, 2)} km/L\n`;
   txt += `Total Viagens: ${viagens}\n`;
-  if (pesoTransp > 0) txt += `Peso Transportado: ${fmt(pesoTransp)} t\n`;
+  if (pesoTransp > 0) txt += `Peso Transportado: ${fmtT(pesoTransp)} t\n`;
   txt += `Dias com operação: ${diasOperando} de ${ordem.length}\n`;
   txt += `Equipamentos: ${String(equips.size).padStart(2, "0")}\n`;
   txt += `Operadores: ${String(operadores.size).padStart(2, "0")}\n`;
@@ -2019,7 +2107,7 @@ function gerarRelatorioPeriodo(dias, titulo) {
   txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n📅 POR DIA\n\n`;
   res.forEach(x => {
     txt += `${DB.fmtBR(x.iso)} · ${fmtL(x.r.diesel)} L · ${fmt(x.r.horas, 1)} h`;
-    if (x.r.toneladas > 0) txt += ` · ${fmt(x.r.toneladas)} t`;
+    if (x.r.toneladas > 0) txt += ` · ${fmtT(x.r.toneladas)} t`;
     if (x.r.lton > 0) txt += ` · ${fmt(x.r.lton, 2)} L/t`;
     txt += ` · ${x.r.viagens} viagens\n`;
   });
@@ -2030,7 +2118,7 @@ function gerarRelatorioPeriodo(dias, titulo) {
     .forEach(e => {
       txt += `${e.eq}\n`;
       txt += `  Diesel: ${fmtL(e.diesel)} L · Horas: ${fmt(e.horas, 1)} h · L/h: ${fmt(e.lh, 2)}\n`;
-      if (e.toneladas > 0) txt += `  Produção: ${fmt(e.toneladas)} t · L/Ton: ${fmt(e.lton, 2)}\n`;
+      if (e.toneladas > 0) txt += `  Produção: ${fmtT(e.toneladas)} t · L/Ton: ${fmt(e.lton, 2)}\n`;
       if (e.km > 0) txt += `  KM: ${fmt(e.km)} km · Média: ${fmt(e.media, 2)} km/L\n`;
       if (e.viagens > 0) txt += `  Viagens: ${e.viagens}\n`;
     });
@@ -2084,6 +2172,10 @@ function telaRelatorio() {
         <button class="btn btn-primary btn-sm" id="btnPdf">📄 PDF</button>
       </div>
       <div class="spacer"></div>
+      <button class="btn btn-primary" id="btnImagem">🖼️ Mandar como imagem</button>
+      <p class="hint">Sai uma folha pronta para mandar no WhatsApp — com os totais, cada
+      equipamento, as viagens e as manutenções do dia.</p>
+      <div class="spacer"></div>
       <button class="btn btn-green" id="btnExcel">📊 Enviar planilha (Excel)</button>
     </div>
     <div class="report"><pre id="rTexto"></pre></div>
@@ -2123,6 +2215,14 @@ function telaRelatorio() {
     window.open(url, "_blank");
   };
   $("#btnPdf").onclick = () => { const a = alvo(); gerarPDF(a.dias, a.titulo, $("#rTexto").textContent); };
+  $("#btnImagem").onclick = async () => {
+    const a = alvo();
+    if (!a.dias.length) { toast("Escolha um dia com lançamento", "err"); return; }
+    const b = $("#btnImagem"); const antes = b.textContent;
+    b.disabled = true; b.textContent = "🖼️ Montando a folha…";
+    try { await compartilharFolha(a.dias, a.titulo); }
+    finally { b.disabled = false; b.textContent = antes; }
+  };
   $("#btnExcel").onclick = () => { const a = alvo(); exportarExcel(a.dias, `STRACTA · ${a.titulo}`); };
   render();
 }
@@ -2144,18 +2244,18 @@ function montarCSV(dias, titulo) {
     (d.abastecimentos || []).forEach(a => L.push(linha([
       DB.fmtBR(iso), a.equipamento, a.motorista, a.horimetroInicial, a.horimetroFinal, a.horasTrabalhadas,
       fmtL(a.litros), a.combustivel || "S-10", a.litrosArla || "", a.kmRodado || "",
-      a.media, a.unidadeMedia || "km/L", a.toneladas ?? "", a.lton || "", a.situacao || ""
+      a.media, a.unidadeMedia || "km/L", a.toneladas != null ? fmtT(a.toneladas) : "", a.lton || "", a.situacao || ""
     ])));
   });
   L.push("");
   // Viagens
   L.push(linha(["VIAGENS"]));
-  L.push(linha(["Data", "Equipamento", "Operador", "Origem", "Destino", "Qtd viagens", "Material", "Peso/viagem (t)", "Peso total (t)"]));
+  L.push(linha(["Data", "Equipamento", "Operador", "Origem", "Destino", "Qtd viagens", "Material", "Peso total (t)"]));
   lista.forEach(iso => {
     const d = DB.getDia(iso) || { viagens: [] };
     (d.viagens || []).forEach(v => L.push(linha([
       DB.fmtBR(iso), v.equipamento, v.motorista || "", v.origem, v.destino, v.quantidade,
-      v.material || "", v.pesoViagem != null ? fmt(v.pesoViagem) : "", v.pesoTotal != null ? fmt(v.pesoTotal) : ""
+      v.material || "", v.pesoTotal != null ? fmtT(v.pesoTotal) : ""
     ])));
   });
   L.push("");
@@ -2269,7 +2369,7 @@ function gerarPDF(dias, titulo, texto) {
       <div><b>${fmt(media, 2)}</b><span>Média km/L</span></div>
       <div><b>${viagens}</b><span>Viagens</span></div>
       <div><b>${fmt(km)}</b><span>KM rodado</span></div>
-      <div><b>${fmt(ton)}</b><span>Produção (t)</span></div>
+      <div><b>${fmtT(ton)}</b><span>Produção (t)</span></div>
       <div><b>${String(equips.size).padStart(2, "0")}</b><span>Equipamentos</span></div>
     </div>
     <pre class="pdf-body">${corpo.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]))}</pre>
@@ -2277,6 +2377,422 @@ function gerarPDF(dias, titulo, texto) {
   `;
   toast("Abrindo impressão · escolha \"Salvar como PDF\"");
   setTimeout(() => window.print(), 300);
+}
+
+/* ============================================================
+   RELATÓRIO EM IMAGEM — folha A4 desenhada no canvas
+   Sem biblioteca: o app é offline-first, e puxar html2canvas de um CDN
+   quebraria o uso sem internet e somaria ~200 KB ao cache do service worker.
+   A largura é fixa (proporção A4); a ALTURA é medida antes e cresce com o
+   conteúdo, com a folha A4 como mínimo — assim nenhuma linha é cortada.
+   ============================================================ */
+const FOLHA = {
+  /* A altura É a qualidade: o WhatsApp reduz o lado maior para ~1600 px, então
+     cada pixel de altura encolhe o texto de todo mundo. A largura é de graça —
+     por isso a margem é apertada e os quadros vão em duas colunas. */
+  W: 1240, MIN_H: 1200, M: 48,          // largura · altura mínima · margem
+  navy: "#12203c", laranja: "#ff7a1a", tinta: "#1a2234",
+  cinza: "#5b6679", linha: "#dde3ee", zebra: "#f6f8fc", papel: "#ffffff",
+  verde: "#15803d", vermelho: "#b91c1c",
+  fonte(px, peso) { return `${peso || 400} ${px}px -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`; }
+};
+
+/* Os dados da folha, já formatados. Sai do mesmo DB.resumoDia que alimenta o
+   relatório de texto: a imagem não pode contar uma história diferente dele. */
+function dadosDaFolha(dias, titulo) {
+  const lista = (Array.isArray(dias) ? dias : [dias]).slice().sort();
+  const varios = lista.length > 1;
+  const res = lista.map(iso => DB.resumoDia(iso));
+  const soma = c => res.reduce((s, x) => s + x[c], 0);
+  const diesel = soma("diesel"), km = soma("km"), viagens = soma("viagens");
+  const ton = soma("toneladas"), horas = soma("horas"), arla = soma("arla");
+  const equips = new Set(), manuts = new Set();
+  res.forEach(r => { r.operando.forEach(e => equips.add(e)); r.manutencao.forEach(e => manuts.add(e)); });
+
+  const totais = [
+    { rot: "DIESEL", val: fmtL(diesel), un: "L" },
+    { rot: "MÉDIA DA FROTA", val: fmt(diesel > 0 ? km / diesel : 0, 2), un: "km/L" },
+    { rot: "CONSUMO POR HORA", val: fmt(horas > 0 ? diesel / horas : 0, 2), un: "L/h" },
+    { rot: "CONSUMO POR TONELADA", val: fmt(ton > 0 ? diesel / ton : 0, 2), un: "L/t" },
+    { rot: "VIAGENS", val: fmt(viagens), un: "" },
+    { rot: "PRODUÇÃO", val: fmtT(ton), un: "t" },
+    { rot: "KM RODADO", val: fmt(km), un: "km" },
+    { rot: "HORAS TRABALHADAS", val: fmt(horas, 1), un: "h" }
+  ];
+
+  // uma linha por equipamento (dia) ou uma por dia (período)
+  const linhas = [];
+  /* A coluna de média carrega as TRÊS medidas: a principal do equipamento em
+     cima, e L/h + L/ton numa segunda linha menor. Numa folha de 1240 px não
+     cabem três colunas novas sem cortar nome de operador — empilhar cabe. */
+  if (varios) {
+    lista.forEach((iso, i) => {
+      const r = res[i];
+      linhas.push({ a: DB.fmtBR(iso), b: `${r.operando.length} equip.`,
+        c: fmtL(r.diesel) + " L", d: fmt(r.horas, 1) + " h",
+        e: fmt(r.media, 2) + " km/L",
+        eSub: [r.lh > 0 ? fmt(r.lh, 2) + " L/h" : "", r.lton > 0 ? fmt(r.lton, 2) + " L/t" : ""]
+          .filter(Boolean).join(" · "),
+        f: fmt(r.viagens) });
+    });
+  }
+
+  /* ---- No relatório DIÁRIO, cada equipamento virou um QUADRO com os onze campos.
+     Onze colunas não cabem numa linha de tabela a 1240 px sem cortar nome de
+     operador. No semanal e no mensal continua a tabela por dia: estes campos são
+     de lançamento, e um quadro por dia não significaria nada. ---- */
+  const quadros = [];
+  if (!varios) {
+    const iso = lista[0];
+    const d = DB.getDia(iso) || { abastecimentos: [] };
+    (d.abastecimentos || []).forEach(a => {
+      const und = a.unidadeMedia || "km/L";
+      const temKm = und === "km/L";
+      const lhA = DB.lhDoLancamento(a);
+      const ltonA = DB.ltonEquipDia(a.equipamento, iso);
+      const nada = "—";
+      quadros.push({
+        equip: a.equipamento,
+        operador: a.motorista || nada,
+        situacao: a.situacao || "",
+        motivo: motivoManutencao(a.equipamento, iso),
+        /* Os campos em três faixas: medidor, rodagem, consumo. Os rótulos são
+           curtos e o ARLA tem célula própria porque o quadro vive em MEIA
+           largura (r59) — "120,5 L (+12 ARLA)" numa célula de 132 px seria
+           cortado em "120,5 L (+1…", que é pior que não mostrar.
+           A faixa de 3 é a mais larga, e é onde mora a média com a unidade
+           ("2,49 km/L" não caberia numa célula de 4). */
+        campos: [
+          [["HORÍM. INI", fmtN1(a.horimetroInicial)],
+           ["HORÍM. FIM", fmtN1(a.horimetroFinal)],
+           ["HORAS", (a.horasTrabalhadas || "0") + " h"],
+           ["DIESEL", fmtL(a.litros) + " L"]],
+          [["KM INI", temKm ? fmt(a.kmInicial) : nada],
+           ["KM FIM", temKm ? fmt(a.kmFinal) : nada],
+           ["KM RODADO", temKm && a.kmRodado ? fmt(a.kmRodado) + " km" : nada],
+           ["ARLA", a.litrosArla ? fmtL(a.litrosArla) + " L" : nada]],
+          [["MÉDIA", `${a.media} ${und}`],
+           // em máquina de horímetro a média JÁ é o L/h: repetir confundiria
+           ["L/h", und === "L/h" ? nada : (lhA > 0 ? fmt(lhA, 2) : nada)],
+           ["L/TON", ltonA > 0 ? fmt(ltonA, 2) : nada]]
+        ]
+      });
+    });
+  }
+
+  // viagens detalhadas, agrupadas por equipamento
+  const viag = [];
+  if (!varios) {
+    const d = DB.getDia(lista[0]) || { viagens: [] };
+    const porEq = {};
+    (d.viagens || []).forEach(v => { (porEq[v.equipamento] ||= []).push(v); });
+    Object.keys(porEq).sort().forEach(eq => {
+      const vs = porEq[eq];
+      const q = vs.reduce((s, v) => s + DB.toN(v.quantidade), 0);
+      const p = vs.reduce((s, v) => s + DB.toN(v.pesoTotal), 0);
+      viag.push({ eq, total: `${fmt(q)} viagens${p > 0 ? " · " + fmtT(p) + " t" : ""}`,
+        itens: vs.map(v => `${v.origem} → ${v.destino}: ${v.quantidade}${v.material ? " · " + v.material : ""}`) });
+    });
+  }
+
+  // manutenções: o serviço e o período parado, com os horários novos
+  const manut = [];
+  lista.forEach(iso => {
+    const d = DB.getDia(iso) || { manutencoes: [] };
+    (d.manutencoes || []).forEach(m => {
+      const p = DB.paradasDe(m.equipamento, 0).find(x => x.tipo === "manutencao" && x.entradaDia === iso);
+      manut.push({ eq: m.equipamento, tipo: m.tipo || "",
+        servico: m.servico || "—",
+        periodo: p ? `${p.entradaHora}${p.saidaHora ? " às " + p.saidaHora : " · em aberto"}${p.minutos ? " (" + DB.duracaoParada(p) + ")" : ""}` : "" });
+    });
+  });
+
+  return {
+    titulo: titulo || "RELATÓRIO DIÁRIO",
+    quadros,
+    periodo: varios ? `${DB.fmtBR(lista[0])} a ${DB.fmtBR(lista[lista.length - 1])}` : DB.fmtBR(lista[0]),
+    varios, totais, linhas, viag, manut,
+    nEquip: equips.size, nManut: manuts.size, arla,
+    cabLinhas: varios ? ["DIA", "EQUIP.", "DIESEL", "HORAS", "MÉDIA", "VIAGENS"]
+                      : ["EQUIP.", "OPERADOR", "DIESEL", "HORAS", "MÉDIA", "KM"]
+  };
+}
+
+/* Mede a altura que o conteúdo pede, para a folha crescer em vez de cortar. */
+function alturaDaFolha(d) {
+  /* Este orçamento tem de BATER com o desenho. Ele orçava 118 px para um
+     "título e período" que a faixa azul já contém, e 120 de rodapé quando o
+     desenho usa 82: eram ~156 px de canvas em branco no fim da folha, que
+     ninguém pediu e que só pioravam o encolhimento do WhatsApp. */
+  let h = 128 + 48;                            // faixa do topo + respiro
+  h += Math.ceil(d.totais.length / 3) * 96 + 22;   // quadros de total
+
+  if (d.quadros && d.quadros.length) {
+    // dois equipamentos por linha; o ímpar que sobra ocupa a linha inteira
+    h += 44;
+    const linhas = Math.ceil(d.quadros.length / 2);
+    for (let i = 0; i < d.quadros.length; i += 2) {
+      const par = d.quadros.slice(i, i + 2);
+      h += Math.max(...par.map(q => alturaDoQuadro(q))) + 16;
+    }
+    h += 8;
+  } else {
+    h += 44 + 40 + d.linhas.length * 58 + 24;  // tabela por dia (semanal e mensal)
+  }
+
+  if (d.viag.length) { h += 44; d.viag.forEach(v => { h += 36 + v.itens.length * 34 + 8; }); h += 14; }
+  if (d.manut.length) h += 44 + d.manut.length * 64 + 14;
+  h += 72;                                     // rodapé
+  return Math.max(FOLHA.MIN_H, h);
+}
+
+/* A altura de um quadro de equipamento. Numa função só porque o orçamento e o
+   desenho precisam concordar — duas contas separadas divergiriam. */
+function alturaDoQuadro(q) {
+  return 46 + q.campos.length * 62 + (q.motivo ? 34 : 0);
+}
+
+/* Desenha a folha e devolve o canvas. `estilo` escolhe o acabamento do topo e
+   dos quadros de total — é o que estamos ajustando junto com ele. */
+function desenharFolha(d, estilo) {
+  const F = FOLHA, est = estilo || "faixa";
+  const cv = document.createElement("canvas");
+  cv.width = F.W; cv.height = alturaDaFolha(d);
+  const c = cv.getContext("2d");
+  const L = F.M, R = F.W - F.M, LARG = R - L;
+
+  c.fillStyle = F.papel; c.fillRect(0, 0, cv.width, cv.height);
+  c.textBaseline = "alphabetic";
+  const txt = (s, x, y, fonte, cor, alinha) => {
+    c.font = fonte; c.fillStyle = cor; c.textAlign = alinha || "left";
+    c.fillText(String(s), x, y);
+  };
+  /* Corta o texto que não cabe na coluna, com reticências. Sem isso, nome de
+     operador comprido invadiria a coluna do lado. */
+  const cortar = (s, max, fonte) => {
+    c.font = fonte;
+    let t = String(s);
+    if (c.measureText(t).width <= max) return t;
+    while (t.length > 1 && c.measureText(t + "…").width > max) t = t.slice(0, -1);
+    return t + "…";
+  };
+  const secao = (rot, y) => {
+    txt(rot, L, y + 2, F.fonte(21, 700), F.navy);
+    c.fillStyle = F.laranja; c.fillRect(L, y + 12, 50, 4);
+    return y + 44;
+  };
+
+  let y = 0;
+
+  /* ---- topo ---- */
+  if (est === "faixa") {
+    // faixa cheia azul-marinho: mais presença, cara de documento timbrado
+    c.fillStyle = F.navy; c.fillRect(0, 0, F.W, 122);
+    c.fillStyle = F.laranja; c.fillRect(0, 122, F.W, 6);
+    txt("STRACTA MINERAÇÃO", L, 56, F.fonte(36, 800), "#ffffff");
+    txt("CONTROLE DE FROTA · GP2T", L, 92, F.fonte(19, 500), "#9fb0d0");
+    txt(d.periodo, R, 56, F.fonte(32, 800), "#ffffff", "right");
+    txt(d.titulo, R, 92, F.fonte(18, 600), F.laranja, "right");
+    y = 128 + 48;
+  } else {
+    // topo claro: só o nome, um filete laranja e muito branco. Mais sóbrio.
+    txt("STRACTA MINERAÇÃO", L, 62, F.fonte(36, 800), F.navy);
+    txt("CONTROLE DE FROTA · GP2T", L, 94, F.fonte(19, 500), F.cinza);
+    txt(d.periodo, R, 62, F.fonte(32, 800), F.navy, "right");
+    txt(d.titulo, R, 92, F.fonte(18, 600), F.laranja, "right");
+    c.fillStyle = F.laranja; c.fillRect(L, 110, LARG, 5);
+    y = 128 + 48;
+  }
+
+  /* ---- quadros de total: 3 por linha ---- */
+  const COLS = 3, GAP = 14;
+  const cw = (LARG - GAP * (COLS - 1)) / COLS, ch = 82;
+  d.totais.forEach((t, i) => {
+    const x = L + (i % COLS) * (cw + GAP);
+    const yy = y + Math.floor(i / COLS) * (ch + 14);
+    if (est === "faixa") {
+      c.fillStyle = F.zebra; c.fillRect(x, yy, cw, ch);
+      c.fillStyle = F.laranja; c.fillRect(x, yy, 5, ch);
+    } else {
+      c.strokeStyle = F.linha; c.lineWidth = 2; c.strokeRect(x + 1, yy + 1, cw - 2, ch - 2);
+    }
+    txt(cortar(t.rot, cw - 30, F.fonte(13, 700)), x + 16, yy + 26, F.fonte(13, 700), F.cinza);
+    txt(t.val, x + 16, yy + 68, F.fonte(38, 800), F.navy);
+    if (t.un) {
+      c.font = F.fonte(38, 800);
+      txt(" " + t.un, x + 16 + c.measureText(t.val).width, yy + 68, F.fonte(18, 600), F.cinza);
+    }
+  });
+  y += Math.ceil(d.totais.length / COLS) * (ch + 14) + 22;
+
+  /* ---- os quadros de equipamento, DOIS POR LINHA ----
+     Eram metade da altura da folha (51,5%), e altura é o que o WhatsApp
+     encolhe. Em duas colunas a mesma informação custa metade dos pixels. */
+  if (d.quadros && d.quadros.length) {
+    y = secao("POR EQUIPAMENTO", y);
+    const corSit = sit => /manuten/i.test(sit) ? F.vermelho
+      : /reserva|parado/i.test(sit) ? "#b45309"
+      : /final/i.test(sit) ? F.cinza : F.verde;
+    const VAO = 20;
+
+    /* Desenha um quadro em (x, y) com a largura dada. A largura entra como
+       parâmetro porque o ímpar que sobra ocupa a linha inteira — sozinho em
+       meia largura ele deixaria justamente o buraco de que ele reclamou. */
+    const quadro = (q, x, yq, larg, altLinha) => {
+      // o fundo usa a altura da LINHA, para os dois quadros fecharem embaixo juntos
+      const alt = altLinha || alturaDoQuadro(q);
+      c.fillStyle = F.zebra; c.fillRect(x, yq, larg, alt);
+      c.fillStyle = corSit(q.situacao); c.fillRect(x, yq, 5, alt);
+
+      const px = x + 18, pr = x + larg - 14;
+      txt(q.equip, px, yq + 31, F.fonte(26, 800), F.navy);
+      c.font = F.fonte(26, 800);
+      const xOp = px + c.measureText(q.equip).width + 14;
+      // a situação tem prioridade na direita; o operador usa o que sobrar
+      c.font = F.fonte(17, 700);
+      const largSit = q.situacao ? c.measureText(q.situacao).width + 12 : 0;
+      txt(cortar(q.operador, Math.max(40, pr - xOp - largSit), F.fonte(18, 500)),
+          xOp, yq + 31, F.fonte(18, 500), F.cinza);
+      if (q.situacao) txt(q.situacao, pr, yq + 31, F.fonte(17, 700), corSit(q.situacao), "right");
+      c.strokeStyle = F.linha; c.lineWidth = 1;
+      c.beginPath(); c.moveTo(px, yq + 42); c.lineTo(pr, yq + 42); c.stroke();
+
+      let yy = yq + 46;
+      q.campos.forEach(faixa => {
+        const n = faixa.length, cw2 = (larg - 32) / n;
+        faixa.forEach(([rot, val], i) => {
+          const xc = px + i * cw2;
+          txt(cortar(rot, cw2 - 10, F.fonte(13, 700)), xc, yy + 20, F.fonte(13, 700), F.cinza);
+          txt(cortar(String(val), cw2 - 10, F.fonte(24, 700)), xc, yy + 50, F.fonte(24, 700), F.tinta);
+        });
+        yy += 62;
+      });
+
+      // em manutenção, o motivo tem de aparecer junto dos números dele
+      if (q.motivo) {
+        c.fillStyle = "#fde8e8"; c.fillRect(px, yy, larg - 32, 30);
+        txt(cortar("Motivo: " + q.motivo, larg - 56, F.fonte(15, 600)), px + 10, yy + 21,
+            F.fonte(15, 600), F.vermelho);
+      }
+      return alt;
+    };
+
+    const meia = (LARG - VAO) / 2;
+    for (let i = 0; i < d.quadros.length; i += 2) {
+      const par = d.quadros.slice(i, i + 2);
+      let alt;
+      if (par.length === 1) {
+        alt = quadro(par[0], L, y, LARG);          // o último sozinho: linha inteira
+      } else {
+        // as duas colunas da linha ficam com a mesma altura, a do maior
+        const altLinha = Math.max(alturaDoQuadro(par[0]), alturaDoQuadro(par[1]));
+        par.forEach((q, j) => quadro(q, L + j * (meia + VAO), y, meia, altLinha));
+        alt = altLinha;
+      }
+      y += alt + 16;
+    }
+    y += 8;
+  } else {
+
+  /* ---- tabela por dia (semanal e mensal) ---- */
+  y = secao("RESUMO POR DIA", y);
+  const pesos = [0.16, 0.20, 0.14, 0.11, 0.24, 0.15];
+  const xs = []; let acc = L;
+  pesos.forEach(p => { xs.push(acc); acc += LARG * p; });
+  const alinhas = ["left", "left", "right", "right", "right", "right"];
+  const xDe = i => alinhas[i] === "right" ? xs[i] + LARG * pesos[i] - 14 : xs[i];
+
+  c.fillStyle = F.navy; c.fillRect(L, y, LARG, 40);
+  d.cabLinhas.forEach((h, i) => txt(h, xDe(i), y + 27, F.fonte(14, 700), "#ffffff", alinhas[i]));
+  y += 40;
+
+  if (!d.linhas.length) {
+    txt("Nenhum lançamento neste dia.", L + 14, y + 32, F.fonte(19, 500), F.cinza);
+    y += 52;
+  } else {
+    const ALT = 58;
+    d.linhas.forEach((ln, i) => {
+      if (i % 2 === 1) { c.fillStyle = F.zebra; c.fillRect(L, y, LARG, ALT); }
+      [ln.a, ln.b, ln.c, ln.d, ln.e, ln.f].forEach((v, j) => {
+        const fonte = j === 0 ? F.fonte(20, 700) : F.fonte(19, 400);
+        txt(cortar(v, LARG * pesos[j] - 18, fonte), xDe(j), y + 28, fonte,
+            j === 0 ? F.navy : F.tinta, alinhas[j]);
+      });
+      // L/h e L/ton embaixo da média, menores e em cinza
+      if (ln.eSub) txt(cortar(ln.eSub, LARG * pesos[4] - 18, F.fonte(14, 500)),
+                       xDe(4), y + 47, F.fonte(14, 500), F.cinza, alinhas[4]);
+      c.strokeStyle = F.linha; c.lineWidth = 1;
+      c.beginPath(); c.moveTo(L, y + ALT); c.lineTo(R, y + ALT); c.stroke();
+      y += ALT;
+    });
+  }
+  y += 24;
+  }
+
+  /* ---- viagens detalhadas ---- */
+  if (d.viag.length) {
+    y = secao("VIAGENS", y);
+    d.viag.forEach(v => {
+      txt(v.eq, L, y + 22, F.fonte(21, 700), F.navy);
+      txt(v.total, R, y + 22, F.fonte(19, 600), F.laranja, "right");
+      y += 36;
+      v.itens.forEach(it => {
+        c.fillStyle = F.cinza; c.fillRect(L + 6, y + 11, 5, 5);
+        txt(cortar(it, LARG - 30, F.fonte(20, 400)), L + 22, y + 23, F.fonte(20, 400), F.tinta);
+        y += 34;
+      });
+      y += 8;
+    });
+    y += 14;
+  }
+
+  /* ---- manutenções do dia ---- */
+  if (d.manut.length) {
+    y = secao("MANUTENÇÃO", y);
+    d.manut.forEach(m => {
+      c.fillStyle = F.vermelho; c.fillRect(L, y + 4, 5, 46);
+      txt(m.eq, L + 18, y + 24, F.fonte(20, 700), F.navy);
+      c.font = F.fonte(20, 700);
+      if (m.tipo) txt(m.tipo, L + 18 + c.measureText(m.eq).width + 14, y + 24, F.fonte(16, 600), F.vermelho);
+      if (m.periodo) txt(m.periodo, R, y + 24, F.fonte(17, 600), F.cinza, "right");
+      txt(cortar(m.servico, LARG - 28, F.fonte(19, 400)), L + 18, y + 48, F.fonte(19, 400), F.tinta);
+      y += 64;
+    });
+    y += 14;
+  }
+
+  /* ---- rodapé ---- */
+  const yr = cv.height - 30;
+  c.strokeStyle = F.linha; c.lineWidth = 2;
+  c.beginPath(); c.moveTo(L, yr - 22); c.lineTo(R, yr - 22); c.stroke();
+  txt(`${d.nEquip} equipamento(s) operando · ${d.nManut} em manutenção`, L, yr, F.fonte(16, 500), F.cinza);
+  txt("GP2T · Gestão de Frota", R, yr, F.fonte(16, 600), F.navy, "right");
+  return cv;
+}
+
+
+/* Monta o PNG e manda. navigator.share leva direto para o WhatsApp no Android;
+   onde não existir (computador, navegador antigo), baixa o arquivo. */
+async function compartilharFolha(dias, titulo) {
+  let cv;
+  try { cv = desenharFolha(dadosDaFolha(dias, titulo), "faixa"); }
+  catch (e) { toast("Não consegui montar a imagem", "err"); return; }
+  const d0 = Array.isArray(dias) ? dias[0] : dias;
+  const nome = "STRACTA-" + String(titulo || "relatorio").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + "-" + d0 + ".png";
+  const blob = await new Promise(r => cv.toBlob(r, "image/png"));
+  if (!blob) { toast("Não consegui montar a imagem", "err"); return; }
+  const arq = new File([blob], nome, { type: "image/png" });
+  if (navigator.canShare && navigator.canShare({ files: [arq] })) {
+    try { await navigator.share({ files: [arq], title: titulo || "Relatório" }); return; }
+    catch (e) { if (e && e.name === "AbortError") return; }   // ele fechou o menu
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = nome; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast("🖼️ Imagem salva no aparelho");
 }
 
 /* ============================================================
@@ -2378,11 +2894,11 @@ function detalheKpi(chave, iso) {
         return h > 0 && l > 0 ? `${fmt(l / h, 2)} L/h · ${fmt(l)} L em ${fmt(h, 1)} h` : "";
       });
     case "toneladas":
-      return porEquip("🏭 Produção", eq => { const t = DB.tonEquipDia(eq, iso); return t > 0 ? `${fmt(t)} t` : ""; });
+      return porEquip("🏭 Produção", eq => { const t = DB.tonEquipDia(eq, iso); return t > 0 ? `${fmtT(t)} t` : ""; });
     case "lton":
       return porEquip("🏭 L/Ton por equipamento", eq => {
         const lt = DB.ltonEquipDia(eq, iso), t = DB.tonEquipDia(eq, iso);
-        return lt > 0 ? `${fmt(lt, 2)} L/t · ${fmtL(somaAb(eq, "litros"))} L em ${fmt(t)} t` : "";
+        return lt > 0 ? `${fmt(lt, 2)} L/t · ${fmtL(somaAb(eq, "litros"))} L em ${fmtT(t)} t` : "";
       });
     case "media":
       return porEquip("📈 Média km/L", eq => {
@@ -2447,7 +2963,7 @@ function telaDashboard() {
   const lab = x => DB.fmtBR(x.iso).slice(0, 5);
   const s = diasTend.map(iso => Object.assign({ iso }, DB.resumoDia(iso)));
   const gDiesel = grafico(s.map(x => ({ label: lab(x), valor: Math.round(x.diesel), rotulo: fmtL(x.diesel) })), { tipo: "barra", cor: "#ff7a1a", titulo: "Diesel" });
-  const gProd = grafico(s.map(x => ({ label: lab(x), valor: Math.round(x.toneladas), rotulo: fmt(x.toneladas) })), { tipo: "barra", cor: "#a855f7", titulo: "Produção" });
+  const gProd = grafico(s.map(x => ({ label: lab(x), valor: Math.round(x.toneladas), rotulo: fmtT(x.toneladas) })), { tipo: "barra", cor: "#a855f7", titulo: "Produção" });
   const gLton = grafico(s.map(x => ({ label: lab(x), valor: x.lton, rotulo: fmt(x.lton, 2) })), { tipo: "linha", cor: "#f59e0b", titulo: "L/Ton" });
   const gLh = grafico(s.map(x => ({ label: lab(x), valor: x.lh, rotulo: fmt(x.lh, 2) })), { tipo: "linha", cor: "#ef4444", titulo: "L/h" });
   const gMedia = grafico(s.map(x => ({ label: lab(x), valor: x.media, rotulo: fmt(x.media, 2) })), { tipo: "linha", cor: "#22c55e", titulo: "Média km/L" });
@@ -2509,7 +3025,7 @@ function telaDashboard() {
       ["Diesel L", x => fmtL(x.diesel), () => fmtL(tot.diesel)],
       ["Horas", x => fmt(x.horas, 1), () => fmt(tot.horas, 1)],
       ["L/h", x => fmt(x.lh, 2), () => fmt(tot.lh, 2)],
-      ["Prod. t", x => fmt(x.toneladas), () => fmt(tot.toneladas)],
+      ["Prod. t", x => fmtT(x.toneladas), () => fmtT(tot.toneladas)],
       ["L/Ton", x => fmt(x.lton, 2), () => fmt(tot.lton, 2)],
       ["km/L", x => fmt(x.media, 2), () => fmt(tot.media, 2)],
       ["Viagens", x => x.viagens, () => tot.viagens],
@@ -2572,6 +3088,7 @@ function telaDashboard() {
       <div class="sub">${fmt(x[painelMetrica], met.dec)}${met.un}</div></div></div>`).join("");
 
   const hm = DB.horasMes(mesDeHoras());
+  const pg = DB.pagamentoFrota(mesDeHoras());
 
   // ---- status da frota ----
   const statusHtml = db.equipamentos.map(eq => {
@@ -2604,7 +3121,7 @@ function telaDashboard() {
         <div class="kpi ${painelKpi === "diesel" ? "kpi-ativo" : ""}" data-kpi="diesel"><div class="k-label">⛽ Consumo diesel</div><div class="k-value">${fmtL(r.diesel)}<span class="k-unit"> L</span></div></div>
         <div class="kpi k-yellow ${painelKpi === "horas" ? "kpi-ativo" : ""}" data-kpi="horas"><div class="k-label">⏱️ Horas totais</div><div class="k-value">${fmt(r.horas, 1)}<span class="k-unit"> h</span></div></div>
         <div class="kpi ${painelKpi === "lh" ? "kpi-ativo" : ""}" data-kpi="lh"><div class="k-label">📊 L/h</div><div class="k-value">${fmt(r.lh, 2)}<span class="k-unit"> L/h</span></div></div>
-        <div class="kpi k-blue ${painelKpi === "toneladas" ? "kpi-ativo" : ""}" data-kpi="toneladas"><div class="k-label">🏭 Produção</div><div class="k-value">${fmt(r.toneladas)}<span class="k-unit"> t</span></div></div>
+        <div class="kpi k-blue ${painelKpi === "toneladas" ? "kpi-ativo" : ""}" data-kpi="toneladas"><div class="k-label">🏭 Produção</div><div class="k-value">${fmtT(r.toneladas)}<span class="k-unit"> t</span></div></div>
         <div class="kpi k-yellow ${painelKpi === "lton" ? "kpi-ativo" : ""}" data-kpi="lton"><div class="k-label">🏭 L/Ton</div><div class="k-value">${fmt(r.lton, 2)}<span class="k-unit"> L/t</span></div></div>
         <div class="kpi k-green ${painelKpi === "media" ? "kpi-ativo" : ""}" data-kpi="media"><div class="k-label">📈 Média km/L</div><div class="k-value">${fmt(r.media, 2)}<span class="k-unit"> km/L</span></div></div>
         <div class="kpi k-blue ${painelKpi === "viagens" ? "kpi-ativo" : ""}" data-kpi="viagens"><div class="k-label">🚚 Viagens</div><div class="k-value">${r.viagens}</div></div>
@@ -2646,6 +3163,41 @@ function telaDashboard() {
           <div class="sub">🕐 ${fmtH(l.trabalhadas)} · ⏱️ ${fmtH(l.horasDia)} · de ${fmtH(l.disponiveis)}${(l.manutencao + l.almoco) > 0
             ? ` · parado ${fmtH(l.manutencao + l.almoco)}` : ""}</div></div><span class="mini">ficha ›</span></div>`
       ).join("") || '<p class="empty">Nenhum equipamento na frota.</p>'}</div>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="card">
+      <h3>💰 Horas pagas no mês <span class="mini">(caminhões)</span></h3>
+      <p class="hint hint-forte">Conta de <b>contrato</b>, com a <b>hora dia</b> — não é o
+      horímetro. O mínimo é pago mesmo se o caminhão rodar menos; se rodar mais, paga o que rodou.
+      Manutenção abate o mínimo, no máximo <b>${fmt(db.config.horasPagasDia, 2)} h por dia útil</b>.${pg.corrente
+        ? ` <b>Mês em andamento:</b> o mínimo aqui é o proporcional aos dias úteis já passados — no
+           fechamento ele vira o do contrato inteiro.` : " <b>Mês fechado.</b>"}</p>
+      ${!pg.linhas.length ? '<p class="empty">Nenhum caminhão com mínimo definido. Configure em ⚙️ Configurações.</p>' : `
+      <div class="kpi-grid">
+        <div class="kpi k-green"><div class="k-label">💰 A pagar</div><div class="k-value">${fmt(pg.pagar, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-yellow"><div class="k-label">⏱️ Hora dia</div><div class="k-value">${fmt(pg.trabalhadas, 1)}<span class="k-unit"> h</span></div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="kpi-grid">
+        <div class="kpi k-red"><div class="k-label">🔧 Desconto da manutenção</div><div class="k-value">${fmt(pg.desconto, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-blue"><div class="k-label">📋 Mínimo ajustado</div><div class="k-value">${fmt(pg.ajustado, 1)}<span class="k-unit"> h</span></div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="itemlist">${pg.linhas.map(l => {
+        const etiqueta = l.garantia > 0.05
+          ? `<span class="pill pill-yellow">garantia ${fmtH(l.garantia)}</span>`
+          : l.aMais > 0.05 ? `<span class="pill pill-green">+${fmtH(l.aMais)}</span>`
+          : '<span class="pill pill-gray">no mínimo</span>';
+        return `<div class="itemrow" data-ficha="${l.equip}"><div class="info"><b>${l.equip}</b> ${etiqueta}
+          <div class="sub">💰 paga <b>${fmtH(l.pagar)}</b> · rodou ${fmtH(l.trabalhadas)} · mínimo ${fmtH(l.ajustado)}${
+            l.desconto > 0.05 ? ` (−${fmtH(l.desconto)} de ${l.diasComParada} dia(s) parado)` : ""}</div>
+          </div><span class="mini">ficha ›</span></div>`;
+      }).join("")}</div>
+      <div class="spacer"></div>
+      <p class="tag-total">Total da frota: ${fmtH(pg.pagar)} a pagar${pg.garantia > 0.05
+        ? ` · ${fmtH(pg.garantia)} de garantia (pago sem rodar)` : ""}${pg.aMais > 0.05
+        ? ` · ${fmtH(pg.aMais)} a mais` : ""}</p>`}
     </div>
 
     <p class="section-title" style="margin-top:16px">Estoques dos tanques</p>
@@ -2708,7 +3260,40 @@ function telaDashboard() {
       <button class="btn btn-ghost btn-sm" id="btnCfg">Salvar metas</button>
     </div>
 
+    <div class="card">
+      <h3>💰 Horas pagas dos caminhões</h3>
+      <p class="hint">O <b>mínimo pago</b> de cada regime, e o <b>teto de desconto</b> da
+      manutenção por dia útil. No ADM, 200 h ÷ 22 dias úteis = 9,09 h por dia. Regime deixado em
+      <b>0</b> não entra no controle — nenhum caminhão dele aparece com garantia falsa.</p>
+      <div class="metas-grid">
+        ${Object.keys(db.config.regimes).map(k => `<div class="field">
+          <label>${db.config.regimes[k].nome} · mínimo (h)</label>
+          <input id="cfgReg_${k}" inputmode="decimal" value="${db.config.regimes[k].minimo}">
+        </div>`).join("")}
+        <div class="field"><label>Teto de desconto por dia útil (h)</label>
+          <input id="cfgPagasDia" inputmode="decimal" value="${db.config.horasPagasDia}"></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="btnCfgPagas">Salvar horas pagas</button>
+      <p class="hint" id="cfgPagasMsg" style="margin-top:8px"></p>
+    </div>
+
   `;
+
+  const btnPagas = $("#btnCfgPagas");
+  if (btnPagas) btnPagas.onclick = () => {
+    const regimes = {};
+    Object.keys(db.config.regimes).forEach(k => {
+      const campo = $("#cfgReg_" + k);
+      regimes[k] = Object.assign({}, db.config.regimes[k],
+        { minimo: campo ? num(campo.value) : db.config.regimes[k].minimo });
+    });
+    const teto = num($("#cfgPagasDia").value);
+    if (teto <= 0) { toast("O teto por dia tem de ser maior que zero", "err"); return; }
+    DB.setConfig({ regimes, horasPagasDia: teto });
+    const m = $("#cfgPagasMsg");
+    if (m) { m.textContent = "✅ Salvo. O Índice e as fichas já usam estes números."; m.style.color = "var(--green)"; }
+    toast("✔ Horas pagas salvas");
+  };
 
   $$("[data-ficha]").forEach(el => el.onclick = () => abrirFicha(el.dataset.ficha));
 
@@ -2827,6 +3412,7 @@ function telaFicha() {
   const f = DB.fichaEquipamento(eq);
 
   const hf = DB.horasMesEquip(eq, mesDeHoras());
+  const pf = DB.pagamentoMes(eq, mesDeHoras());
 
   // série de médias dos abastecimentos (últimos 8)
   const serieMedia = f.abast.slice(-8).map(a => ({ label: DB.fmtBR(a.iso).slice(0, 5), valor: num(a.media), rotulo: a.media }));
@@ -2855,6 +3441,20 @@ function telaFicha() {
           <input id="fkKm" inputmode="decimal" value="${medidores(eq).km ?? ""}" placeholder="ex: 12500">
         </div>
       </div>
+      ${medidores(eq).temKm ? `<div class="field-row">
+        <div class="field">
+          <label>Regime do contrato</label>
+          <select id="fkRegime">${Object.keys(DB.load().config.regimes).map(k => {
+            const r = DB.load().config.regimes[k];
+            return `<option value="${k}" ${DB.regimeDoEquip(eq) === k ? "selected" : ""}>${r.nome}${
+              r.minimo > 0 ? ` · ${fmt(r.minimo)} h` : " · sem horas"}</option>`;
+          }).join("")}</select>
+        </div>
+        <div class="field">
+          <label>Mínimo próprio (h) <span class="badge-auto">opcional</span></label>
+          <input id="fkMinimo" inputmode="decimal" value="${DB.load().minimoEquip[eq] ?? ""}" placeholder="usa o do regime">
+        </div>
+      </div>` : ""}
       <p class="hint">É aqui que se acerta o medidor sem precisar de lançamento — horímetro
       trocado, máquina nova, número digitado errado. Campo deixado <b>em branco não apaga</b> o
       que já está gravado. O número que ficar aqui já entra como inicial no próximo abastecimento.</p>
@@ -2902,7 +3502,7 @@ function telaFicha() {
       <div class="kpi"><div class="k-label">🛣️ KM total</div><div class="k-value">${fmt(f.totKm)}<span class="k-unit"> km</span></div></div>
       <div class="kpi k-yellow"><div class="k-label">⏱️ Horas do dia</div><div class="k-value">${fmt(f.totHoras, 1)}<span class="k-unit"> h</span></div></div>
       <div class="kpi k-yellow"><div class="k-label">🕐 Horas de horímetro</div><div class="k-value">${fmt(f.totHorimetro, 1)}<span class="k-unit"> h</span></div></div>
-      <div class="kpi k-blue"><div class="k-label">🏭 Produção</div><div class="k-value">${fmt(f.totToneladas)}<span class="k-unit"> t</span></div></div>
+      <div class="kpi k-blue"><div class="k-label">🏭 Produção</div><div class="k-value">${fmtT(f.totToneladas)}<span class="k-unit"> t</span></div></div>
       <div class="kpi k-yellow"><div class="k-label">🏭 L/Ton</div><div class="k-value">${fmt(f.lton, 2)}<span class="k-unit"> L/t</span></div></div>
     </div>
 
@@ -2941,6 +3541,40 @@ function telaFicha() {
           <div class="sub">− ${fmtH(hf.almoco)}</div></div></div>
       </div>
     </div>
+
+    ${!(medidores(eq).temKm && pf.ativo) ? "" : `
+    <div class="card">
+      <h3>💰 Horas pagas no mês</h3>
+      <p class="hint">A conta do <b>contrato</b>, aberta linha por linha para você conferir de
+      cabeça. A base é a <b>hora dia</b>, e não o horímetro.${pf.corrente
+        ? ` <b>Mês em andamento:</b> o mínimo está proporcional a ${fmtN1(pf.uteisAteHoje)} de
+           ${fmtN1(pf.uteisMes)} dias úteis.` : ""}</p>
+      <div class="kpi-grid">
+        <div class="kpi k-green"><div class="k-label">💰 A pagar</div><div class="k-value">${fmt(pf.pagar, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi ${pf.garantia > 0.05 ? "k-yellow" : "k-blue"}"><div class="k-label">${
+          pf.garantia > 0.05 ? "🟡 Garantia (pago sem rodar)" : "🟢 Rodou a mais"}</div><div class="k-value">${
+          fmt(pf.garantia > 0.05 ? pf.garantia : pf.aMais, 1)}<span class="k-unit"> h</span></div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="itemlist">
+        <div class="itemrow"><div class="info">📋 Mínimo do contrato · ${DB.load().config.regimes[pf.regime]
+          ? DB.load().config.regimes[pf.regime].nome : pf.regime}${DB.load().minimoEquip[eq]
+          ? ' <span class="pill pill-blue">próprio</span>' : ""}
+          <div class="sub">${fmtH(pf.minimo)}${pf.corrente
+            ? ` · contrato cheio ${fmtH(pf.minimoCheio)}` : ""}</div></div></div>
+        <div class="itemrow"><div class="info">🔧 Desconto da manutenção
+          <div class="sub">− ${fmtH(pf.desconto)}${pf.diasComParada
+            ? ` · ${pf.diasComParada} dia(s) útil(eis) com parada, no máximo ${fmt(DB.load().config.horasPagasDia, 2)} h cada` : ""}${
+            pf.manutencao > pf.desconto + 0.05
+              ? `<br><span class="mini">parou ${fmtH(pf.manutencao)} de relógio; o teto por dia e o fim de semana aparam o resto</span>` : ""}</div></div></div>
+        <div class="itemrow"><div class="info">📐 Mínimo ajustado
+          <div class="sub">${fmtH(pf.minimo)} − ${fmtH(pf.desconto)} = <b>${fmtH(pf.ajustado)}</b></div></div></div>
+        <div class="itemrow"><div class="info">⏱️ Hora dia trabalhada
+          <div class="sub">${fmtH(pf.trabalhadas)}</div></div></div>
+        <div class="itemrow"><div class="info"><b>💰 A pagar</b>
+          <div class="sub">o maior entre ${fmtH(pf.trabalhadas)} e ${fmtH(pf.ajustado)} = <b>${fmtH(pf.pagar)}</b></div></div></div>
+      </div>
+    </div>`}
 
     <div class="card">
       <h3>📈 Evolução da média (${f.unidadeMedia})</h3>
@@ -2999,6 +3633,8 @@ function telaFicha() {
     DB.setProximaRevisao(eq, $("#fkRev").value.trim());
     DB.setOperadorEquip(eq, $("#fkOperador").value);
     DB.atualizarMedidor(eq, { horimetro: horiTxt, km: kmTxt });
+    if ($("#fkRegime")) DB.setRegimeEquip(eq, $("#fkRegime").value);
+    if ($("#fkMinimo")) DB.setMinimoEquip(eq, $("#fkMinimo").value.trim());
     Sync.pushEquipamento(eq);
     Sync.pushParadas();
     Sync.pushHorasMes(DB.garantirDiaAtual());   // o turno novo muda as horas do mês
