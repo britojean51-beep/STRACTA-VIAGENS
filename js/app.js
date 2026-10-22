@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "21/10/2026 · r59 (folha de imagem compactada)";
+const VERSION = "22/10/2026 · r60 (segurança e LGPD)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -501,6 +501,7 @@ function telaMinhaConta() {
       </div>
       <button class="btn btn-primary btn-sm" id="btnCnSenha">🔑 Trocar senha</button>
       <p class="hint" id="cnSenhaMsg" style="margin-top:8px"></p>
+      ${Legal.links()}
     </div>
   `;
 
@@ -3765,6 +3766,7 @@ function mostrarLogin(aviso) {
       ${!navigator.onLine ? `<p class="hint" style="color:var(--blue,#93c5fd)">📴 Sem internet — dá para entrar
       com um usuário que já usou este celular. Os lançamentos sobem sozinhos quando a rede voltar.</p>` : ""}
       <p class="hint">Esqueceu a senha? Peça ao gestor para redefinir.</p>
+      ${Legal.links()}
     </div>`;
 
   const msg = (t, cor) => { const m = $("#loginMsg"); m.innerHTML = t; m.style.color = cor || "var(--muted)"; };
