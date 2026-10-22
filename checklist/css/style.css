@@ -312,3 +312,58 @@ body.tela-login main { padding: 0 0 24px; }
 .visto-card p { margin: 0; }
 small .visto { display: block; color: var(--ok); font-weight: 600; }
 small .nao-visto { display: block; color: var(--brand-forte); font-weight: 700; }
+/* teclado: foco sempre visível */
+button:focus-visible, a:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--brand-forte); outline-offset: 2px; }
+/* política de privacidade e termos */
+.legal { color: var(--muted); margin: 12px 0; }
+.legal a, .doc a { color: var(--brand-forte); font-weight: 700; }
+.doc-fundo { position: fixed; inset: 0; z-index: 80; background: rgba(11,18,32,.55); display: flex; justify-content: center; align-items: flex-end; padding: 12px; }
+.doc { width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto; background: var(--card); color: var(--text); border-radius: 18px; border-top: 5px solid var(--brand); padding: 18px 18px 14px; outline: none; }
+.doc h2 { margin: 0 0 6px; font-size: 21px; }
+.doc h3 { margin: 14px 0 4px; font-size: 15px; }
+.doc p, .doc li { font-size: 14px; line-height: 1.45; margin: 0 0 6px; }
+.doc ul { padding-left: 20px; margin: 4px 0 10px; }
+.doc .btn { margin-top: 12px; }
+/* ícones de traço (no lugar de emoji) */
+svg.i { width: 1.15em; height: 1.15em; vertical-align: -0.22em; flex: none; }
+.btn svg.i { margin-right: 2px; }
+.menu span { display: flex; width: 44px; height: 44px; align-items: center; justify-content: center; border-radius: 12px; background: var(--card-2); color: var(--brand-forte); }
+.menu span svg { width: 26px; height: 26px; }
+.add-midia { display: inline-flex; align-items: center; justify-content: center; color: var(--text); }
+.add-midia svg { width: 26px; height: 26px; }
+.mini-midia .play svg { width: 22px; height: 22px; filter: drop-shadow(0 0 3px #000); }
+.mini-midia .tirar { display: flex; align-items: center; justify-content: center; padding: 0; }
+.mini-midia .tirar svg { width: 14px; height: 14px; }
+.mini-midia .espera svg { width: 20px; height: 20px; color: var(--muted); }
+.visor .fechar { display: flex; align-items: center; justify-content: center; }
+.visor .fechar svg { width: 22px; height: 22px; }
+.stico svg { width: 18px; height: 18px; vertical-align: -0.25em; }
+.apagar { color: var(--perigo); }
+.apagar svg { width: 20px; height: 20px; vertical-align: middle; }
+.resultado .grande svg { width: 64px; height: 64px; stroke-width: 2.4; }
+.resultado.ok .grande { color: var(--ok); }
+.resultado.alerta .grande { color: var(--alerta); }
+.resultado.perigo .grande { color: var(--perigo); }
+.mini-bt svg.i { vertical-align: -0.2em; }
+/* Situação da frota: grupos com os equipamentos em botões */
+.frota-cab { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+.frota-cab b { font-size: 17px; }
+.grupo-frota { border-top: 1px solid var(--line); padding: 10px 0 8px; }
+.grupo-frota:first-of-type { border-top: 0; }
+.grupo-tit { display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 14px; margin-bottom: 8px; }
+.grupo-tit .cont { margin-left: auto; min-width: 28px; text-align: center; padding: 2px 8px; border-radius: 99px; font-size: 13px; background: var(--card-2); color: var(--text); }
+.grupo-frota.perigo .grupo-tit { color: var(--perigo); }
+.grupo-frota.perigo .cont { background: var(--perigo); color: #fff; }
+.grupo-frota.ok .grupo-tit { color: var(--ok); }
+.grupo-frota.ok .cont { background: var(--ok); color: #fff; }
+.grupo-frota.sem .grupo-tit { color: var(--muted); }
+.chips-eq { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-eq { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 12px; border-radius: 10px; font: inherit; font-weight: 700; font-size: 15px; color: var(--text); background: var(--card); border: 1px solid var(--line); cursor: pointer; }
+.chip-eq:not([data-abrir]) { cursor: default; }
+.chip-eq.perigo { background: var(--perigo-bg); border-color: var(--perigo); color: var(--perigo); }
+.chip-eq.ok { background: var(--ok-bg); border-color: var(--ok); color: #14532d; }
+.chip-eq.sem { background: var(--card-2); color: var(--muted); font-weight: 600; }
+.chip-eq.perigo-borda { background: var(--card); border: 2px dashed var(--perigo); color: var(--perigo); }
+.nc { display: inline-block; padding: 1px 6px; border-radius: 6px; font-size: 11px; font-weight: 800; background: var(--alerta-bg); color: #7c2d12; border: 1px solid var(--alerta); }
+.nc.parado { background: var(--perigo); color: #fff; border-color: var(--perigo); }
+.frota .legenda { margin: 8px 0 0; }

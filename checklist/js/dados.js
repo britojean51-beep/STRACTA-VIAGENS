@@ -20,7 +20,7 @@
 const DOMINIO = "gp2t.local";
 const PERFIL_KEY = "ck_perfil";
 const ULTIMO_USUARIO_KEY = "ck_ultimo_usuario";
-const PERFIS = { motorista: "Motorista", operador: "Operador", gestor: "Gestor", admin: "Administrador" };
+const PERFIS = { motorista: "Motorista", operador: "Operador", tecnico: "Técnico de Segurança", gestor: "Gestor", admin: "Administrador" };
 // "inspetor" era o nome da primeira versão: quem ficou com ele vira motorista
 const perfilValido = p => PERFIS[p] ? p : "motorista";
 
@@ -51,6 +51,8 @@ const Dados = {
   ehAdmin() { return !!(this.usuario && this.usuario.perfil === "admin"); },
   /* gestor e administrador: veem o Painel e resolvem os defeitos */
   ehGestao() { return !!(this.usuario && (this.usuario.perfil === "admin" || this.usuario.perfil === "gestor")); },
+  /* vê os checklists de todos (Painel): a gestão e o técnico de segurança, que acompanha mas não resolve */
+  veTodos() { return this.ehGestao() || !!(this.usuario && this.usuario.perfil === "tecnico"); },
   fs() { return firebase.firestore(); },
   col(nome) { return this.fs().collection("checklist_" + nome); },
 
