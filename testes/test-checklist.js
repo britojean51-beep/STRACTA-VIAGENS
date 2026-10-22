@@ -23,6 +23,9 @@ async function foto(page) {
   });
   return { name: 'foto.png', mimeType: 'image/png', buffer: Buffer.from(b64, 'base64') };
 }
+// chips da "Situação da frota", por grupo (perigo = manutenção, ok = operando, sem = sem checklist)
+const grupos = page => page.evaluate(() => Object.fromEntries(['perigo', 'ok', 'sem'].map(k =>
+  [k, [...document.querySelectorAll('#pFrota .grupo-frota.' + k + ' .chip-eq')].map(b => b.textContent.replace(/\s+/g, ' ').trim())])));
 const banco = page => page.evaluate(() => JSON.parse(localStorage.getItem('__ck_banco__') || '{}'));
 // defeitos em aberto gravados no equipamento (é deles que sai a situação)
 const pendencias = (page, P) => page.evaluate(P => (Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === P)[1]).pendencias || {}, P);
@@ -237,7 +240,7 @@ async function sair(page) {
   await page.click('#ckTudoOk');
   await page.click('#ckFinalizar');
   await page.waitForSelector('.resultado');
-  ok((await page.textContent('.resultado h2')).includes('OPERACIONAL COM OBSERVAÇÃO'), 'defeito não crítico = OPERACIONAL COM OBSERVAÇÃO');
+  ok((await page.textContent('.resultado h2')).includes('NÃO CONFORME') && (await page.textContent('.resultado')).includes('segue operando'), 'defeito que não obriga parada: checklist NÃO CONFORME, equipamento segue operando');
   ok((await page.textContent('.resultado + p')).includes('Sem sinal'), 'avisa que ficou guardado');
   await page.waitForTimeout(300);
   ok(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('__ck_banco__') || '{}')).filter(k => k.startsWith('checklist_fotos/')).length) === 1, 'sem sinal a foto não sobe');
@@ -252,7 +255,7 @@ async function sair(page) {
   await page.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem('__ck_banco__')))
     .filter(d => d.resultado && d.pendentes === 0).length === 2);
   ok(true, 'rede voltou: foto subiu sozinha e o checklist foi marcado');
-  ok(Object.values(await pendencias(page, 'ESC-03')).join() === 'restricao', 'ESC-03 (defeito operacional) fica COM RESTRIÇÃO e segue operando');
+  ok(Object.values(await pendencias(page, 'ESC-03')).join() === 'restricao', 'ESC-03 (defeito que não obriga parada) fica anotado e segue operando');
   await page.waitForFunction(() => ![...document.querySelectorAll('#app .item .dir small')].some(x => x.textContent.trim() === 'na fila'));
   ok(true, 'início passa para "enviado"');
   const filaIDB = await page.evaluate(() => Midia.pendentes());
@@ -262,7 +265,7 @@ async function sair(page) {
   await page.waitForSelector('.acompanhe');
   const cards = await page.$$eval('.acompanhe', l => l.map(e => e.textContent.replace(/\s+/g, ' ')));
   ok(cards.length === 2 && cards.some(c => c.includes('CB-12') && c.includes('Em manutenção') && c.includes('0 de 2'))
-    && cards.some(c => c.includes('ESC-03') && c.includes('Com restrição')), 'Início: "Acompanhe hoje" com CB-12 em manutenção (0 de 2) e ESC-03 com restrição');
+    && cards.some(c => c.includes('ESC-03') && c.includes('Não conforme')), 'Início: "Acompanhe hoje" com CB-12 em manutenção (0 de 2) e ESC-03 não conforme');
   await page.click(`.acompanhe [data-ver="${insp.id}"]`);
   await page.waitForSelector('#dtSituacao');
   ok(!(await page.$('[data-resolver]')) && !(await page.$('[data-solicitar]')) && !(await page.$('#dtApagar')) && !(await page.$('[data-reabrir]')),
@@ -278,12 +281,12 @@ async function sair(page) {
   ok((await page.textContent('[data-item="i1"] .resolvido')).includes('Pneu trocado na borracharia')
     && (await page.textContent('[data-item="i5"] .solicitado')).includes('Lâmpada do farol pedida'),
     'sem recarregar: o detalhe mostra o pneu resolvido e a lâmpada solicitada');
-  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('agora com restrição'));
-  ok(true, 'aviso "CB-12: agora com restrição"');
+  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('voltou a operar'));
+  ok(true, 'aviso "CB-12 voltou a operar" (só falta item que não obriga parada)');
   await page.click('#btnVoltar');
   await page.waitForSelector('.acompanhe');
   const cb = await page.$eval(`.acompanhe:has([data-ver="${insp.id}"])`, e => e.textContent.replace(/\s+/g, ' '));
-  ok(cb.includes('Com restrição') && cb.includes('1 de 2') && cb.includes('1 aguardando peça'), 'cartão do CB-12: com restrição, 1 de 2 e 1 aguardando peça');
+  ok(cb.includes('Não conforme') && cb.includes('1 de 2') && cb.includes('1 aguardando peça'), 'cartão do CB-12: não conforme, 1 de 2 e 1 aguardando peça');
   await shot(page, '16-acompanhe-hoje');
   await page.evaluate(id => firebase.firestore().collection('checklist_inspecoes').doc(id).update({
     'resolucoes.i5': { nota: 'Lâmpada trocada', por: 'Ana Gestora', em: Date.now(), fotos: [] } }), insp.id);
@@ -321,18 +324,20 @@ async function sair(page) {
   ok(await page.$$eval('#pLista .item', l => l.length) === 2, 'painel mostra os 2 checklists de hoje');
   ok((await page.textContent('#pLista')).includes('não visualizado'), 'painel marca o que ainda não foi visualizado');
   const frota = await page.textContent('#pFrota');
-  ok(/Em manutenção \(1\)\s*CB-12/.test(frota) && /Com restrição \(1\)\s*ESC-03/.test(frota) && frota.includes('Operando (0)'),
-    'situação da frota: CB-12 em manutenção, ESC-03 com restrição');
-  ok(/Sem checklist hoje \(1\)\s*PC-09/.test(frota), 'equipamento sem checklist hoje NÃO conta como Operando: fica em "Sem checklist hoje"');
+  const g = await grupos(page);
+  ok(g.perigo.join() === 'CB-12' && g.ok.join() === 'ESC-03 1 NC' && !/restri/i.test(frota),
+    'situação da frota: só Em manutenção (CB-12) e Operando (ESC-03, marcado com 1 não conforme); sem "restrição"');
+  ok(g.sem.join() === 'PC-09 parado', 'equipamento sem checklist hoje NÃO conta como Operando: fica em "Sem checklist hoje"');
   await shot(page, '06-painel');
-  ok(frota.includes('PC-09 (em manutenção, pendente de outro dia)'), 'hoje sem checklist, mas com defeito de outro dia: avisa');
+  ok(await page.$eval('#pFrota .chip-eq.perigo-borda', b => b.dataset.abrir === 'antigo'), 'hoje sem checklist, mas parado desde outro dia: destaca e abre o checklist que parou');
   ok(!(await page.$('[data-d]')) && await page.isVisible('#pDia'), 'escolhe o dia (sem "7 dias" / "30 dias")');
   const tres = await page.evaluate(() => { const d = new Date(); d.setDate(d.getDate() - 3); return diaDe(d.getTime()); });
   await page.fill('#pDia', tres);
   await page.waitForFunction(() => document.querySelectorAll('#pLista .item').length === 1);
   const frota3 = await page.textContent('#pFrota');
-  ok(frota3.includes('Situação da frota · ' + tres.split('-').reverse().join('/')) && /Em manutenção \(1\)\s*PC-09/.test(frota3)
-    && frota3.includes('Sem checklist no dia (2)') && frota3.includes('Operando (0)') && (await page.textContent('#pLista')).includes('PC-09'),
+  const g3 = await grupos(page);
+  ok(frota3.includes(tres.split('-').reverse().join('/')) && g3.perigo.join() === 'PC-09'
+    && g3.sem.length === 2 && g3.ok.length === 0 && frota3.includes('Sem checklist no dia') && (await page.textContent('#pLista')).includes('PC-09'),
     'dia escolhido: só os checklists e a situação daquele dia');
   await shot(page, '06b-painel-dia');
   await page.click('[data-passo="-1"]');
@@ -340,7 +345,7 @@ async function sair(page) {
   ok(await page.$$eval('#pLista .item', l => l.length) === 0, 'seta ‹ vai para o dia anterior');
   await page.click('[data-passo="0"]');
   await page.waitForFunction(() => document.querySelectorAll('#pLista .item').length === 2);
-  ok((await page.textContent('#pFrota')).includes('Situação da frota · hoje') && await page.isDisabled('[data-passo="1"]'), 'botão Hoje volta; não passa de hoje');
+  ok((await page.textContent('#pFrota .frota-cab')).includes('hoje') && await page.isDisabled('[data-passo="1"]'), 'botão Hoje volta; não passa de hoje');
   await page.click('[data-f="bloqueado"]');
   ok(await page.$$eval('#pLista .item', l => l.length) === 1, 'filtro de bloqueados');
   await page.click('#pLista .item');
@@ -370,9 +375,9 @@ async function sair(page) {
   await page.click('#rsConfirmar');
   await page.waitForSelector('[data-item="i1"] .resolvido');
   await page.waitForFunction(id => JSON.stringify((Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === 'CB-12')[1].pendencias || {})) === JSON.stringify({ [id]: 'restricao' }), insp.id);
-  ok(true, 'resolvido o crítico: CB-12 sai de MANUTENÇÃO e fica COM RESTRIÇÃO (falta o farol)');
+  ok(true, 'resolvido o crítico: CB-12 sai de MANUTENÇÃO (o farol fica anotado no checklist)');
   const sit = await page.textContent('#dtSituacao');
-  ok(sit.includes('OPERACIONAL COM OBSERVAÇÃO') && sit.includes('1 de 2'), 'detalhe mostra "agora" e 1 de 2 resolvidos');
+  ok(sit.includes('NÃO CONFORME') && sit.includes('1 de 2'), 'detalhe mostra "agora" e 1 de 2 resolvidos');
   await page.waitForFunction(id => { const b = JSON.parse(localStorage.getItem('__ck_banco__')); const d = b['checklist_inspecoes/' + id];
     const f = ((d.resolucoes || {}).i1 || {}).fotos || []; return f.length === 1 && d.midias[f[0]].ok && b['checklist_fotos/' + f[0]]; }, insp.id);
   ok(true, 'foto da correção subiu e ficou ligada ao item');
@@ -404,7 +409,7 @@ async function sair(page) {
   const zap = await page.evaluate(() => { let u = ''; const o = window.open; window.open = x => { u = x; }; document.querySelector('#dtZap').click(); window.open = o; return decodeURIComponent(u.split('text=')[1] || ''); });
   ok(zap.includes('*Itens OK (16):*') && zap.includes('• Buzina') && !/[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/u.test(zap) && zap.includes('*Não conformes (2):*'), 'resumo do WhatsApp traz os não conformes e também os itens OK');
   ok(JSON.stringify(await page.evaluate(() => (Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === 'CB-12')[1].pendencias || {}))) === JSON.stringify({ [insp.id]: 'restricao' }),
-    'com solicitação o CB-12 continua COM RESTRIÇÃO');
+    'com solicitação o farol continua em aberto no checklist');
   ok((await page.textContent('#dtSituacao')).includes('1 com solicitação'), 'detalhe avisa "1 com solicitação, aguardando"');
   await shot(page, '14-solicitado');
   // no Painel: marcador e filtro "Solicitado"
@@ -428,7 +433,7 @@ async function sair(page) {
   await page.click('[data-reabrir="i5"]');
   await page.click('#mdlOk');
   await page.waitForFunction(id => JSON.stringify((Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === 'CB-12')[1].pendencias || {})) === JSON.stringify({ [id]: 'restricao' }), insp.id);
-  ok(true, 'reabrir o farol: CB-12 volta a COM RESTRIÇÃO');
+  ok(true, 'reabrir o farol: volta a ficar em aberto');
   await page.click('[data-resolver="i5"]');
   await page.fill('#rsNota', 'Lâmpada trocada');
   await page.click('#rsConfirmar');
@@ -442,9 +447,10 @@ async function sair(page) {
     && d5.tratativa.status === 'resolvido', 'resolução por item gravada com nota e nome; tratativa resolvida');
   await page.click('#btnVoltar');
   await page.click('[data-f="todos"]');
-  await page.waitForFunction(() => document.querySelector('#pFrota').textContent.includes('Operando (1)'));
-  ok((await page.textContent('#pFrota')).includes('Sem checklist hoje (1)'), 'resolvido o CB-12: Operando (1) e o PC-09 continua sem checklist');
-  ok(!(await page.textContent('#pFrota')).includes('Em manutenção'), 'resolvido sai de "Em manutenção" no Painel');
+  await page.waitForFunction(() => [...document.querySelectorAll('#pFrota .grupo-frota.ok .chip-eq')].some(b => b.textContent.trim() === 'CB-12'));
+  const g9 = await grupos(page);
+  ok(g9.sem.join() === 'PC-09 parado', 'resolvido o CB-12: Operando e o PC-09 continua sem checklist');
+  ok(g9.perigo.length === 0, 'resolvido sai de "Em manutenção" no Painel');
   await page.click('[data-f="bloqueado"]');
   ok((await page.textContent('#pFiltro')).includes('Manutenção') && !(await page.textContent('#app')).includes('Bloquead'),
     'filtro "Manutenção" (não aparece mais "Bloqueado")');
@@ -454,8 +460,8 @@ async function sair(page) {
     'aba "Liberados" agora se chama "Operando"');
   const operando = await page.textContent('#pLista');
   ok(operando.includes('CB-12') && operando.includes('era manutenção') && operando.includes('resolvido'), 'resolvido aparece na aba Operando (com o que era)');
-  ok((await page.$$eval('.kpi', k => k.map(x => x.textContent.replace(/\s+/g, ' ').trim()))).join('|').includes("1operando"),
-    'contador "operando" conta o resolvido');
+  ok((await page.$$eval('.kpi', k => k.map(x => x.textContent.replace(/\s+/g, ' ').trim()))).join('|').includes("2operando"),
+    'contador "operando": CB-12 resolvido + ESC-03 (não conforme que não obriga parada)');
   await page.click('[data-f="todos"]');
   ok(!(await page.$('[data-apagar]')), 'gestor não tem lixeira na lista');
   ok((await page.textContent('#pLista')).includes('(motorista)'), 'lista mostra a função de quem fez');
@@ -477,7 +483,7 @@ async function sair(page) {
   const depois = await banco(page);
   ok(!depois['checklist_inspecoes/' + escav.id] && !depois[fotoEscav], 'admin apagou o checklist e a foto dele');
   ok(!(await page.evaluate(() => Historico.lista().map(x => x.id))).includes(escav.id), 'apagado sai na hora de "Meus últimos checklists"');
-  ok(Object.keys(await pendencias(page, 'ESC-03')).length === 0, 'apagar o checklist tira a restrição do ESC-03');
+  ok(Object.keys(await pendencias(page, 'ESC-03')).length === 0, 'apagar o checklist tira a pendência do ESC-03');
   await page.click('[data-apagar]');
   ok((await page.textContent('.mdl h2')) === 'Apagar checklist?' && await page.$eval('#mdlOk', b => b.classList.contains('btn-perigo')),
     'apagar: janela do app com botão vermelho');
@@ -523,10 +529,10 @@ async function sair(page) {
   await page.click('#ckTudoOk');
   await page.click('#ckFinalizar');
   await page.waitForSelector('.resultado');
-  ok((await page.textContent('.resultado h2')).includes('OPERACIONAL COM OBSERVAÇÃO'), 'defeito em item "com observação" = OPERACIONAL COM OBSERVAÇÃO (segue operando)');
+  ok((await page.textContent('.resultado h2')).includes('NÃO CONFORME'), 'defeito em item que não obriga parada = checklist NÃO CONFORME (segue operando)');
   await page.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem('__ck_banco__')))
     .some(d => d.prefixo === 'CB-12' && Object.values(d.pendencias || {}).join() === 'restricao'));
-  ok(true, 'CB-12 passa a "Com restrição"');
+  ok(await page.evaluate(() => situacaoDe(Estado.equipamentos.find(e => e.prefixo === 'CB-12'))) === 'operacional', 'CB-12 segue Operando (o não conforme fica no checklist)');
   await shot(page, '08-modelos');
 
   console.log('7. Início: os MEUS checklists, inclusive de outro celular; apagado some');
@@ -558,7 +564,7 @@ async function sair(page) {
   console.log('8. resolvido em OUTRO celular: o Início mostra Operando');
   const ultimo = await page.evaluate(() => Historico.lista().find(x => x.enviado && x.resultado !== 'liberado' && !x.resolvido));
   ok(!!ultimo, 'há um checklist com não conforme ainda aberto no Início (' + (ultimo && ultimo.resultado) + ')');
-  ok((await page.textContent('#app')).includes((ultimo.resultado === 'bloqueado' ? 'MANUTENÇÃO' : 'OPERACIONAL COM OBSERVAÇÃO')),
+  ok((await page.textContent('#app')).includes((ultimo.resultado === 'bloqueado' ? 'MANUTENÇÃO' : 'NÃO CONFORME')),
     'antes: Início mostra o resultado do checklist');
   await page.evaluate(id => { const b = JSON.parse(localStorage.getItem('__ck_banco__'));
     b['checklist_inspecoes/' + id].tratativa = { status: 'resolvido', por: 'Ana Gestora', em: Date.now() };
@@ -568,7 +574,7 @@ async function sair(page) {
   await page.waitForFunction(id => (Historico.lista().find(x => x.id === id) || {}).resolvido === true, ultimo.id);
   await page.waitForFunction(() => document.querySelector('#app').textContent.includes('resolvido'));
   const itemTxt = await page.$$eval('#app .item', l => l.map(e => e.textContent.replace(/\s+/g, ' ')).join(' | '));
-  ok(!/MANUTENÇÃO|OPERACIONAL COM OBSERVAÇÃO/.test(itemTxt) && itemTxt.includes('OPERANDO'),
+  ok(!/MANUTENÇÃO|NÃO CONFORME/.test(itemTxt) && itemTxt.includes('OPERANDO'),
     'depois de resolvido: Início mostra OPERANDO (com o que era)');
   await shot(page, '11-inicio-operando');
 

@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck28";
+const VERSAO = "ck29";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -11,7 +11,7 @@ const EMPRESA = { nome: "", cnpj: "", contato: "" };
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
 const RESULTADOS = {
   liberado: { txt: "OPERANDO", icone: "ok", cls: "ok" },
-  restricao: { txt: "OPERACIONAL COM OBSERVAÇÃO", icone: "alerta", cls: "alerta" },
+  restricao: { txt: "NÃO CONFORME", icone: "alerta", cls: "alerta" },   // segue operando; só o checklist marca
   bloqueado: { txt: "MANUTENÇÃO", icone: "manutencao", cls: "perigo" }   // a chave segue "bloqueado" nos dados
 };
 
@@ -82,15 +82,15 @@ const MODELOS_PADRAO = [
 /* Formulários em papel da empresa: viram o modelo automático do tipo */
 const FORMULARIOS_OFICIAIS = ["padrao-pesados-18", "padrao-maquina-22"];
 
-/* Situação do equipamento: sai dos defeitos ainda em aberto (pendencias). */
+/* Situação do equipamento: só duas. Em manutenção quando um item que obriga
+   parada (crítico, escolhido no modelo) está não conforme e sem resolver; o resto
+   segue operando. Não conforme sem parada fica marcado só no checklist. */
 const SITUACOES = {
   manutencao: { txt: "Em manutenção", icone: "manutencao", cls: "perigo" },
-  restricao: { txt: "Com restrição", icone: "alerta", cls: "alerta" },
   operacional: { txt: "Operando", icone: "ok", cls: "ok" }
 };
 function situacaoDe(e) {
-  const v = Object.values((e && e.pendencias) || {});
-  return v.includes("bloqueado") ? "manutencao" : v.includes("restricao") ? "restricao" : "operacional";
+  return Object.values((e && e.pendencias) || {}).includes("bloqueado") ? "manutencao" : "operacional";
 }
 /* Onde o checklist aparece no Painel: o resolvido conta como Operando
    (o resultado original continua guardado e aparece no detalhe). */
@@ -123,12 +123,12 @@ const chaveVisto = email => String(email || "").replace(/\./g, ",");
 const textoVistos = v => v.map(x => x.por + " (" + dataHora(x.em) + ")").join(", ");
 
 function pendenciaMaisRecente(e) {
-  const p = (e && e.pendencias) || {}, alvo = situacaoDe(e) === "manutencao" ? "bloqueado" : "restricao";
+  const p = (e && e.pendencias) || {}, alvo = "bloqueado";
   return Object.keys(p).filter(k => p[k] === alvo).sort().pop() || "";
 }
 const NIVEIS = {
-  critico: "Crítico — defeito põe em manutenção",
-  operacional: "Operacional com observação — defeito anotado, segue operando (restrição)"
+  critico: "Obriga parada — não conforme põe o equipamento em manutenção",
+  operacional: "Não obriga parada — não conforme fica anotado e o equipamento segue operando"
 };
 
 /* ---------- ícones de traço (no lugar de emoji, para um visual de aplicativo) ---------- */
@@ -336,7 +336,7 @@ const Historico = {
       if (a && !a.enviado) r.enviado = false;
       return r;
     })).sort((a, b) => b.criadoEm - a.criadoEm);
-    const mudancas = nova.filter(n => { const a = ant.find(x => x.id === n.id); return a && a.enviado && (a.atual || a.resultado) !== n.atual; })
+    const mudancas = nova.filter(n => { const a = ant.find(x => x.id === n.id); return a && a.enviado && ((a.atual || a.resultado) === "bloqueado") !== (n.atual === "bloqueado"); })
       .map(n => ({ id: n.id, equip: n.equip, para: n.atual }));
     const mudou = JSON.stringify(nova) !== JSON.stringify(ant);
     if (mudou) this._gravar(nova);
@@ -488,7 +488,7 @@ Render.inicio = function () {
       const S = RESULTADOS[statusPainel(x)];
       const ok = statusPainel(x) === "liberado";
       return `<div class="card acompanhe ${S.cls}">
-        <div class="linha-topo"><b>${h(x.equip)}</b><span class="tag ${S.cls}">${I(S.icone)} ${ok ? "Operando" : S === RESULTADOS.bloqueado ? "Em manutenção" : "Com restrição"}</span></div>
+        <div class="linha-topo"><b>${h(x.equip)}</b><span class="tag ${S.cls}">${I(S.icone)} ${ok ? "Operando" : S === RESULTADOS.bloqueado ? "Em manutenção" : "Não conforme"}</span></div>
         <p class="mini">${ok ? "Voltou a operar: tudo resolvido." :
           (x.itensNok != null ? `${x.resolvidos} de ${x.itensNok} item(ns) resolvido(s)` : "Aguardando a manutenção")
           + (x.solicitados ? ` · ${x.solicitados} aguardando peça` : "")}
@@ -911,7 +911,7 @@ Render.resultado = function (a) {
       <p>${h(a.equip)}</p>
       ${a.defeitos.length ? `<ul>${a.defeitos.map(d => `<li>${h(d)}</li>`).join("")}</ul>` : ""}
       ${a.resultado === "bloqueado" ? `<div class="aviso-critico forte">${I("manutencao")} Acione a manutenção</div><p>Item crítico não conforme: não opere o equipamento.</p>` : ""}
-      ${a.resultado === "restricao" ? `<p>Pode operar, com atenção aos itens acima. A manutenção foi avisada.</p>` : ""}
+      ${a.resultado === "restricao" ? `<p>O equipamento <b>segue operando</b>. Os itens acima ficaram registrados e a manutenção foi avisada.</p>` : ""}
     </div>
     <p class="muted mini">${a.online ? "Enviando agora. Fotos e vídeos sobem em segundo plano." :
       "Sem sinal: ficou guardado no aparelho e vai sozinho quando a rede voltar."}</p>
@@ -939,14 +939,22 @@ Render.painel = async function () {
     const hoje = diaDe(Date.now()), ehHoje = p.dia === hoje;
     const ultimo = {};
     todos.forEach(i => { const id = (i.equipamento || {}).id; if (id && (!ultimo[id] || i.criadoEm > ultimo[id].criadoEm)) ultimo[id] = i; });
-    const porSit = { manutencao: [], restricao: [], operacional: [], semChecklist: [] };
-    const SIT = { bloqueado: "manutencao", restricao: "restricao", liberado: "operacional" };
+    const porSit = { manutencao: [], operacional: [], semChecklist: [] };
     Estado.equipamentos.filter(e => e.ativo !== false).forEach(e => {
       const i = ultimo[e.id];
-      porSit[i ? SIT[statusPainel(i)] || "operacional" : "semChecklist"].push({ e, i });
+      porSit[i ? (statusPainel(i) === "bloqueado" ? "manutencao" : "operacional") : "semChecklist"].push({ e, i });
     });
-    // hoje, sem checklist: avisa se ainda tem defeito em aberto de outro dia
-    const deAntes = e => ehHoje && situacaoDe(e) !== "operacional" ? ` (${SITUACOES[situacaoDe(e)].txt.toLowerCase()}, pendente de outro dia)` : "";
+    const curto = e => h(e.prefixo || e.placa || "?");
+    // cada equipamento vira um botão; o "não conforme" sem parada aparece só como marca no botão
+    const chip = (x, cls, extra) => `<button class="chip-eq ${cls}" ${x.i ? `data-abrir="${h(x.i.id)}"` : ""} title="${h(nomeEquip(x.e))}">${curto(x.e)}${extra || ""}</button>`;
+    const nc = x => { const n = x.i ? itensAbertos(x.i).filter(t => !t.critico).length : 0; return n ? ` <span class="nc" title="${n} item(ns) não conforme(s)">${n} NC</span>` : ""; };
+    // hoje, sem checklist mas ainda em manutenção de outro dia: destaca e abre o checklist que parou
+    const semCk = x => ehHoje && situacaoDe(x.e) === "manutencao"
+      ? `<button class="chip-eq perigo-borda" data-abrir="${h(pendenciaMaisRecente(x.e))}" title="Em manutenção desde outro dia">${curto(x.e)} <span class="nc parado">parado</span></button>`
+      : chip(x, "sem");
+    const grupo = (cls, icone, titulo, lista, html) => `<div class="grupo-frota ${cls}">
+        <div class="grupo-tit">${I(icone)} ${titulo}<span class="cont">${lista.length}</span></div>
+        ${lista.length ? `<div class="chips-eq">${html}</div>` : `<p class="mini muted">Nenhum.</p>`}</div>`;
     const [a, m, d] = p.dia.split("-");
     const nomeDia = ehHoje ? "hoje" : p.dia === diaDe(Date.now() - 864e5) ? "ontem" : `${d}/${m}/${a}`;
     app().innerHTML = `
@@ -958,22 +966,20 @@ Render.painel = async function () {
       </div>
       <div class="kpis">
         <div class="kpi"><b>${todos.length}</b><span>checklists</span></div>
-        <div class="kpi ok"><b>${todos.filter(i => statusPainel(i) === "liberado").length}</b><span>operando</span></div>
-        <div class="kpi alerta"><b>${todos.filter(i => statusPainel(i) === "restricao").length}</b><span>restrição</span></div>
-        <div class="kpi perigo"><b>${todos.filter(i => statusPainel(i) === "bloqueado").length}</b><span>manutenção</span></div>
+        <div class="kpi ok"><b>${porSit.operacional.length}</b><span>operando</span></div>
+        <div class="kpi perigo"><b>${porSit.manutencao.length}</b><span>manutenção</span></div>
+        <div class="kpi alerta"><b>${todos.reduce((n, i) => n + itensAbertos(i).filter(t => !t.critico).length, 0)}</b><span>não conformes</span></div>
       </div>
-      <div class="card frota" id="pFrota"><b>Situação da frota · ${nomeDia}</b>
-        ${["manutencao", "restricao"].map(k => porSit[k].length ? `<div class="sit ${SITUACOES[k].cls}">
-          <span class="tag ${SITUACOES[k].cls}">${I(SITUACOES[k].icone)} ${SITUACOES[k].txt} (${porSit[k].length})</span>
-          ${porSit[k].map(x => `<div class="link" data-abrir="${h(x.i.id)}">${h(nomeEquip(x.e))}</div>`).join("")}</div>` : "").join("")}
-        <p class="mini"><span class="tag ok">${I("ok")} Operando (${porSit.operacional.length})</span></p>
-        ${porSit.semChecklist.length ? `<div class="sit sem">
-          <span class="tag sem">${I("relogio")} Sem checklist ${ehHoje ? "hoje" : "no dia"} (${porSit.semChecklist.length})</span>
-          <p class="mini nomes">${porSit.semChecklist.map(x => h(nomeEquip(x.e)) + deAntes(x.e)).join(" · ")}</p></div>` : ""}
+      <div class="card frota" id="pFrota">
+        <div class="frota-cab"><b>Situação da frota</b><span class="muted mini">${nomeDia}</span></div>
+        ${grupo("perigo", "manutencao", "Em manutenção", porSit.manutencao, porSit.manutencao.map(x => chip(x, "perigo")).join(""))}
+        ${grupo("ok", "ok", "Operando", porSit.operacional, porSit.operacional.map(x => chip(x, "ok", nc(x))).join(""))}
+        ${porSit.semChecklist.length ? grupo("sem", "relogio", "Sem checklist " + (ehHoje ? "hoje" : "no dia"), porSit.semChecklist, porSit.semChecklist.map(semCk).join("")) : ""}
+        ${porSit.operacional.some(x => nc(x)) ? `<p class="mini muted legenda"><span class="nc">NC</span> itens não conformes que não obrigam parada</p>` : ""}
       </div>
       <input class="busca" id="pBusca" type="search" placeholder="Buscar equipamento ou nome" value="${h(p.busca)}" />
       <div class="chips" id="pFiltro">
-        ${[["todos", "Todos"], ["bloqueado", "Manutenção"], ["restricao", "Restrição"], ["liberado", "Operando"], ["solicitado", "Solicitado"], ["aberto", "Em aberto"]]
+        ${[["todos", "Todos"], ["bloqueado", "Manutenção"], ["restricao", "Não conforme"], ["liberado", "Operando"], ["solicitado", "Solicitado"], ["aberto", "Em aberto"]]
           .map(([k, t]) => `<button data-f="${k}" class="${p.filtro === k ? "on" : ""}">${t}</button>`).join("")}
       </div>
       ${p.carregando && !p.lista ? `<p class="carregando">Carregando…</p>` : ""}
@@ -1289,7 +1295,7 @@ function fotoResolucao(i, galeria) {
 }
 
 /* Grava a resolução do item, sobe as fotos e recalcula a situação:
-   todos resolvidos -> Operando; só faltam itens com observação -> Restrição. */
+   sem item que obriga parada em aberto -> o equipamento volta a Operando. */
 async function confirmarResolucao(i) {
   const itemId = Resolver.itemId, nota = String(Resolver.nota || "").trim();
   if (!nota) { toast("Escreva o que foi feito.", "erro"); const t = $("#rsNota"); if (t) t.focus(); return; }
@@ -1470,7 +1476,7 @@ Render["cad-modelos"] = function () {
   app().innerHTML = `
     <p class="muted mini">Toque num modelo para mudar os itens ou o nível de cada um. Os marcados "padrão" já vêm prontos no app.</p>
     ${Estado.modelosEfetivos().map(m => `<div class="item" data-md="${h(m.id)}">
-      <div><b>${h(m.nome)}</b><small>${h(TIPOS[m.tipo] || "")} · ${m.itens.length} itens · ${m.itens.filter(x => x.critico).length} críticos · ${m.itens.filter(x => !x.critico).length} com observação</small></div>
+      <div><b>${h(m.nome)}</b><small>${h(TIPOS[m.tipo] || "")} · ${m.itens.length} itens · ${m.itens.filter(x => x.critico).length} obrigam parada · ${m.itens.filter(x => !x.critico).length} não obrigam</small></div>
       <div class="dir"><small>${m.padrao ? "padrão · " : ""}editar ›</small></div></div>`).join("")}
     <button class="btn" id="mdNovo">${I("mais")} Novo modelo</button>`;
   $("#mdNovo").onclick = () => Telas.ir("cad-modelo", null);
@@ -1493,21 +1499,21 @@ Render["cad-modelo"] = function (id) {
     </div>
     <div class="card mini">
       <b>Nível de cada item</b>
-      <p><span class="critico">CRÍTICO</span> não conforme põe o equipamento <b>em manutenção</b> e mostra <b>"Acione a manutenção"</b> para quem faz o checklist.</p>
-      <p><b>Operacional com observação</b>: não conforme com observação; o equipamento <b>segue operando</b> e aparece em <b>Restrição</b>.</p>
+      <p><span class="critico">CRÍTICO</span> <b>obriga parada</b>: não conforme põe o equipamento <b>em manutenção</b> e mostra <b>"Acione a manutenção"</b> para quem faz o checklist.</p>
+      <p><b>Não obriga parada</b>: o não conforme fica marcado no checklist e a manutenção é avisada, mas o equipamento <b>segue operando</b>.</p>
       <p class="muted">Quando o gestor marca o defeito como resolvido, o equipamento volta a Operando.</p>
     </div>
     <h3 class="secao">${m.itens.length} itens</h3>
     <div id="mdItens">${m.itens.map((it, n) => `<div class="md-item" data-n="${n}">
       <input class="md-txt" value="${h(it.texto)}" />
       <select class="md-nivel" aria-label="Nível">
-        <option value="critico" ${it.critico ? "selected" : ""}>Crítico</option>
-        <option value="operacional" ${it.critico ? "" : "selected"}>Operacional com observação</option></select>
+        <option value="critico" ${it.critico ? "selected" : ""}>Obriga parada</option>
+        <option value="operacional" ${it.critico ? "" : "selected"}>Não obriga parada</option></select>
       <button class="mini-bt" data-acao="sobe" aria-label="Subir">${I("subir")}</button><button class="mini-bt" data-acao="tira" aria-label="Tirar">${I("nok")}</button></div>`).join("")}</div>
     <div class="card"><b>Novo item</b>
       <input id="mdNovoItem" placeholder="ex.: Pneus" />
       <div class="linha"><select id="mdNovoNivel" aria-label="Nível do item novo">
-        <option value="critico">Crítico (manutenção)</option><option value="operacional" selected>Operacional com observação</option></select>
+        <option value="critico">Obriga parada (manutenção)</option><option value="operacional" selected>Não obriga parada</option></select>
       <button class="btn" id="mdAdd">Adicionar</button></div></div>
     <button class="btn btn-grande" id="mdSalvar">Salvar modelo</button>
     ${base ? `<button class="btn btn-ghost perigo" id="mdApagar">Apagar modelo</button>` : ""}`;
@@ -1708,7 +1714,7 @@ function entrouNoApp() {
     const r = Historico.aplicar(meus);
     r.mudancas.forEach(m => {
       const S = RESULTADOS[m.para];
-      toast(m.para === "liberado" ? m.equip + " voltou a operar." : m.equip + ": agora " + (m.para === "bloqueado" ? "em manutenção" : "com restrição"), m.para === "liberado" ? "ok" : "");
+      toast(m.para === "bloqueado" ? m.equip + ": agora em manutenção." : m.equip + " voltou a operar.", m.para === "bloqueado" ? "" : "ok");
       try { if (navigator.vibrate) navigator.vibrate(200); } catch (e) {}
     });
     const d = Estado.detalhe, novo = d && meus.find(x => x.id === d.id);
