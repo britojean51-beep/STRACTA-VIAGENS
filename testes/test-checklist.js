@@ -388,6 +388,14 @@ async function sair(page) {
   const d5s = (await banco(page))['checklist_inspecoes/' + insp.id];
   ok(d5s.solicitacoes.i5.nota === 'Solicitada a compra da lâmpada do farol' && d5s.solicitacoes.i5.por === 'Ana Gestora' && !(d5s.resolucoes || {}).i5,
     'solicitação gravada com nome; não conta como resolvido');
+  // PDF do checklist: no computador baixa o arquivo (no celular abre o compartilhar)
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#dtPdf')]);
+  const pdfPath = (SHOTS || require('os').tmpdir()) + '/checklist.pdf';
+  await dl.saveAs(pdfPath);
+  const pdf = fs.readFileSync(pdfPath);
+  ok(pdf.slice(0, 5).toString() === '%PDF-' && /checklist-CB-12-\d{4}-\d{2}-\d{2}\.pdf/.test(dl.suggestedFilename())
+    && pdf.toString('latin1').includes('/Subtype /Image'), 'PDF do checklist gerado, com nome do equipamento e a foto (' + Math.round(pdf.length / 1024) + ' KB)');
+  ok((await page.textContent('#dtPdf')).includes('Enviar em PDF') && !(await page.isDisabled('#dtPdf')), 'botão do PDF volta ao normal');
   ok(JSON.stringify(await page.evaluate(() => (Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === 'CB-12')[1].pendencias || {}))) === JSON.stringify({ [insp.id]: 'restricao' }),
     'com solicitação o CB-12 continua COM RESTRIÇÃO');
   ok((await page.textContent('#dtSituacao')).includes('1 com solicitação'), 'detalhe avisa "1 com solicitação, aguardando"');

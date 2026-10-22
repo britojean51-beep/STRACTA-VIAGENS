@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck23";
+const VERSAO = "ck24";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -1073,7 +1073,8 @@ function desenharDetalhe(i) {
       ${blocoItem(it)}</div>`).join("")}
     ${Object.values(i.midias || {}).some(m => m.item === "geral") || i.obs ? `<h3 class="secao">Geral</h3>
       <div class="card">${i.obs ? `<p>${h(i.obs)}</p>` : ""}<div class="midias">${midiasDe("geral")}</div></div>` : ""}
-    <button class="btn" id="dtZap">📲 Enviar resumo pelo WhatsApp</button>
+    <button class="btn" id="dtPdf">📄 Enviar em PDF</button>
+    <button class="btn btn-ghost" id="dtZap">📲 Enviar resumo pelo WhatsApp</button>
     ${Dados.ehAdmin() ? `<button class="btn btn-ghost perigo" id="dtApagar">🗑 Apagar este checklist</button>` : ""}
     <input type="file" id="inFotoRes" accept="image/*" capture="environment" hidden />
     <input type="file" id="inGaleriaRes" accept="image/*" hidden />`;
@@ -1126,6 +1127,7 @@ function desenharDetalhe(i) {
     const reabrir = alvo.closest("[data-reabrir]");
     if (reabrir) return reabrirItem(i, reabrir.dataset.reabrir);
     if (alvo.id === "dtReabrir") return reabrirLegado(i);
+    if (alvo.id === "dtPdf") return PDF.enviar(i, alvo);
     if (alvo.id === "dtZap") return zapDetalhe(i);
     if (alvo.id === "dtApagar") { if (await apagarInspecao(i)) Telas.voltar(); }
   };
