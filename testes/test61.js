@@ -63,8 +63,9 @@ const URL = 'http://localhost:8130/index.html';
   [['S-10', /Tanque S-10: 4\.250 L/], ['S-500', /Tanque S-500: 900 L/],
    ['ARLA', /Tanque ARLA 32: 450 L/], ['total diesel', /Total Diesel: 5\.150 L/]].forEach(([n, re]) =>
     ok('texto · saldo do tanque ' + n, re.test(texto), (texto.match(re) || ['FALTOU'])[0]));
-  ok('texto · o bloco diz que o saldo é de AGORA',
-     /SALDO NOS TANQUES \(agora\)/.test(texto), (texto.match(/SALDO NOS.*/) || ['FALTOU'])[0]);
+  ok('texto · o bloco tem o título que ele pediu',
+     /QUANTIDADE DE DIESEL DISPONÍVEL/.test(texto),
+     (texto.match(/QUANTIDADE DE.*/) || ['FALTOU'])[0]);
 
   /* ---- 2. O RISCO: consumo e saldo não podem ser confundidos ---- */
   const consumoS10 = texto.match(/^Diesel S-10: .*/m);
@@ -109,7 +110,7 @@ const URL = 'http://localhost:8130/index.html';
   await p.waitForTimeout(600);
   const pdf = await p.evaluate(() => (document.getElementById('printArea') || {}).innerText || '');
   ok('o PDF traz o saldo dos tanques',
-     /Tanque S-10: 4\.250 L/.test(pdf) && /SALDO NOS TANQUES/.test(pdf),
+     /Tanque S-10: 4\.250 L/.test(pdf) && /QUANTIDADE DE DIESEL DISPONÍVEL/.test(pdf),
      (pdf.match(/Tanque S-10:.*/) || ['FALTOU'])[0]);
 
   /* ---- 6. a imagem: a tira, com os números do db.estoque ---- */
@@ -166,7 +167,7 @@ const URL = 'http://localhost:8130/index.html';
     const c = cv.getContext('2d');
     const L = FOLHA.M, R = 1240 - FOLHA.M;
     c.font = FOLHA.fonte(16, 700);
-    const xT = L + 18 + c.measureText('🛢️ TANQUES AGORA').width + 22;
+    const xT = L + 18 + c.measureText('🛢️ DIESEL DISPONÍVEL').width + 22;
     c.font = FOLHA.fonte(19, 600);
     return { linha, larg: c.measureText(linha).width, cabe: R - xT - 14 };
   });
@@ -187,8 +188,8 @@ const URL = 'http://localhost:8130/index.html';
     const mes = DB.mesesDisponiveis()[0];
     return gerarRelatorioPeriodo(mes.dias, 'RELATÓRIO MENSAL');
   });
-  ok('o relatório mensal também traz o saldo, com o mesmo rótulo de agora',
-     /SALDO NOS TANQUES \(agora\)/.test(periodo) && /Tanque S-10:/.test(periodo),
+  ok('o relatório mensal também traz o saldo, com o mesmo título',
+     /QUANTIDADE DE DIESEL DISPONÍVEL/.test(periodo) && /Tanque S-10:/.test(periodo),
      (periodo.match(/Tanque S-10:.*/) || ['FALTOU'])[0]);
 
   const reais = errors.filter(e => !/net::ERR|gstatic|Failed to load resource|favicon/.test(e));

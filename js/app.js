@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "22/10/2026 · r61 (saldo dos tanques no relatório)";
+const VERSION = "22/10/2026 · r62 (quantidade de diesel disponível)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -239,10 +239,11 @@ function medidores(eq) {
   };
 }
 
-/* O saldo dos tanques, para o relatório. É o saldo de AGORA: addEstoque e
-   setEstoque não guardam data, então o saldo de uma terça passada não existe —
-   e o rótulo diz "(agora)" para ninguém ler o relatório de ontem e achar que
-   era o tanque de ontem.
+/* A quantidade de diesel disponível, para o relatório. É sempre o saldo de
+   AGORA: addEstoque e setEstoque não guardam data, então o saldo de uma terça
+   passada não existe. O "(agora)" saiu do título a pedido dele — "Disponível"
+   já é presente —, mas a limitação continua: relatório de um dia passado traz
+   o tanque de hoje.
 
    Cada linha começa com "Tanque" de propósito: o RESUMO GERAL logo acima tem
    "Diesel S-10: 374 L", que é o CONSUMO do dia. Sem a palavra Tanque, dois
@@ -253,7 +254,7 @@ function blocoTanques() {
   const baixos = {};
   DB.dieselNoMinimo().forEach(t => { baixos[t.tanque] = true; });
   const aviso = t => baixos[t] ? "  ⚠️ abaixo do mínimo" : "";
-  let txt = `🛢️ SALDO NOS TANQUES (agora)\n\n`;
+  let txt = `🛢️ QUANTIDADE DE DIESEL DISPONÍVEL\n\n`;
   txt += `Tanque S-10: ${fmtL(db.estoque.s10)} L${aviso("s10")}\n`;
   txt += `Tanque S-500: ${fmtL(db.estoque.s500)} L${aviso("s500")}\n`;
   txt += `Total Diesel: ${fmtL((db.estoque.s10 || 0) + (db.estoque.s500 || 0))} L\n`;
@@ -2671,9 +2672,10 @@ function desenharFolha(d, estilo) {
   if (d.tanques) {
     c.fillStyle = "#eef3fb"; c.fillRect(L, y, LARG, 44);
     c.fillStyle = F.navy; c.fillRect(L, y, 5, 44);
-    txt("🛢️ TANQUES AGORA", L + 18, y + 28, F.fonte(16, 700), F.navy);
+    const ROT = "🛢️ DIESEL DISPONÍVEL";
+    txt(ROT, L + 18, y + 28, F.fonte(16, 700), F.navy);
     c.font = F.fonte(16, 700);
-    const xT = L + 18 + c.measureText("🛢️ TANQUES AGORA").width + 22;
+    const xT = L + 18 + c.measureText(ROT).width + 22;
     txt(cortar(d.tanques, R - xT - 14, F.fonte(19, 600)), xT, y + 28, F.fonte(19, 600), F.tinta);
     y += 58;
   }
