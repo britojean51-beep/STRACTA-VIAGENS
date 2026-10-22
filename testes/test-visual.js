@@ -67,6 +67,7 @@ const shot = async (page, nome) => {
   await page.click('#eqGaleria');
   await page.waitForSelector('.foto-eq .vis.foto img');
   ok(await page.isVisible('#eqSemFoto'), 'foto escolhida aparece na prévia');
+  await page.waitForTimeout(500);   // o aviso "Foto pronta" termina de aparecer (no meio do efeito o contraste é menor)
   await shot(page, 'v2-cadastro-foto');
   await page.click('#fEq button.btn:not([type=button])');
   await page.waitForFunction(() => !document.querySelector('.foto-eq .vis.foto'));

@@ -74,6 +74,24 @@ const ok = (cond, msg) => { console.log((cond ? '  ✔ ' : '  ✖ ') + msg); if 
   await page.waitForSelector('#lgUsuario');
   ok(!(await page.evaluate(() => localStorage.getItem('ck_historico:jean@gp2t.local'))), 'ao sair, a lista de checklists sai do celular');
 
+  console.log('5. app de frota');
+  const fr = {};
+  JSON.parse(fs.readFileSync(__dirname + '/../firebase.json', 'utf8')).hosting.find(x => x.site === 'gestaofrotaapp').headers
+    .filter(x => x.source === '**').forEach(x => x.headers.forEach(y => { fr[y.key] = y.value; }));
+  const cspF = fr['Content-Security-Policy'] || '';
+  ok(/frame-ancestors 'none'/.test(cspF) && fr['X-Frame-Options'] === 'DENY' && /max-age=\d{7,}/.test(fr['Strict-Transport-Security'] || '')
+    && !/script-src[^;]*unsafe/.test(cspF) && /script\.google\.com/.test(cspF), 'frota: mesmas proteções, liberando só a planilha Google');
+  const p2 = await browser.newPage({ serviceWorkers: 'block' });
+  await p2.route('https://www.gstatic.com/**', r => r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
+  await p2.goto('http://localhost:8130/index.html');
+  await p2.evaluate(() => mostrarLogin());
+  ok((await p2.textContent('.login-box')).includes('Política de privacidade'), 'frota: login com os links de Termos e Privacidade');
+  await p2.click('.login-box [data-doc="privacidade"]');
+  const polF = await p2.textContent('.doc');
+  ok(polF.includes('13.709') && polF.includes('não pede localização') && polF.includes('Seus direitos'), 'frota: política abre e descreve os dados do app de frota');
+  await p2.click('.doc [data-fechar]');
+  ok(!(await p2.$('.doc-fundo')), 'frota: Fechar fecha');
+
   ok(!externos.size, 'nenhum acesso a site de rastreamento/terceiros' + (externos.size ? ': ' + [...externos].join(', ') : ''));
   ok(erros.length === 0, 'nenhum erro de JavaScript nem bloqueio da CSP' + (erros.length ? ': ' + erros.join(' | ') : ''));
   await browser.close();
