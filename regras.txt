@@ -75,6 +75,7 @@ service cloud.firestore {
     // ---- Checklist de máquinas e caminhões (gp2t-checklist.web.app) ----
     // Quem entra: documento ativo em checklist_usuarios. Funções:
     //   motorista, operador -> fazem checklist e veem só os seus
+    //   tecnico (segurança) -> + veem todos e marcam "visualizado"; não resolvem
     //   gestor              -> + veem todos e resolvem (tratativa)
     //   admin               -> + apagam e mexem em usuários, equipamentos e modelos
     // O gestor do app de frota também entra, como admin — é quem libera os primeiros.
@@ -92,6 +93,9 @@ service cloud.firestore {
     }
     function ckGestao() {
       return ckAdmin() || (ckCadastrado() && ckDoc().get('perfil', '') == 'gestor');
+    }
+    function ckVeTodos() {
+      return ckGestao() || (ckCadastrado() && ckDoc().get('perfil', '') == 'tecnico');
     }
 
     match /checklist_usuarios/{email} {
@@ -123,12 +127,13 @@ service cloud.firestore {
     // existe" em vez de "sem permissão" — é assim que o celular de quem fez
     // tira da lista "Meus últimos checklists". Não revela nada.
     match /checklist_inspecoes/{id} {
-      allow read: if ckGestao() || (ckLiberado() && (resource == null || resource.data.criadoPor == meuEmail()));
+      allow read: if ckVeTodos() || (ckLiberado() && (resource == null || resource.data.criadoPor == meuEmail()));
       allow create: if ckLiberado() && request.resource.data.criadoPor == meuEmail();
       allow update: if ckAdmin()
         || (ckGestao() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tratativa', 'resolucoes', 'solicitacoes', 'midias', 'pendentes', 'vistos']))
         || (ckLiberado() && resource.data.criadoPor == meuEmail()
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['midias', 'pendentes']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['midias', 'pendentes']))
+        || (ckVeTodos() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['vistos']));
       allow delete: if ckAdmin();
     }
 
@@ -137,7 +142,7 @@ service cloud.firestore {
     // Quem fez o checklist também vê as fotos da correção (tiradas pelo gestor):
     // é como o motorista acompanha a manutenção do caminhão dele.
     match /checklist_fotos/{id} {
-      allow read: if ckGestao() || (ckLiberado() && (resource.data.criadoPor == meuEmail()
+      allow read: if ckVeTodos() || (ckLiberado() && (resource.data.criadoPor == meuEmail()
         || get(/databases/$(database)/documents/checklist_inspecoes/$(resource.data.inspecao)).data.get('criadoPor', '') == meuEmail()));
       allow create, update: if ckLiberado()
         && request.resource.data.criadoPor == meuEmail()

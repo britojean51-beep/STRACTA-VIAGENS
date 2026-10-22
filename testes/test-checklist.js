@@ -26,8 +26,12 @@ async function foto(page) {
 const banco = page => page.evaluate(() => JSON.parse(localStorage.getItem('__ck_banco__') || '{}'));
 // defeitos em aberto gravados no equipamento (é deles que sai a situação)
 const pendencias = (page, P) => page.evaluate(P => (Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === P)[1]).pendencias || {}, P);
+const comEmoji = [];   // app profissional: nenhum emoji na tela
+const EMOJI = /[\u{1F300}-\u{1FAFF}\u2600-\u27BF\u2B00-\u2BFF\u2190-\u21FF\u2300-\u23FF\uFE0F\u25A0-\u25FF]/u;
 const shot = async (page, nome, inteira = true) => {
   (await page.evaluate(`(${CONTRASTE})(4.5)`)).forEach(t => contrasteRuim.push(nome + ': ' + t));
+  const txt = await page.evaluate(() => document.body.innerText + ' ' + [...document.querySelectorAll('[placeholder],[aria-label]')].map(e => e.placeholder || e.getAttribute('aria-label')).join(' '));
+  const m = txt.match(EMOJI); if (m) comEmoji.push(nome + ': "' + m[0] + '"');
   if (SHOTS) await page.screenshot({ path: SHOTS + '/' + nome + '.png', fullPage: inteira });
 };
 
@@ -126,8 +130,8 @@ async function sair(page) {
   await page.fill('[name=senha]', '123456');
   await page.click('#usCriar');
   await page.waitForFunction(() => /1 usuário/.test(document.querySelector('#usLista').textContent));
-  ok(await page.$$eval('[name=perfil] option', o => o.map(x => x.textContent).join(',')) === 'Motorista,Operador,Gestor,Administrador',
-    'funções: Motorista, Operador, Gestor, Administrador');
+  ok(await page.$$eval('[name=perfil] option', o => o.map(x => x.textContent).join(',')) === 'Motorista,Operador,Técnico de Segurança,Gestor,Administrador',
+    'funções: Motorista, Operador, Técnico de Segurança, Gestor, Administrador');
   let qtd = 1;
   for (const [u, n, f] of [['ana', 'Ana Gestora', 'gestor'], ['beto', 'Beto Operador', 'operador']]) {
     await page.fill('[name=usuario]', u); await page.fill('[name=nome]', n);
@@ -167,7 +171,7 @@ async function sair(page) {
   // pneu com defeito (crítico) + foto
   ok((await page.textContent('.ck-item:nth-child(1) [data-st="nok"]')).includes('Não conforme'), 'botão "Não conforme"');
   await page.click('.ck-item:nth-child(1) [data-st="nok"]');
-  ok((await page.textContent('.ck-item:nth-child(1) .aviso-critico')) === '🔧 Acione a manutenção'
+  ok((await page.textContent('.ck-item:nth-child(1) .aviso-critico')).trim() === 'Acione a manutenção'
     && (await page.textContent('#toast')).includes('Acione a manutenção'), 'item crítico não conforme: "Acione a manutenção" no item e no aviso');
   await page.fill('.ck-item:nth-child(1) .ck-obs', 'Pneu dianteiro esquerdo com corte');
   page.once('filechooser', async fc => fc.setFiles(await foto(page)));
@@ -239,7 +243,7 @@ async function sair(page) {
   ok(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('__ck_banco__') || '{}')).filter(k => k.startsWith('checklist_fotos/')).length) === 1, 'sem sinal a foto não sobe');
   ok((await page.textContent('#rede')).includes('sem sinal · 1'), 'topo mostra "sem sinal · 1" pendente');
   await page.click('#rsInicio');
-  ok((await page.textContent('#app')).includes('⏳ na fila'), 'início mostra o checklist "na fila"');
+  ok(await page.evaluate(() => [...document.querySelectorAll('#app .item .dir small')].some(x => x.textContent.trim() === 'na fila')), 'início mostra o checklist "na fila"');
   await shot(page, '05-sem-sinal');
   // rede volta
   await page.context().setOffline(false);
@@ -249,7 +253,7 @@ async function sair(page) {
     .filter(d => d.resultado && d.pendentes === 0).length === 2);
   ok(true, 'rede voltou: foto subiu sozinha e o checklist foi marcado');
   ok(Object.values(await pendencias(page, 'ESC-03')).join() === 'restricao', 'ESC-03 (defeito operacional) fica COM RESTRIÇÃO e segue operando');
-  await page.waitForFunction(() => !document.querySelector('#app').textContent.includes('⏳ na fila'));
+  await page.waitForFunction(() => ![...document.querySelectorAll('#app .item .dir small')].some(x => x.textContent.trim() === 'na fila'));
   ok(true, 'início passa para "enviado"');
   const filaIDB = await page.evaluate(() => Midia.pendentes());
   ok(filaIDB === 0, 'gaveta do aparelho esvaziou depois do envio');
@@ -315,13 +319,13 @@ async function sair(page) {
   await page.click('[data-ir="painel"]');
   await page.waitForSelector('[data-abrir]');
   ok(await page.$$eval('#pLista .item', l => l.length) === 2, 'painel mostra os 2 checklists de hoje');
-  ok((await page.textContent('#pLista')).includes('● não visualizado'), 'painel marca o que ainda não foi visualizado');
+  ok((await page.textContent('#pLista')).includes('não visualizado'), 'painel marca o que ainda não foi visualizado');
   const frota = await page.textContent('#pFrota');
   ok(/Em manutenção \(1\)\s*CB-12/.test(frota) && /Com restrição \(1\)\s*ESC-03/.test(frota) && frota.includes('Operando (0)'),
     'situação da frota: CB-12 em manutenção, ESC-03 com restrição');
   ok(/Sem checklist hoje \(1\)\s*PC-09/.test(frota), 'equipamento sem checklist hoje NÃO conta como Operando: fica em "Sem checklist hoje"');
   await shot(page, '06-painel');
-  ok(frota.includes('PC-09 (🔧 pendente de outro dia)'), 'hoje sem checklist, mas com defeito de outro dia: avisa');
+  ok(frota.includes('PC-09 (em manutenção, pendente de outro dia)'), 'hoje sem checklist, mas com defeito de outro dia: avisa');
   ok(!(await page.$('[data-d]')) && await page.isVisible('#pDia'), 'escolhe o dia (sem "7 dias" / "30 dias")');
   const tres = await page.evaluate(() => { const d = new Date(); d.setDate(d.getDate() - 3); return diaDe(d.getTime()); });
   await page.fill('#pDia', tres);
@@ -398,7 +402,7 @@ async function sair(page) {
   ok((await page.textContent('#dtPdf')).includes('Enviar em PDF') && !(await page.isDisabled('#dtPdf')), 'botão do PDF volta ao normal');
   ok(pdf.toString('latin1').includes('(Buzina)') && pdf.toString('latin1').includes('(Conforme)'), 'PDF traz também os itens OK');
   const zap = await page.evaluate(() => { let u = ''; const o = window.open; window.open = x => { u = x; }; document.querySelector('#dtZap').click(); window.open = o; return decodeURIComponent(u.split('text=')[1] || ''); });
-  ok(zap.includes('*Itens OK (16):*') && zap.includes('✅ Buzina') && zap.includes('*Não conformes (2):*'), 'resumo do WhatsApp traz os não conformes e também os itens OK');
+  ok(zap.includes('*Itens OK (16):*') && zap.includes('• Buzina') && !/[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/u.test(zap) && zap.includes('*Não conformes (2):*'), 'resumo do WhatsApp traz os não conformes e também os itens OK');
   ok(JSON.stringify(await page.evaluate(() => (Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === 'CB-12')[1].pendencias || {}))) === JSON.stringify({ [insp.id]: 'restricao' }),
     'com solicitação o CB-12 continua COM RESTRIÇÃO');
   ok((await page.textContent('#dtSituacao')).includes('1 com solicitação'), 'detalhe avisa "1 com solicitação, aguardando"');
@@ -407,8 +411,8 @@ async function sair(page) {
   await page.click('#btnVoltar');
   await page.click('[data-f="solicitado"]');
   const solLista = await page.textContent('#pLista');
-  ok(await page.$$eval('#pLista .item', l => l.length) === 1 && solLista.includes('CB-12') && solLista.includes('🛒 1 solicitado(s)'),
-    'Painel: filtro "🛒 Solicitado" mostra o CB-12 com "1 solicitado(s)"');
+  ok(await page.$$eval('#pLista .item', l => l.length) === 1 && solLista.includes('CB-12') && solLista.includes('1 solicitado(s)'),
+    'Painel: filtro "Solicitado" mostra o CB-12 com "1 solicitado(s)"');
   await page.click('[data-f="todos"]');
   await page.click('#pLista .item:has-text("CB-12")');
   await page.waitForSelector('[data-item="i5"] .solicitado');
@@ -442,14 +446,14 @@ async function sair(page) {
   ok((await page.textContent('#pFrota')).includes('Sem checklist hoje (1)'), 'resolvido o CB-12: Operando (1) e o PC-09 continua sem checklist');
   ok(!(await page.textContent('#pFrota')).includes('Em manutenção'), 'resolvido sai de "Em manutenção" no Painel');
   await page.click('[data-f="bloqueado"]');
-  ok((await page.textContent('#pFiltro')).includes('🔧 Manutenção') && !(await page.textContent('#app')).includes('Bloquead'),
+  ok((await page.textContent('#pFiltro')).includes('Manutenção') && !(await page.textContent('#app')).includes('Bloquead'),
     'filtro "Manutenção" (não aparece mais "Bloqueado")');
   ok(await page.$$eval('#pLista .item', l => l.length) === 0, 'resolvido sai da aba Manutenção');
   await page.click('[data-f="liberado"]');
-  ok((await page.textContent('#pFiltro')).includes('✅ Operando') && !(await page.textContent('#pFiltro')).includes('Liberad'),
+  ok((await page.textContent('#pFiltro')).includes('Operando') && !(await page.textContent('#pFiltro')).includes('Liberad'),
     'aba "Liberados" agora se chama "Operando"');
   const operando = await page.textContent('#pLista');
-  ok(operando.includes('CB-12') && operando.includes('era manutenção') && operando.includes('✔ resolvido'), 'resolvido aparece na aba Operando (com o que era)');
+  ok(operando.includes('CB-12') && operando.includes('era manutenção') && operando.includes('resolvido'), 'resolvido aparece na aba Operando (com o que era)');
   ok((await page.$$eval('.kpi', k => k.map(x => x.textContent.replace(/\s+/g, ' ').trim()))).join('|').includes("1operando"),
     'contador "operando" conta o resolvido');
   await page.click('[data-f="todos"]');
@@ -541,7 +545,7 @@ async function sair(page) {
   await page.waitForFunction(() => Historico.lista().some(x => x.id === 'outroCel'));
   await page.waitForFunction(() => document.querySelector('#app').textContent.includes('XX-01'));
   ok(true, 'checklist que ele fez em outro celular aparece no Início');
-  ok((await page.textContent('#app')).includes('👁 Visto por Ana Gestora'), 'quem fez vê no Início que a gestão visualizou');
+  ok((await page.textContent('#app')).includes('Visto por Ana Gestora'), 'quem fez vê no Início que a gestão visualizou');
   // "outro celular" apaga direto no servidor
   await page.evaluate(() => { const b = JSON.parse(localStorage.getItem('__ck_banco__')); delete b['checklist_inspecoes/outroCel'];
     localStorage.setItem('__ck_banco__', JSON.stringify(b)); });
@@ -562,7 +566,7 @@ async function sair(page) {
   await page.reload();
   await page.waitForSelector('#btnNovo');
   await page.waitForFunction(id => (Historico.lista().find(x => x.id === id) || {}).resolvido === true, ultimo.id);
-  await page.waitForFunction(() => document.querySelector('#app').textContent.includes('✔ resolvido'));
+  await page.waitForFunction(() => document.querySelector('#app').textContent.includes('resolvido'));
   const itemTxt = await page.$$eval('#app .item', l => l.map(e => e.textContent.replace(/\s+/g, ' ')).join(' | '));
   ok(!/MANUTENÇÃO|OPERACIONAL COM OBSERVAÇÃO/.test(itemTxt) && itemTxt.includes('OPERANDO'),
     'depois de resolvido: Início mostra OPERANDO (com o que era)');
@@ -660,6 +664,7 @@ async function sair(page) {
     'fundo branco mesmo com o celular em modo escuro');
   ok(contrasteRuim.length === 0, 'contraste ≥ 4,5:1 em todas as telas fotografadas' + (contrasteRuim.length ? ': ' + contrasteRuim.join(' | ') : ''));
   ok(nativas.length === 0, 'nenhuma janela do navegador (confirm/alert)' + (nativas.length ? ': ' + nativas.join(' | ') : ''));
+  ok(!comEmoji.length, 'nenhum emoji nas telas' + (comEmoji.length ? ': ' + comEmoji.join(' | ') : ''));
   ok(erros.length === 0, 'nenhum erro de JavaScript' + (erros.length ? ': ' + erros.join(' | ') : ''));
   await browser.close();
   console.log(falhas ? '\n' + falhas + ' FALHA(S)' : '\nTUDO CERTO');

@@ -324,3 +324,24 @@ button:focus-visible, a:focus-visible, summary:focus-visible, [tabindex]:focus-v
 .doc p, .doc li { font-size: 14px; line-height: 1.45; margin: 0 0 6px; }
 .doc ul { padding-left: 20px; margin: 4px 0 10px; }
 .doc .btn { margin-top: 12px; }
+/* ícones de traço (no lugar de emoji) */
+svg.i { width: 1.15em; height: 1.15em; vertical-align: -0.22em; flex: none; }
+.btn svg.i { margin-right: 2px; }
+.menu span { display: flex; width: 44px; height: 44px; align-items: center; justify-content: center; border-radius: 12px; background: var(--card-2); color: var(--brand-forte); }
+.menu span svg { width: 26px; height: 26px; }
+.add-midia { display: inline-flex; align-items: center; justify-content: center; color: var(--text); }
+.add-midia svg { width: 26px; height: 26px; }
+.mini-midia .play svg { width: 22px; height: 22px; filter: drop-shadow(0 0 3px #000); }
+.mini-midia .tirar { display: flex; align-items: center; justify-content: center; padding: 0; }
+.mini-midia .tirar svg { width: 14px; height: 14px; }
+.mini-midia .espera svg { width: 20px; height: 20px; color: var(--muted); }
+.visor .fechar { display: flex; align-items: center; justify-content: center; }
+.visor .fechar svg { width: 22px; height: 22px; }
+.stico svg { width: 18px; height: 18px; vertical-align: -0.25em; }
+.apagar { color: var(--perigo); }
+.apagar svg { width: 20px; height: 20px; vertical-align: middle; }
+.resultado .grande svg { width: 64px; height: 64px; stroke-width: 2.4; }
+.resultado.ok .grande { color: var(--ok); }
+.resultado.alerta .grande { color: var(--alerta); }
+.resultado.perigo .grande { color: var(--perigo); }
+.mini-bt svg.i { vertical-align: -0.2em; }
