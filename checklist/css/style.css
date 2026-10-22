@@ -312,3 +312,15 @@ body.tela-login main { padding: 0 0 24px; }
 .visto-card p { margin: 0; }
 small .visto { display: block; color: var(--ok); font-weight: 600; }
 small .nao-visto { display: block; color: var(--brand-forte); font-weight: 700; }
+/* teclado: foco sempre visível */
+button:focus-visible, a:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--brand-forte); outline-offset: 2px; }
+/* política de privacidade e termos */
+.legal { color: var(--muted); margin: 12px 0; }
+.legal a, .doc a { color: var(--brand-forte); font-weight: 700; }
+.doc-fundo { position: fixed; inset: 0; z-index: 80; background: rgba(11,18,32,.55); display: flex; justify-content: center; align-items: flex-end; padding: 12px; }
+.doc { width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto; background: var(--card); color: var(--text); border-radius: 18px; border-top: 5px solid var(--brand); padding: 18px 18px 14px; outline: none; }
+.doc h2 { margin: 0 0 6px; font-size: 21px; }
+.doc h3 { margin: 14px 0 4px; font-size: 15px; }
+.doc p, .doc li { font-size: 14px; line-height: 1.45; margin: 0 0 6px; }
+.doc ul { padding-left: 20px; margin: 4px 0 10px; }
+.doc .btn { margin-top: 12px; }

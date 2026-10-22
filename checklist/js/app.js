@@ -1,11 +1,13 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck25";
+const VERSAO = "ck26";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
 const chaveDe = base => base + ":" + ((Dados.usuario && Dados.usuario.email) || "anonimo");
+/* Quem responde pelos dados (LGPD). Vazio = "o administrador do app". */
+const EMPRESA = { nome: "", cnpj: "", contato: "" };
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
 const RESULTADOS = {
   liberado: { txt: "OPERANDO", ico: "✅", cls: "ok" },
@@ -408,6 +410,8 @@ Render.login = function (erro) {
       <button class="btn btn-grande btn-entrar" id="lgEntrar">Entrar</button>
       <p class="muted mini centro">Esqueceu a senha? Fale com o administrador.</p>
     </form>
+    <p class="mini centro legal">Ao entrar, você concorda com os <a href="#" data-doc="termos">Termos de uso</a>
+      e a <a href="#" data-doc="privacidade">Política de privacidade</a>.</p>
     <div data-slot-instalar="talvez"></div>
     <p class="versao">versão ${h(VERSAO)}</p>`;
   Instalar.preencher();
@@ -611,6 +615,65 @@ function miniaturas(item) {
       <button class="tirar" data-tirar="${mid}" aria-label="Remover">✕</button></div>`).join("");
 }
 
+/* ---------- Política de privacidade e Termos de uso (abre por cima de qualquer tela, com ou sem login) ---------- */
+const DOCUMENTOS = {
+  privacidade: () => {
+    const quem = EMPRESA.nome ? `${h(EMPRESA.nome)}${EMPRESA.cnpj ? " (CNPJ " + h(EMPRESA.cnpj) + ")" : ""}` : "a empresa dona da frota";
+    const contato = EMPRESA.contato ? h(EMPRESA.contato) : "o administrador do app";
+    return `<h2>Política de privacidade</h2>
+    <p class="mini muted">Em linha com a Lei Geral de Proteção de Dados (Lei 13.709/2018).</p>
+    <h3>Quem cuida dos dados</h3>
+    <p>O controlador dos dados é ${quem}. Dúvidas e pedidos sobre seus dados: ${contato}.</p>
+    <h3>Quais dados o app guarda</h3>
+    <ul><li>Seu nome, usuário e função (motorista, operador, gestor ou administrador).</li>
+      <li>Os checklists que você faz: equipamento, respostas, observações, KM e horímetro, data e hora.</li>
+      <li>As fotos que você tira ou escolhe para o checklist ou para a correção de um defeito.</li>
+      <li>A localização do celular, uma vez, no momento em que o checklist começa (se você permitir).</li>
+      <li>Quem resolveu, solicitou ou visualizou cada checklist, e quando.</li></ul>
+    <h3>Para que</h3>
+    <p>Somente para a segurança da operação e a manutenção da frota: saber se o equipamento pode trabalhar, acionar a manutenção e registrar o que foi feito.
+      A base legal é o legítimo interesse da empresa e o cumprimento de normas de segurança do trabalho.</p>
+    <h3>Quem vê</h3>
+    <p>Motorista e operador veem só os próprios checklists. Gestores e administradores veem todos. Os dados não são vendidos nem usados para propaganda.</p>
+    <h3>Onde ficam</h3>
+    <p>No Google Firebase (servidores que podem ficar fora do Brasil), com acesso protegido por usuário e senha e por regras que limitam quem lê cada dado.
+      No celular fica uma cópia para o app funcionar sem sinal. Ao tocar em "Sair deste aparelho", a lista dos seus checklists é apagada do celular
+      (fotos ainda não enviadas ficam guardadas até subir).</p>
+    <h3>Cookies e rastreamento</h3>
+    <p>O app não usa cookies de propaganda nem ferramentas de rastreamento ou estatística de terceiros.</p>
+    <h3>Por quanto tempo</h3>
+    <p>Enquanto forem necessários para o histórico de manutenção da frota ou exigidos por lei. Depois podem ser apagados pelo administrador.</p>
+    <h3>Seus direitos</h3>
+    <p>Você pode pedir para ver, corrigir ou apagar seus dados e saber com quem foram compartilhados, falando com ${contato}.</p>`;
+  },
+  termos: () => `<h2>Termos de uso</h2>
+    <ul><li>O app é de uso interno, só para pessoas autorizadas pela empresa.</li>
+      <li>O usuário e a senha são pessoais: não empreste e troque a senha se alguém souber.</li>
+      <li>Responda o checklist com a verdade, olhando o equipamento. Um item crítico não conforme significa: não opere e acione a manutenção.</li>
+      <li>Fotografe só o equipamento e o defeito; evite pessoas e placas de terceiros.</li>
+      <li>Os checklists ficam registrados com seu nome, data, hora e local, e podem ser usados em auditorias de segurança e manutenção.</li>
+      <li>O uso dos dados segue a <a href="#" data-doc="privacidade">Política de privacidade</a>.</li></ul>`
+};
+function abrirDocumento(tipo) {
+  const ant = document.querySelector(".doc-fundo"); if (ant) ant.remove();
+  const f = document.createElement("div");
+  f.className = "doc-fundo";
+  f.innerHTML = `<div class="doc" role="dialog" aria-modal="true" tabindex="-1">${DOCUMENTOS[tipo]()}
+    <button class="btn" data-fechar>Fechar</button></div>`;
+  f.onclick = ev => {
+    const d = ev.target.closest("[data-doc]");
+    if (d) { ev.preventDefault(); return abrirDocumento(d.dataset.doc); }
+    if (ev.target === f || ev.target.closest("[data-fechar]")) f.remove();
+  };
+  f.onkeydown = ev => { if (ev.key === "Escape") f.remove(); };
+  document.body.appendChild(f);
+  f.querySelector(".doc").focus();
+}
+document.addEventListener("click", ev => {
+  const d = ev.target.closest("[data-doc]");
+  if (d && !d.closest(".doc-fundo")) { ev.preventDefault(); abrirDocumento(d.dataset.doc); }
+});
+
 /* ---------- o checklist ---------- */
 Render.checklist = function () {
   const r = Estado.rascunho;
@@ -620,6 +683,7 @@ Render.checklist = function () {
   app().innerHTML = `
     <div class="progresso"><div style="width:${Math.round(feitos / total * 100)}%"></div></div>
     <p class="muted mini">${feitos} de ${total} itens · toque em ✔ OK, ✖ Não conforme ou N/A</p>
+    <p class="muted mini">📍 A localização é registrada uma vez, ao começar, se o celular permitir. <a href="#" data-doc="privacidade">Privacidade</a></p>
     <div class="card linha2">
       <label>KM atual<input id="ckKm" inputmode="decimal" value="${h(r.km)}" placeholder="opcional" /></label>
       <label>Horímetro<input id="ckHor" inputmode="decimal" value="${h(r.horimetro)}" placeholder="opcional" /></label>
@@ -1534,6 +1598,7 @@ Render.conta = function () {
     </form>
     <div data-slot-instalar="sempre"></div>
     <button class="btn btn-ghost perigo" id="ctSair">Sair deste aparelho</button>
+    <p class="mini centro legal"><a href="#" data-doc="privacidade">Política de privacidade</a> · <a href="#" data-doc="termos">Termos de uso</a></p>
     <p class="muted mini centro">Versão ${VERSAO}</p>`;
   $("#ctEnviar").onclick = () => { if (!navigator.onLine) return toast("Sem sinal agora.", "erro"); Midia.processar(); toast("Enviando…"); };
   $("#fSenha").onsubmit = async ev => {
@@ -1547,6 +1612,7 @@ Render.conta = function () {
     const n = await Midia.pendentes();
     if (!(await confirmar(n ? "Ainda há " + n + " foto(s) para enviar. Elas ficam guardadas e sobem quando você entrar de novo." : "Para entrar de novo será preciso o usuário e a senha.",
       { titulo: "Sair deste aparelho?", ok: "Sair" }))) return;
+    try { localStorage.removeItem(chaveDe(HISTORICO_KEY)); } catch (e) {}   // a lista volta do servidor no próximo login
     Estado.parar(); await Dados.sair(); Render.login();
   };
   atualizarRede();
@@ -1582,7 +1648,7 @@ const Atualizacao = {
   ocupado() {
     const t = Telas.atual && Telas.atual.nome;
     // checklist em andamento, tela do resultado, resolução, janela aberta ou modelo em edição
-    return t === "checklist" || t === "resultado" || t === "cad-modelo" || !!Resolver.itemId || !!document.querySelector(".mdl-fundo");
+    return t === "checklist" || t === "resultado" || t === "cad-modelo" || !!Resolver.itemId || !!document.querySelector(".mdl-fundo, .doc-fundo");
   },
   chegou() {
     if (this.ocupado()) { this.pendente = true; return; }
