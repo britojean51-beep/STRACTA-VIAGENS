@@ -191,7 +191,7 @@ const PDF = {
 
   /* celular: abre o "compartilhar" (WhatsApp, e-mail…); computador: baixa o arquivo */
   async enviar(i, botao) {
-    if (botao) { botao.disabled = true; botao.dataset.txt = botao.textContent; botao.textContent = "⏳ Preparando o PDF…"; }
+    if (botao) { botao.disabled = true; botao.dataset.txt = botao.textContent; botao.textContent = "Preparando o PDF…"; }
     try {
       const arq = await this.gerar(i);
       const titulo = "Checklist " + nomeEquip(i.equipamento) + " · " + dataHora(i.criadoEm);
@@ -203,7 +203,7 @@ const PDF = {
       a.href = URL.createObjectURL(arq); a.download = arq.name;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-      toast("PDF baixado ✔ " + arq.name, "ok");
+      toast("PDF baixado: " + arq.name, "ok");
     } catch (e) {
       toast((e && e.message) || "Não deu para gerar o PDF.", "erro");
     } finally {

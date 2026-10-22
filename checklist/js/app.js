@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck27";
+const VERSAO = "ck28";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -10,9 +10,9 @@ const chaveDe = base => base + ":" + ((Dados.usuario && Dados.usuario.email) || 
 const EMPRESA = { nome: "", cnpj: "", contato: "" };
 const TIPOS = { caminhao: "Caminhão", maquina: "Máquina", leve: "Veículo leve", outro: "Outro" };
 const RESULTADOS = {
-  liberado: { txt: "OPERANDO", ico: "✅", cls: "ok" },
-  restricao: { txt: "OPERACIONAL COM OBSERVAÇÃO", ico: "⚠️", cls: "alerta" },
-  bloqueado: { txt: "MANUTENÇÃO", ico: "🔧", cls: "perigo" }   // a chave segue "bloqueado" nos dados
+  liberado: { txt: "OPERANDO", icone: "ok", cls: "ok" },
+  restricao: { txt: "OPERACIONAL COM OBSERVAÇÃO", icone: "alerta", cls: "alerta" },
+  bloqueado: { txt: "MANUTENÇÃO", icone: "manutencao", cls: "perigo" }   // a chave segue "bloqueado" nos dados
 };
 
 /* Modelos que já vêm prontos. O admin edita ou cria outros em Cadastros. */
@@ -84,9 +84,9 @@ const FORMULARIOS_OFICIAIS = ["padrao-pesados-18", "padrao-maquina-22"];
 
 /* Situação do equipamento: sai dos defeitos ainda em aberto (pendencias). */
 const SITUACOES = {
-  manutencao: { txt: "Em manutenção", ico: "🔧", cls: "perigo" },
-  restricao: { txt: "Com restrição", ico: "⚠️", cls: "alerta" },
-  operacional: { txt: "Operando", ico: "✅", cls: "ok" }
+  manutencao: { txt: "Em manutenção", icone: "manutencao", cls: "perigo" },
+  restricao: { txt: "Com restrição", icone: "alerta", cls: "alerta" },
+  operacional: { txt: "Operando", icone: "ok", cls: "ok" }
 };
 function situacaoDe(e) {
   const v = Object.values((e && e.pendencias) || {});
@@ -143,9 +143,33 @@ const ICONES = {
   cadeado: ic('<rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>'),
   olho: ic('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
   olhoFechado: ic('<path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.7 8.4 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.5 4.5-1.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'),
+  ok: ic('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+  nok: ic('<path d="M6 6l12 12M18 6 6 18"/>'),
+  alerta: ic('<path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.5v.01"/>'),
+  manutencao: ic('<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>'),
+  pedido: ic('<circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2.5 3h2.6l2.4 12h11.3l2-8.5H6"/>'),
+  relogio: ic('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  camera: ic('<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>'),
+  galeria: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9.5" r="1.8"/><path d="M21 16l-5-5-9 9"/>'),
+  video: ic('<rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="M15.5 10.5 21.5 7v10l-6-3.5z"/>'),
+  mais: ic('<path d="M12 5v14M5 12h14"/>'),
+  local: ic('<path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>'),
+  lixo: ic('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'),
+  pdf: ic('<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>'),
+  mensagem: ic('<path d="M21 12a8.5 8.5 0 0 1-12.4 7.6L3.5 21l1.4-4.8A8.5 8.5 0 1 1 21 12z"/>'),
+  baixar: ic('<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>'),
+  enviar: ic('<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>'),
+  subir: ic('<path d="M12 19V5M6 11l6-6 6 6"/>'),
+  clipe: ic('<path d="M21 11.5 12.5 20a5 5 0 0 1-7-7L14 4.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.7-7.7"/>'),
+  play: ic('<path d="M8 5v14l11-7z" fill="currentColor"/>'),
+  caminhao: ic('<path d="M2 6h11v10H2zM13 9h4.5l3.5 3.5V16h-8z"/><circle cx="6.5" cy="17.5" r="2"/><circle cx="17" cy="17.5" r="2"/>'),
+  lista: ic('<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01" stroke-width="3"/>'),
+  equipe: ic('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.8.8 3 2.6 3.5 5.2"/>'),
   semRede: ic('<path d="M3 3l18 18"/><path d="M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.2-2.8M19 13a10 10 0 0 0-2.4-1.8M2 9.5a15 15 0 0 1 4.3-2.6M22 9.5A15 15 0 0 0 11 5.1"/><circle cx="12" cy="20" r="1"/>')
 };
-/* logo: o mesmo desenho do ícone do app (prancheta com ✓) */
+/* ícone dentro do texto (tamanho da letra) */
+const I = n => ICONES[n].replace("<svg ", '<svg class="i" ');
+/* logo: o mesmo desenho do ícone do app (prancheta com visto) */
 const LOGO = `<svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="96" fill="#0f172a"/>
   <rect x="120" y="84" width="272" height="352" rx="36" fill="#16223b" stroke="#ff7a1a" stroke-width="16"/>
   <rect x="196" y="60" width="120" height="56" rx="20" fill="#ff7a1a"/>
@@ -208,13 +232,13 @@ const Instalar = {
   },
   ios() { return /iphone|ipad|ipod/i.test(navigator.userAgent); },
   cartao(sempre) {
-    if (this.instalado()) return sempre ? `<div class="card instalar ok-borda"><b>✅ App instalado</b><p class="mini">Abra pelo ícone "Checklist" na tela do celular.</p></div>` : "";
-    if (this.evento) return `<div class="card instalar"><b>📲 Baixe o aplicativo</b>
+    if (this.instalado()) return sempre ? `<div class="card instalar ok-borda"><b>${I("ok")} App instalado</b><p class="mini">Abra pelo ícone "Checklist" na tela do celular.</p></div>` : "";
+    if (this.evento) return `<div class="card instalar"><b>${I("baixar")} Baixe o aplicativo</b>
       <p class="mini">Fica com ícone na tela do celular, abre em tela cheia e funciona sem sinal.</p>
-      <button class="btn" id="btnInstalar">📲 Instalar o app</button></div>`;
-    if (this.ios()) return `<div class="card instalar"><b>📲 Instalar no iPhone</b>
-      <p class="mini">No Safari, toque em <b>Compartilhar</b> (quadrado com seta ↑) e depois em <b>"Adicionar à Tela de Início"</b>.</p></div>`;
-    return sempre ? `<div class="card instalar"><b>📲 Instalar o app</b>
+      <button class="btn" id="btnInstalar">${I("baixar")} Instalar o app</button></div>`;
+    if (this.ios()) return `<div class="card instalar"><b>${I("baixar")} Instalar no iPhone</b>
+      <p class="mini">No Safari, toque em <b>Compartilhar</b> (quadrado com seta para cima) e depois em <b>"Adicionar à Tela de Início"</b>.</p></div>`;
+    return sempre ? `<div class="card instalar"><b>${I("baixar")} Instalar o app</b>
       <p class="mini">No Chrome, toque no menu <b>⋮</b> e depois em <b>"Instalar app"</b> ou <b>"Adicionar à tela inicial"</b>.</p></div>` : "";
   },
   preencher() { document.querySelectorAll("[data-slot-instalar]").forEach(el => { el.innerHTML = this.cartao(el.dataset.slotInstalar === "sempre"); }); },
@@ -222,12 +246,12 @@ const Instalar = {
     if (!this.evento) return;
     const ev = this.evento; this.evento = null;
     ev.prompt();
-    try { const r = await ev.userChoice; if (r && r.outcome === "accepted") toast("App instalado ✔", "ok"); } catch (e) {}
+    try { const r = await ev.userChoice; if (r && r.outcome === "accepted") toast("App instalado.", "ok"); } catch (e) {}
     this.preencher();
   }
 };
 window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); Instalar.evento = e; Instalar.preencher(); });
-window.addEventListener("appinstalled", () => { Instalar.evento = null; Instalar.preencher(); toast("App instalado ✔ — abra pelo ícone na tela", "ok"); });
+window.addEventListener("appinstalled", () => { Instalar.evento = null; Instalar.preencher(); toast("App instalado. Abra pelo ícone na tela.", "ok"); });
 document.addEventListener("click", e => { if (e.target.closest("#btnInstalar")) Instalar.instalar(); });
 
 /* ---------- estado ---------- */
@@ -335,7 +359,7 @@ const Telas = {
   pilha: [],
   ir(nome, arg, semPilha) {
     const soGestao = ["painel"], soAdmin = ["cadastros", "cad-equip", "cad-modelos", "cad-modelo", "cad-usuarios"];
-    if ((soGestao.includes(nome) && !Dados.ehGestao()) || (soAdmin.includes(nome) && !Dados.ehAdmin())) nome = "inicio";
+    if ((soGestao.includes(nome) && !Dados.veTodos()) || (soAdmin.includes(nome) && !Dados.ehAdmin())) nome = "inicio";
     if (!semPilha && this.atual && this.atual.nome !== nome) this.pilha.push(this.atual);
     if (["inicio", "painel", "cadastros", "conta"].includes(nome)) this.pilha = [];
     this.atual = { nome, arg };
@@ -369,10 +393,10 @@ async function atualizarRede() {
   const el = $("#rede");
   const n = await Midia.pendentes();
   el.className = "rede " + (navigator.onLine ? "on" : "off");
-  el.textContent = navigator.onLine ? (n ? "⬆ " + n : "●") : "sem sinal" + (n ? " · " + n : "");
+  el.textContent = navigator.onLine ? (n ? n + " na fila" : "online") : "sem sinal" + (n ? " · " + n : "");
   el.title = navigator.onLine ? (n ? n + " arquivo(s) enviando" : "Conectado") : "Sem sinal — tudo fica guardado";
   const c = document.querySelector("[data-pendentes]");
-  if (c) c.textContent = n ? n + " foto(s)/vídeo(s) aguardando envio" : "Tudo enviado ✔";
+  if (c) c.textContent = n ? n + " foto(s)/vídeo(s) aguardando envio" : "Tudo enviado.";
 }
 
 /* ============================================================
@@ -454,7 +478,7 @@ Render.inicio = function () {
           <button class="btn" id="btnContinuar">Continuar</button>
           <button class="btn btn-ghost" id="btnDescartar">Descartar</button>
         </div></div>` : ""}
-    <button class="btn btn-grande btn-novo" id="btnNovo">➕ Novo checklist</button>
+    <button class="btn btn-grande btn-novo" id="btnNovo">${I("mais")} Novo checklist</button>
     <div class="kpis">
       <div class="kpi"><b>${deHoje.length}</b><span>hoje</span></div>
       <div class="kpi"><b>${deHoje.filter(x => statusPainel(x) !== "liberado").length}</b><span>não conformes</span></div>
@@ -464,11 +488,11 @@ Render.inicio = function () {
       const S = RESULTADOS[statusPainel(x)];
       const ok = statusPainel(x) === "liberado";
       return `<div class="card acompanhe ${S.cls}">
-        <div class="linha-topo"><b>${h(x.equip)}</b><span class="tag ${S.cls}">${S.ico} ${ok ? "Operando" : S === RESULTADOS.bloqueado ? "Em manutenção" : "Com restrição"}</span></div>
-        <p class="mini">${ok ? "✅ Voltou a operar — tudo resolvido." :
+        <div class="linha-topo"><b>${h(x.equip)}</b><span class="tag ${S.cls}">${I(S.icone)} ${ok ? "Operando" : S === RESULTADOS.bloqueado ? "Em manutenção" : "Com restrição"}</span></div>
+        <p class="mini">${ok ? "Voltou a operar: tudo resolvido." :
           (x.itensNok != null ? `${x.resolvidos} de ${x.itensNok} item(ns) resolvido(s)` : "Aguardando a manutenção")
-          + (x.solicitados ? ` · 🛒 ${x.solicitados} aguardando peça` : "")}
-          <br>${x.vistoPor && x.vistoPor.length ? "👁 Visto por " + h(x.vistoPor.join(", ")) : "Ainda não visualizado pela gestão"}</p>
+          + (x.solicitados ? ` · ${x.solicitados} aguardando peça` : "")}
+          <br>${x.vistoPor && x.vistoPor.length ? I("olho") + " Visto por " + h(x.vistoPor.join(", ")) : "Ainda não visualizado pela gestão"}</p>
         <button class="btn btn-ghost btn-acompanhar" data-ver="${h(x.id)}">Ver andamento ›</button></div>`;
     }).join("") : ""}
     <p class="muted mini" data-pendentes></p>
@@ -477,9 +501,9 @@ Render.inicio = function () {
     ${hist.length ? hist.slice(0, 20).map(x => {
       const R = RESULTADOS[statusPainel(x)] || RESULTADOS.liberado;
       return `<div class="item ${R.cls}" ${x.enviado ? `data-ver="${h(x.id)}"` : ""}>
-        <div><b>${h(x.equip)}</b><small>${dataHora(x.criadoEm)} · ${x.defeitos || 0} não conforme(s)${statusPainel(x) !== x.resultado ? " · era " + ((RESULTADOS[x.resultado] || R).txt.toLowerCase()) : ""}${x.vistoPor && x.vistoPor.length ? " · 👁 visto" : ""}</small></div>
-        <div class="dir"><span class="tag ${R.cls}">${R.ico} ${R.txt}</span>
-        <small>${statusPainel(x) === "liberado" && x.resultado !== "liberado" ? "✔ resolvido" : statusPainel(x) !== x.resultado ? "◐ em andamento" : x.enviado ? "✔ enviado" : "⏳ na fila"}</small></div></div>`;
+        <div><b>${h(x.equip)}</b><small>${dataHora(x.criadoEm)} · ${x.defeitos || 0} não conforme(s)${statusPainel(x) !== x.resultado ? " · era " + ((RESULTADOS[x.resultado] || R).txt.toLowerCase()) : ""}${x.vistoPor && x.vistoPor.length ? " · visto" : ""}</small></div>
+        <div class="dir"><span class="tag ${R.cls}">${I(R.icone)} ${R.txt}</span>
+        <small>${statusPainel(x) === "liberado" && x.resultado !== "liberado" ? "resolvido" : statusPainel(x) !== x.resultado ? "em andamento" : x.enviado ? "enviado" : "na fila"}</small></div></div>`;
     }).join("") : `<p class="vazio">Nenhum checklist feito neste aparelho ainda.</p>`}`;
   $("#btnNovo").onclick = () => r ? Telas.ir("checklist") : Telas.ir("novo");
   app().onclick = ev => { const v = ev.target.closest("[data-ver]"); if (v) Telas.ir("detalhe", v.dataset.ver); };
@@ -507,12 +531,12 @@ Render.novo = function (busca) {
   const lista = Estado.equipamentos.filter(e => e.ativo !== false &&
     (!q || nomeEquip(e).toLowerCase().includes(q) || String(e.descricao || "").toLowerCase().includes(q)));
   app().innerHTML = `
-    <input class="busca" id="busca" type="search" placeholder="🔎 Prefixo ou placa" value="${h(busca || "")}" />
+    <input class="busca" id="busca" type="search" placeholder="Buscar prefixo ou placa" value="${h(busca || "")}" />
     <div class="grade" id="grade">
       ${lista.map(e => { const S = SITUACOES[situacaoDe(e)]; return `<button class="equip sit-${S.cls}" data-id="${h(e.id)}">
         ${visualEquip(e)}
         <b>${h(e.prefixo || e.placa)}</b><small>${h(e.placa && e.prefixo ? e.placa : (e.descricao || TIPOS[e.tipo] || ""))}</small>
-        ${S.cls !== "ok" ? `<em class="tag ${S.cls}">${S.ico} ${S.txt}</em>` : ""}
+        ${S.cls !== "ok" ? `<em class="tag ${S.cls}">${I(S.icone)} ${S.txt}</em>` : ""}
       </button>`; }).join("")}
     </div>
     ${!lista.length ? `<p class="vazio">${Estado.equipamentos.length ? "Nada encontrado." : "Nenhum equipamento cadastrado ainda."}</p>` : ""}
@@ -610,9 +634,9 @@ function miniaturas(item) {
   const r = Estado.rascunho;
   return Object.entries(r.midias).filter(([, m]) => m.item === item).map(([mid, m]) =>
     `<div class="mini-midia">${m.tipo === "video"
-      ? `<video data-mid="${mid}" muted playsinline preload="metadata"></video><span class="play">▶</span>`
+      ? `<video data-mid="${mid}" muted playsinline preload="metadata"></video><span class="play">${ICONES.play}</span>`
       : `<img data-mid="${mid}" alt="foto" />`}
-      <button class="tirar" data-tirar="${mid}" aria-label="Remover">✕</button></div>`).join("");
+      <button class="tirar" data-tirar="${mid}" aria-label="Remover">${ICONES.nok}</button></div>`).join("");
 }
 
 /* ---------- Política de privacidade e Termos de uso (abre por cima de qualquer tela, com ou sem login) ---------- */
@@ -682,29 +706,29 @@ Render.checklist = function () {
   const feitos = Object.keys(r.respostas).length, total = r.modelo.itens.length;
   app().innerHTML = `
     <div class="progresso"><div style="width:${Math.round(feitos / total * 100)}%"></div></div>
-    <p class="muted mini">${feitos} de ${total} itens · toque em ✔ OK, ✖ Não conforme ou N/A</p>
-    <p class="muted mini">📍 A localização é registrada uma vez, ao começar, se o celular permitir. <a href="#" data-doc="privacidade">Privacidade</a></p>
+    <p class="muted mini">${feitos} de ${total} itens · toque em OK, Não conforme ou N/A</p>
+    <p class="muted mini">${I("local")} A localização é registrada uma vez, ao começar, se o celular permitir. <a href="#" data-doc="privacidade">Privacidade</a></p>
     <div class="card linha2">
       <label>KM atual<input id="ckKm" inputmode="decimal" value="${h(r.km)}" placeholder="opcional" /></label>
       <label>Horímetro<input id="ckHor" inputmode="decimal" value="${h(r.horimetro)}" placeholder="opcional" /></label>
     </div>
-    <button class="btn btn-ghost btn-tudo" id="ckTudoOk">✔ Marcar os que faltam como OK</button>
+    <button class="btn btn-ghost btn-tudo" id="ckTudoOk">${I("ok")} Marcar os que faltam como OK</button>
     <div id="itens">
       ${r.modelo.itens.map((it, n) => {
         const resp = r.respostas[it.id] || {};
         return `<div class="ck-item ${resp.st || ""}" data-item="${h(it.id)}">
           <div class="ck-txt"><span class="num">${n + 1}</span>${h(it.texto)}${it.critico ? ' <span class="critico" title="Item crítico: defeito põe o equipamento em manutenção">CRÍTICO</span>' : ""}</div>
           <div class="ck-bts">
-            <button class="st ok ${resp.st === "ok" ? "on" : ""}" data-st="ok">✔ OK</button>
-            <button class="st nok ${resp.st === "nok" ? "on" : ""}" data-st="nok">✖ Não conforme</button>
+            <button class="st ok ${resp.st === "ok" ? "on" : ""}" data-st="ok">${I("ok")} OK</button>
+            <button class="st nok ${resp.st === "nok" ? "on" : ""}" data-st="nok">${I("nok")} Não conforme</button>
             <button class="st na ${resp.st === "na" ? "on" : ""}" data-st="na">N/A</button>
           </div>
-          ${resp.st === "nok" && it.critico ? `<div class="aviso-critico" role="alert">🔧 Acione a manutenção</div>` : ""}
+          ${resp.st === "nok" && it.critico ? `<div class="aviso-critico" role="alert">${I("manutencao")} Acione a manutenção</div>` : ""}
           ${resp.st === "nok" ? `<textarea class="ck-obs" placeholder="O que está errado? (obrigatório)" rows="2">${h(resp.obs || "")}</textarea>` : ""}
           <div class="midias">${miniaturas(it.id)}
-            <button class="add-midia" data-foto="${h(it.id)}" aria-label="Tirar foto">📷</button>
-            <button class="add-midia" data-galeria="${h(it.id)}" aria-label="Escolher da galeria">🖼️</button>
-            ${Midia.video() ? `<button class="add-midia" data-video="${h(it.id)}">🎥</button>` : ""}
+            <button class="add-midia" data-foto="${h(it.id)}" aria-label="Tirar foto">${ICONES.camera}</button>
+            <button class="add-midia" data-galeria="${h(it.id)}" aria-label="Escolher da galeria">${ICONES.galeria}</button>
+            ${Midia.video() ? `<button class="add-midia" data-video="${h(it.id)}" aria-label="Gravar vídeo">${ICONES.video}</button>` : ""}
           </div>
         </div>`;
       }).join("")}
@@ -713,9 +737,9 @@ Render.checklist = function () {
       <b>Fotos gerais e observações</b>
       <p class="muted mini">Frente, traseira, laterais, painel…</p>
       <div class="midias">${miniaturas("geral")}
-        <button class="add-midia" data-foto="geral" aria-label="Tirar foto">📷</button>
-        <button class="add-midia" data-galeria="geral" aria-label="Escolher da galeria">🖼️</button>
-        ${Midia.video() ? `<button class="add-midia" data-video="geral">🎥</button>` : ""}
+        <button class="add-midia" data-foto="geral" aria-label="Tirar foto">${ICONES.camera}</button>
+        <button class="add-midia" data-galeria="geral" aria-label="Escolher da galeria">${ICONES.galeria}</button>
+        ${Midia.video() ? `<button class="add-midia" data-video="geral" aria-label="Gravar vídeo">${ICONES.video}</button>` : ""}
       </div>
       <textarea id="ckObs" rows="3" placeholder="Observação geral (opcional)">${h(r.obs)}</textarea>
     </div>
@@ -748,7 +772,7 @@ Render.checklist = function () {
       if (st.dataset.st === "nok") {
         const item = r.modelo.itens.find(x => x.id === id);
         if (item && item.critico) {
-          toast("🔧 Acione a manutenção", "erro");
+          toast("Acione a manutenção.", "erro");
           try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {}
         }
         const ta = document.querySelector(`[data-item="${CSS.escape(id)}"] .ck-obs`);
@@ -801,7 +825,7 @@ function capturar(tipo, item, galeria) {
       r.midias[mid] = { item, tipo: p.tipo, ext: p.ext, dur: p.dur || null, tam: p.blob.size, origem: galeria ? "galeria" : "camera" };
       salvarRascunho();
       const y = window.scrollY; Telas.render(); window.scrollTo(0, y);
-      toast(tipo === "foto" ? "Foto adicionada ✔" : "Vídeo adicionado ✔", "ok");
+      toast(tipo === "foto" ? "Foto adicionada." : "Vídeo adicionado.", "ok");
     } catch (e) { toast(e.message || "Não deu para usar esse arquivo.", "erro"); }
   };
   inp.click();
@@ -812,8 +836,8 @@ function verMidia(url, tipo) {
   const o = document.createElement("div");
   o.className = "visor";
   o.innerHTML = (tipo === "video" ? `<video src="${h(url)}" controls autoplay playsinline></video>` : `<img src="${h(url)}" alt="" />`)
-    + `<button class="fechar" aria-label="Fechar">✕</button>`;
-  o.onclick = ev => { if (ev.target === o || ev.target.classList.contains("fechar")) o.remove(); };
+    + `<button class="fechar" aria-label="Fechar">${ICONES.nok}</button>`;
+  o.onclick = ev => { if (ev.target === o || ev.target.closest(".fechar")) o.remove(); };
   document.body.appendChild(o);
 }
 
@@ -882,17 +906,17 @@ Render.resultado = function (a) {
   titulo("CHECKLIST ENVIADO", a.equip);
   app().innerHTML = `
     <div class="card resultado ${R.cls}">
-      <div class="grande">${R.ico}</div>
+      <div class="grande">${ICONES[R.icone]}</div>
       <h2>${R.txt}</h2>
       <p>${h(a.equip)}</p>
       ${a.defeitos.length ? `<ul>${a.defeitos.map(d => `<li>${h(d)}</li>`).join("")}</ul>` : ""}
-      ${a.resultado === "bloqueado" ? `<div class="aviso-critico forte">🔧 Acione a manutenção</div><p>Item crítico não conforme: não opere o equipamento.</p>` : ""}
+      ${a.resultado === "bloqueado" ? `<div class="aviso-critico forte">${I("manutencao")} Acione a manutenção</div><p>Item crítico não conforme: não opere o equipamento.</p>` : ""}
       ${a.resultado === "restricao" ? `<p>Pode operar, com atenção aos itens acima. A manutenção foi avisada.</p>` : ""}
     </div>
     <p class="muted mini">${a.online ? "Enviando agora. Fotos e vídeos sobem em segundo plano." :
       "Sem sinal: ficou guardado no aparelho e vai sozinho quando a rede voltar."}</p>
     <p class="muted mini" data-pendentes></p>
-    <button class="btn btn-grande" id="rsNovo">➕ Outro checklist</button>
+    <button class="btn btn-grande" id="rsNovo">${I("mais")} Outro checklist</button>
     <button class="btn btn-ghost" id="rsInicio">Voltar ao início</button>`;
   $("#rsNovo").onclick = () => Telas.ir("novo");
   $("#rsInicio").onclick = () => Telas.ir("inicio");
@@ -922,7 +946,7 @@ Render.painel = async function () {
       porSit[i ? SIT[statusPainel(i)] || "operacional" : "semChecklist"].push({ e, i });
     });
     // hoje, sem checklist: avisa se ainda tem defeito em aberto de outro dia
-    const deAntes = e => ehHoje && situacaoDe(e) !== "operacional" ? ` (${SITUACOES[situacaoDe(e)].ico} pendente de outro dia)` : "";
+    const deAntes = e => ehHoje && situacaoDe(e) !== "operacional" ? ` (${SITUACOES[situacaoDe(e)].txt.toLowerCase()}, pendente de outro dia)` : "";
     const [a, m, d] = p.dia.split("-");
     const nomeDia = ehHoje ? "hoje" : p.dia === diaDe(Date.now() - 864e5) ? "ontem" : `${d}/${m}/${a}`;
     app().innerHTML = `
@@ -940,16 +964,16 @@ Render.painel = async function () {
       </div>
       <div class="card frota" id="pFrota"><b>Situação da frota · ${nomeDia}</b>
         ${["manutencao", "restricao"].map(k => porSit[k].length ? `<div class="sit ${SITUACOES[k].cls}">
-          <span class="tag ${SITUACOES[k].cls}">${SITUACOES[k].ico} ${SITUACOES[k].txt} (${porSit[k].length})</span>
+          <span class="tag ${SITUACOES[k].cls}">${I(SITUACOES[k].icone)} ${SITUACOES[k].txt} (${porSit[k].length})</span>
           ${porSit[k].map(x => `<div class="link" data-abrir="${h(x.i.id)}">${h(nomeEquip(x.e))}</div>`).join("")}</div>` : "").join("")}
-        <p class="mini"><span class="tag ok">✅ Operando (${porSit.operacional.length})</span></p>
+        <p class="mini"><span class="tag ok">${I("ok")} Operando (${porSit.operacional.length})</span></p>
         ${porSit.semChecklist.length ? `<div class="sit sem">
-          <span class="tag sem">⏳ Sem checklist ${ehHoje ? "hoje" : "no dia"} (${porSit.semChecklist.length})</span>
+          <span class="tag sem">${I("relogio")} Sem checklist ${ehHoje ? "hoje" : "no dia"} (${porSit.semChecklist.length})</span>
           <p class="mini nomes">${porSit.semChecklist.map(x => h(nomeEquip(x.e)) + deAntes(x.e)).join(" · ")}</p></div>` : ""}
       </div>
-      <input class="busca" id="pBusca" type="search" placeholder="🔎 Equipamento ou nome" value="${h(p.busca)}" />
+      <input class="busca" id="pBusca" type="search" placeholder="Buscar equipamento ou nome" value="${h(p.busca)}" />
       <div class="chips" id="pFiltro">
-        ${[["todos", "Todos"], ["bloqueado", "🔧 Manutenção"], ["restricao", "⚠️ Restrição"], ["liberado", "✅ Operando"], ["solicitado", "🛒 Solicitado"], ["aberto", "⏳ Em aberto"]]
+        ${[["todos", "Todos"], ["bloqueado", "Manutenção"], ["restricao", "Restrição"], ["liberado", "Operando"], ["solicitado", "Solicitado"], ["aberto", "Em aberto"]]
           .map(([k, t]) => `<button data-f="${k}" class="${p.filtro === k ? "on" : ""}">${t}</button>`).join("")}
       </div>
       ${p.carregando && !p.lista ? `<p class="carregando">Carregando…</p>` : ""}
@@ -958,14 +982,14 @@ Render.painel = async function () {
         const R = RESULTADOS[statusPainel(i)] || RESULTADOS.liberado;
         return `<div class="item ${R.cls}" data-abrir="${h(i.id)}">
           <div><b>${h(nomeEquip(i.equipamento))}</b><small>${dataHora(i.criadoEm)} · ${h(i.criadoNome)}${PERFIS[i.criadoPerfil] ? " (" + PERFIS[i.criadoPerfil].toLowerCase() + ")" : ""}${statusPainel(i) !== i.resultado ? " · era " + RESULTADOS[i.resultado].txt.toLowerCase() : ""}
-            ${vistosDe(i).length ? `<span class="visto">👁 ${h(vistosDe(i).map(x => x.por).join(", "))}</span>` : `<span class="nao-visto">● não visualizado</span>`}</small></div>
-          <div class="dir">${Dados.ehAdmin() ? `<button class="apagar" data-apagar="${h(i.id)}" aria-label="Apagar checklist">🗑</button>` : ""}<span class="tag ${R.cls}">${R.ico} ${i.defeitos || 0}</span>
-          <small>${statusPainel(i) === "liberado" && i.resultado !== "liberado" ? "✔ resolvido" : statusPainel(i) !== i.resultado ? "◐ em andamento" : i.tratativa ? "⏳ aberto" : ""}
-          ${solicitadosAbertos(i).length ? " · 🛒 " + solicitadosAbertos(i).length + " solicitado(s)" : ""}
-          ${Object.keys(i.midias || {}).length ? " · 📎" + Object.keys(i.midias).length : ""}</small></div></div>`;
+            ${vistosDe(i).length ? `<span class="visto">${I("olho")} ${h(vistosDe(i).map(x => x.por).join(", "))}</span>` : `<span class="nao-visto">não visualizado</span>`}</small></div>
+          <div class="dir">${Dados.ehAdmin() ? `<button class="apagar" data-apagar="${h(i.id)}" aria-label="Apagar checklist">${ICONES.lixo}</button>` : ""}<span class="tag ${R.cls}">${I(R.icone)} ${i.defeitos || 0}</span>
+          <small>${statusPainel(i) === "liberado" && i.resultado !== "liberado" ? "resolvido" : statusPainel(i) !== i.resultado ? "em andamento" : i.tratativa ? "aberto" : ""}
+          ${solicitadosAbertos(i).length ? " · " + solicitadosAbertos(i).length + " solicitado(s)" : ""}
+          ${Object.keys(i.midias || {}).length ? " · " + Object.keys(i.midias).length + " foto(s)" : ""}</small></div></div>`;
       }).join("")}</div>
       ${p.lista && !l.length ? `<p class="vazio">Nenhum checklist neste filtro.</p>` : ""}
-      ${l.length ? `<button class="btn btn-ghost" id="pCsv">⬇ Baixar planilha (CSV)</button>` : ""}`;
+      ${l.length ? `<button class="btn btn-ghost" id="pCsv">${I("baixar")} Baixar planilha (CSV)</button>` : ""}`;
     const irDia = dia => { if (!dia || dia > hoje || dia === p.dia) return; p.dia = dia; p.lista = null; carregar(); };
     $("#pDias").onclick = ev => {
       const b = ev.target.closest("[data-passo]"); if (!b) return;
@@ -1037,7 +1061,7 @@ async function marcarVisto(i) {
   i.vistos = Object.assign({}, i.vistos, { [k]: v });
   const p = (Painel.lista || []).find(x => x.id === i.id); if (p && p !== i) p.vistos = i.vistos;
   desenharDetalhe(i);
-  toast("👁 Marcado como visualizado", "ok");
+  toast("Marcado como visualizado.", "ok");
   try { await Dados.atualizarInspecao(i.id, { ["vistos." + k]: v }); }
   catch (e) { toast("Não deu para salvar (" + ((e && e.code) || "sem sinal") + ").", "erro"); }
 }
@@ -1050,7 +1074,7 @@ Render.detalhe = async function (id) {
   if (!i) { app().innerHTML = `<p class="erro">Checklist não encontrado.</p>`; return; }
   if (Telas.atual.nome !== "detalhe" || Telas.atual.arg !== id) return;
   // motorista/operador: só o próprio checklist (a regra do Firestore também barra)
-  if (!Dados.ehGestao() && i.criadoPor !== Dados.usuario.email) {
+  if (!Dados.veTodos() && i.criadoPor !== Dados.usuario.email) {
     toast("Checklist de outra pessoa.", "erro"); return Telas.ir("inicio", null, true);
   }
   if (Resolver.inspId !== i.id) await cancelarResolucao();
@@ -1072,74 +1096,74 @@ function desenharDetalhe(i) {
   const ordenados = (i.itens || []).map((it, n) => [it, n]).sort((a, b) => peso(a[0]) - peso(b[0]) || a[1] - b[1]).map(x => x[0]);
   const midiasDe = item => Object.entries(i.midias || {}).filter(([, m]) => m.item === item).map(([mid, m]) =>
     `<button class="mini-midia remota" data-path="${h(m.path)}" data-tipo="${m.tipo}" ${m.ok ? "" : "disabled"}>
-      ${m.ok ? (m.tipo === "video" ? `<span class="play">▶</span>` : `<img data-thumb="${h(m.path)}" alt="foto" />`)
-        : `<span class="espera">⏳<small>enviando</small></span>`}</button>`).join("");
+      ${m.ok ? (m.tipo === "video" ? `<span class="play">${ICONES.play}</span>` : `<img data-thumb="${h(m.path)}" alt="foto" />`)
+        : `<span class="espera">${ICONES.relogio}<small>enviando</small></span>`}</button>`).join("");
   const blocoItem = it => {
     if (it.st !== "nok") return "";
     const r = res[it.id], sl = (i.solicitacoes || {})[it.id];
-    const caixaSol = sl ? `<div class="solicitado"><b>🛒 Solicitado</b> <span class="muted mini">· ${h(sl.por)} · ${dataHora(sl.em)}</span>
+    const caixaSol = sl ? `<div class="solicitado"><b>${I("pedido")} Solicitado</b> <span class="muted mini">· ${h(sl.por)} · ${dataHora(sl.em)}</span>
         <p>${h(sl.nota)}</p></div>` : "";
     if (r || legado) return `<div class="resolvido">
-        <b>✅ Resolvido</b>${r ? ` <span class="muted mini">· ${h(r.por)} · ${dataHora(r.em)}</span>` : ` <span class="muted mini">(tratativa geral)</span>`}
+        <b>${I("ok")} Resolvido</b>${r ? ` <span class="muted mini">· ${h(r.por)} · ${dataHora(r.em)}</span>` : ` <span class="muted mini">(tratativa geral)</span>`}
         ${r && r.nota ? `<p>${h(r.nota)}</p>` : ""}
-        ${sl ? `<p class="mini muted">🛒 Antes: solicitado em ${dataHora(sl.em)} — ${h(sl.nota)}</p>` : ""}
+        ${sl ? `<p class="mini muted">Antes: solicitado em ${dataHora(sl.em)} — ${h(sl.nota)}</p>` : ""}
         <div class="midias">${midiasDe("res:" + it.id)}</div>
         ${r && Dados.ehGestao() ? `<button class="mini-bt" data-reabrir="${h(it.id)}">Reabrir item</button>` : ""}
       </div>`;
     // motorista/operador: acompanha, não resolve
-    if (!Dados.ehGestao()) return caixaSol || `<p class="aguardando">⏳ Aguardando a manutenção</p>`;
+    if (!Dados.ehGestao()) return caixaSol || `<p class="aguardando">${I("relogio")} Aguardando a manutenção</p>`;
     if (Resolver.inspId === i.id && Resolver.itemId === it.id && Resolver.modo === "solicitar") return `${caixaSol}<div class="resolvendo solicitando">
-        <b>🛒 Solicitação: ${h(it.texto)}</b>
+        <b>${I("pedido")} Solicitação: ${h(it.texto)}</b>
         <textarea id="slNota" rows="2" placeholder="O que foi solicitado? (ex.: troca do pneu, compra da peça)">${h(Resolver.nota)}</textarea>
         <p class="mini muted">O item continua em aberto até ser resolvido.</p>
         <div class="linha"><button class="btn btn-ghost" id="rsCancelar">Cancelar</button>
-          <button class="btn" id="slConfirmar">🛒 Registrar</button></div>
+          <button class="btn" id="slConfirmar">Registrar</button></div>
       </div>`;
     if (Resolver.inspId === i.id && Resolver.itemId === it.id) return `${caixaSol}<div class="resolvendo">
-        <b>🔧 Resolver: ${h(it.texto)}</b>
+        <b>${I("manutencao")} Resolver: ${h(it.texto)}</b>
         <textarea id="rsNota" rows="2" placeholder="O que foi feito? (obrigatório)">${h(Resolver.nota)}</textarea>
         <div class="midias">${Resolver.mids.map(mid => `<div class="mini-midia"><img data-mid="${mid}" alt="foto" />
-          <button class="tirar" data-rs-tirar="${mid}" aria-label="Remover">✕</button></div>`).join("")}
-          <button class="add-midia" id="rsFoto" aria-label="Tirar foto da correção">📷</button>
-          <button class="add-midia" id="rsGaleria" aria-label="Escolher da galeria">🖼️</button></div>
+          <button class="tirar" data-rs-tirar="${mid}" aria-label="Remover">${ICONES.nok}</button></div>`).join("")}
+          <button class="add-midia" id="rsFoto" aria-label="Tirar foto da correção">${ICONES.camera}</button>
+          <button class="add-midia" id="rsGaleria" aria-label="Escolher da galeria">${ICONES.galeria}</button></div>
         <div class="linha"><button class="btn btn-ghost" id="rsCancelar">Cancelar</button>
-          <button class="btn" id="rsConfirmar">✅ Confirmar</button></div>
+          <button class="btn" id="rsConfirmar">${I("ok")} Confirmar</button></div>
       </div>`;
     return `${caixaSol}<div class="acoes-item">
-        <button class="btn btn-resolver" data-resolver="${h(it.id)}">🔧 Resolver este item</button>
-        <button class="btn btn-ghost btn-resolver" data-solicitar="${h(it.id)}">🛒 ${sl ? "Editar solicitação" : "Solicitação"}</button>
+        <button class="btn btn-resolver" data-resolver="${h(it.id)}">${I("manutencao")} Resolver este item</button>
+        <button class="btn btn-ghost btn-resolver" data-solicitar="${h(it.id)}">${I("pedido")} ${sl ? "Editar solicitação" : "Solicitação"}</button>
       </div>${sl ? `<button class="mini-bt" data-sol-cancelar="${h(it.id)}">Cancelar solicitação</button>` : ""}`;
   };
   app().innerHTML = `
-    <div class="card resultado ${R.cls} compacto"><h2>${R.ico} ${R.txt}</h2>
+    <div class="card resultado ${R.cls} compacto"><h2>${I(R.icone)} ${R.txt}</h2>
       <p>${h(i.criadoNome)} · ${h((i.modelo || {}).nome)}${i.duracaoSeg ? " · " + Math.max(1, Math.round(i.duracaoSeg / 60)) + " min" : ""}</p>
       <p>${i.km != null ? "KM " + i.km.toLocaleString("pt-BR") : ""}${i.km != null && i.horimetro != null ? " · " : ""}${i.horimetro != null ? "Horímetro " + i.horimetro.toLocaleString("pt-BR") : ""}</p>
-      ${i.geo ? `<p><a href="https://maps.google.com/?q=${i.geo.lat},${i.geo.lng}" target="_blank" rel="noopener">📍 ver no mapa</a></p>` : ""}
-      ${i.pendentes > 0 ? `<p class="mini">⏳ ${i.pendentes} foto(s) ainda subindo</p>` : ""}
+      ${i.geo ? `<p><a href="https://maps.google.com/?q=${i.geo.lat},${i.geo.lng}" target="_blank" rel="noopener">${I("local")} ver no mapa</a></p>` : ""}
+      ${i.pendentes > 0 ? `<p class="mini">${I("relogio")} ${i.pendentes} foto(s) ainda subindo</p>` : ""}
     </div>
     <div class="card visto-card" id="dtVisto">
-      ${vistos.length ? `<p>👁 <b>Visualizado</b> por ${h(textoVistos(vistos))}</p>` : `<p class="muted">👁 Ainda não visualizado pela gestão.</p>`}
-      ${Dados.ehGestao() && !euVi ? `<button class="btn" id="dtMarcarVisto">👁 Marcar como visualizado</button>` : ""}
+      ${vistos.length ? `<p>${I("olho")} <b>Visualizado</b> por ${h(textoVistos(vistos))}</p>` : `<p class="muted">Ainda não visualizado pela gestão.</p>`}
+      ${Dados.veTodos() && !euVi ? `<button class="btn" id="dtMarcarVisto">${I("olho")} Marcar como visualizado</button>` : ""}
     </div>
     ${nok.length ? `<div class="card ${A.cls === "ok" ? "" : "alerta-borda"}" id="dtSituacao">
-      <b>Agora: <span class="tag ${A.cls}">${A.ico} ${A.txt}</span></b>
+      <b>Agora: <span class="tag ${A.cls}">${I(A.icone)} ${A.txt}</span></b>
       <p class="mini">${resolvidos} de ${nok.length} item(ns) não conforme(s) resolvido(s).
         ${A.cls === "ok" ? "Equipamento voltou a operar." : Dados.ehGestao() ? "Resolva cada item abaixo, com nota e foto." : "A manutenção vai resolvendo cada item; esta tela atualiza sozinha."}
-        ${solicitadosAbertos(i).length ? `<br>🛒 ${solicitadosAbertos(i).length} com solicitação, aguardando.` : ""}</p>
+        ${solicitadosAbertos(i).length ? `<br>${solicitadosAbertos(i).length} com solicitação, aguardando.` : ""}</p>
       ${legado && Dados.ehGestao() ? `<button class="btn btn-ghost" id="dtReabrir">Reabrir</button>` : ""}
     </div>` : ""}
     <h3 class="secao">Itens</h3>
     ${ordenados.map(it => `<div class="ck-item ${it.st} ${it.st === "nok" && (legado || res[it.id]) ? "feito" : ""} leitura" data-item="${h(it.id)}">
-      <div class="ck-txt"><span class="stico">${it.st === "ok" ? "✔" : it.st === "nok" ? "✖" : "–"}</span>${h(it.texto)}
+      <div class="ck-txt"><span class="stico">${it.st === "ok" ? ICONES.ok : it.st === "nok" ? ICONES.nok : "–"}</span>${h(it.texto)}
       ${it.critico ? ' <span class="critico">CRÍTICO</span>' : ""}</div>
       ${it.obs ? `<p class="obs">${h(it.obs)}</p>` : ""}
       <div class="midias">${midiasDe(it.id)}</div>
       ${blocoItem(it)}</div>`).join("")}
     ${Object.values(i.midias || {}).some(m => m.item === "geral") || i.obs ? `<h3 class="secao">Geral</h3>
       <div class="card">${i.obs ? `<p>${h(i.obs)}</p>` : ""}<div class="midias">${midiasDe("geral")}</div></div>` : ""}
-    <button class="btn" id="dtPdf">📄 Enviar em PDF</button>
-    <button class="btn btn-ghost" id="dtZap">📲 Enviar resumo pelo WhatsApp</button>
-    ${Dados.ehAdmin() ? `<button class="btn btn-ghost perigo" id="dtApagar">🗑 Apagar este checklist</button>` : ""}
+    <button class="btn" id="dtPdf">${I("pdf")} Enviar em PDF</button>
+    <button class="btn btn-ghost" id="dtZap">${I("mensagem")} Enviar resumo pelo WhatsApp</button>
+    ${Dados.ehAdmin() ? `<button class="btn btn-ghost perigo" id="dtApagar">${I("lixo")} Apagar este checklist</button>` : ""}
     <input type="file" id="inFotoRes" accept="image/*" capture="environment" hidden />
     <input type="file" id="inGaleriaRes" accept="image/*" hidden />`;
 
@@ -1155,6 +1179,8 @@ function desenharDetalhe(i) {
 
   app().onclick = async ev => {
     const alvo = ev.target;
+    // o toque pode cair no desenho do ícone: vale o botão em volta
+    const bt = alvo.closest("button[id], a[id]"), id = bt ? bt.id : "";
     const m = alvo.closest(".remota");
     if (m && !m.disabled) {
       try { verMidia(await Midia.url(m.dataset.path), m.dataset.tipo); }
@@ -1167,17 +1193,17 @@ function desenharDetalhe(i) {
       Object.assign(Resolver, { inspId: i.id, itemId: abrir.dataset.resolver, nota: "", mids: [], modo: "resolver" });
       return redesenhar(i, abrir.dataset.resolver);
     }
-    if (alvo.id === "dtMarcarVisto") return marcarVisto(i);
-    if (alvo.id === "rsCancelar") { await cancelarResolucao(); return redesenhar(i); }
-    if (alvo.id === "rsFoto") return fotoResolucao(i);
-    if (alvo.id === "rsGaleria") return fotoResolucao(i, true);
+    if (id === "dtMarcarVisto") return marcarVisto(i);
+    if (id === "rsCancelar") { await cancelarResolucao(); return redesenhar(i); }
+    if (id === "rsFoto") return fotoResolucao(i);
+    if (id === "rsGaleria") return fotoResolucao(i, true);
     const tirar = alvo.closest("[data-rs-tirar]");
     if (tirar) {
       Resolver.mids = Resolver.mids.filter(x => x !== tirar.dataset.rsTirar);
       await Midia.apagar(tirar.dataset.rsTirar).catch(() => {}); liberarURL(tirar.dataset.rsTirar);
       return redesenhar(i, Resolver.itemId);
     }
-    if (alvo.id === "rsConfirmar") return confirmarResolucao(i);
+    if (id === "rsConfirmar") return confirmarResolucao(i);
     const sol = alvo.closest("[data-solicitar]");
     if (sol) {
       await cancelarResolucao();
@@ -1185,19 +1211,19 @@ function desenharDetalhe(i) {
       Object.assign(Resolver, { inspId: i.id, itemId: sol.dataset.solicitar, nota: ant ? ant.nota : "", mids: [], modo: "solicitar" });
       return redesenhar(i, sol.dataset.solicitar);
     }
-    if (alvo.id === "slConfirmar") return registrarSolicitacao(i);
+    if (id === "slConfirmar") return registrarSolicitacao(i);
     const solX = alvo.closest("[data-sol-cancelar]");
     if (solX) return cancelarSolicitacao(i, solX.dataset.solCancelar);
     const reabrir = alvo.closest("[data-reabrir]");
     if (reabrir) return reabrirItem(i, reabrir.dataset.reabrir);
-    if (alvo.id === "dtReabrir") return reabrirLegado(i);
-    if (alvo.id === "dtPdf") return PDF.enviar(i, alvo);
-    if (alvo.id === "dtZap") return zapDetalhe(i);
-    if (alvo.id === "dtApagar") { if (await apagarInspecao(i)) Telas.voltar(); }
+    if (id === "dtReabrir") return reabrirLegado(i);
+    if (id === "dtPdf") return PDF.enviar(i, bt);
+    if (id === "dtZap") return zapDetalhe(i);
+    if (id === "dtApagar") { if (await apagarInspecao(i)) Telas.voltar(); }
   };
 }
 
-/* foto da resolução terminou de subir: troca o ⏳ pela foto sem precisar sair da tela */
+/* foto da resolução terminou de subir: troca o relógio pela foto sem precisar sair da tela */
 window.addEventListener("ck-midia-enviada", ev => {
   const i = Estado.detalhe, d = ev.detail || {};
   if (!i || i.id !== d.inspId || !Telas.atual || Telas.atual.nome !== "detalhe" || !(i.midias || {})[d.mid]) return;
@@ -1231,7 +1257,7 @@ async function registrarSolicitacao(i) {
   Dados.atualizarInspecao(i.id, upd).catch(() => toast("Não deu para salvar.", "erro"));
   Object.assign(Resolver, { inspId: "", itemId: "", nota: "", mids: [], modo: "resolver" });
   const l = (Painel.lista || []).findIndex(x => x.id === i.id); if (l >= 0) Painel.lista[l] = i;
-  toast("🛒 Solicitação registrada. O item continua em aberto.", "ok");
+  toast("Solicitação registrada. O item continua em aberto.", "ok");
   redesenhar(i, itemId);
 }
 async function cancelarSolicitacao(i, itemId) {
@@ -1256,7 +1282,7 @@ function fotoResolucao(i, galeria) {
       await Midia.guardar({ mid, estado: "rascunho", blob: p.blob, tipo: "foto", ext: p.ext, item: "res:" + Resolver.itemId });
       Resolver.mids.push(mid);
       redesenhar(i, Resolver.itemId);
-      toast("Foto adicionada ✔", "ok");
+      toast("Foto adicionada.", "ok");
     } catch (e) { toast(e.message || "Não deu para usar essa foto.", "erro"); }
   };
   inp.click();
@@ -1289,7 +1315,7 @@ async function confirmarResolucao(i) {
   fotos.forEach(liberarURL);
   Midia.processar();
   const A = RESULTADOS[statusAtual(i)];
-  toast("Item resolvido ✔ " + nomeEquip(i.equipamento) + ": " + A.txt.toLowerCase(), "ok");
+  toast("Item resolvido. " + nomeEquip(i.equipamento) + ": " + A.txt.toLowerCase(), "ok");
   redesenhar(i, itemId);
 }
 
@@ -1328,13 +1354,13 @@ function zapDetalhe(i) {
   const res = i.resolucoes || {};
   const def = (i.itens || []).filter(x => x.st === "nok");
   const oks = (i.itens || []).filter(x => x.st === "ok"), nas = (i.itens || []).filter(x => x.st !== "ok" && x.st !== "nok");
-  const txt = `*CHECKLIST ${R.txt}* ${R.ico}\n🚛 ${nomeEquip(i.equipamento)}\n👤 ${i.criadoNome}\n🕒 ${dataHora(i.criadoEm)}`
+  const txt = `*CHECKLIST: ${R.txt}*\nEquipamento: ${nomeEquip(i.equipamento)}\nFeito por: ${i.criadoNome}\nData: ${dataHora(i.criadoEm)}`
     + (i.km != null ? `\nKM: ${i.km}` : "") + (i.horimetro != null ? `\nHorímetro: ${i.horimetro}` : "")
     + (def.length ? `\n\n*Não conformes (${def.length}):*\n` + def.map(d => `• ${d.texto}${d.critico ? " (CRÍTICO)" : ""}${d.obs ? " — " + d.obs : ""}`
-      + (res[d.id] ? `\n   ✅ Resolvido: ${res[d.id].nota}` : (i.solicitacoes || {})[d.id] ? `\n   🛒 Solicitado: ${i.solicitacoes[d.id].nota}` : "")).join("\n") : "\n\nSem não conformes.")
-    + (oks.length ? `\n\n*Itens OK (${oks.length}):*\n` + oks.map(d => `✅ ${d.texto}`).join("\n") : "")
+      + (res[d.id] ? `\n   Resolvido: ${res[d.id].nota}` : (i.solicitacoes || {})[d.id] ? `\n   Solicitado: ${i.solicitacoes[d.id].nota}` : "")).join("\n") : "\n\nSem não conformes.")
+    + (oks.length ? `\n\n*Itens OK (${oks.length}):*\n` + oks.map(d => `• ${d.texto}`).join("\n") : "")
     + (nas.length ? `\n\n*Não se aplica (${nas.length}):*\n` + nas.map(d => `– ${d.texto}`).join("\n") : "")
-    + (def.length ? `\n\n*Agora:* ${A.ico} ${A.txt}` : "")
+    + (def.length ? `\n\n*Agora:* ${A.txt}` : "")
     + (i.obs ? `\n\nObs.: ${i.obs}` : "");
   window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
 }
@@ -1358,9 +1384,9 @@ async function apagarInspecao(i) {
 Render.cadastros = function () {
   titulo("CADASTROS", "");
   app().innerHTML = `
-    <button class="menu" data-ir="cad-equip"><span>🚛</span><div><b>Equipamentos</b><small>${Estado.equipamentos.length} cadastrado(s)</small></div></button>
-    <button class="menu" data-ir="cad-modelos"><span>📝</span><div><b>Modelos de checklist</b><small>${Estado.modelosEfetivos().length} modelo(s) · itens e nível de cada um</small></div></button>
-    <button class="menu" data-ir="cad-usuarios"><span>👥</span><div><b>Usuários</b><small>quem pode entrar e fazer checklist</small></div></button>`;
+    <button class="menu" data-ir="cad-equip"><span>${ICONES.caminhao}</span><div><b>Equipamentos</b><small>${Estado.equipamentos.length} cadastrado(s)</small></div></button>
+    <button class="menu" data-ir="cad-modelos"><span>${ICONES.lista}</span><div><b>Modelos de checklist</b><small>${Estado.modelosEfetivos().length} modelo(s) · itens e nível de cada um</small></div></button>
+    <button class="menu" data-ir="cad-usuarios"><span>${ICONES.equipe}</span><div><b>Usuários</b><small>quem pode entrar e fazer checklist</small></div></button>`;
   app().onclick = ev => { const b = ev.target.closest("[data-ir]"); if (b) Telas.ir(b.dataset.ir); };
 };
 
@@ -1384,8 +1410,8 @@ Render["cad-equip"] = function (editId) {
       <div class="foto-eq">
         <span class="equip-vis">${visualEquip(e)}</span>
         <div><b class="mini">Foto do equipamento</b><small class="muted mini">Aparece no cartão na hora de escolher. Sem foto, fica o desenho.</small>
-        <div class="linha"><button type="button" class="btn btn-ghost" id="eqFoto">📷 Foto</button>
-          <button type="button" class="btn btn-ghost" id="eqGaleria">🖼️ Galeria</button>
+        <div class="linha"><button type="button" class="btn btn-ghost" id="eqFoto">${I("camera")} Foto</button>
+          <button type="button" class="btn btn-ghost" id="eqGaleria">${I("galeria")} Galeria</button>
           <button type="button" class="btn btn-ghost perigo" id="eqSemFoto" ${e.foto ? "" : "hidden"}>Tirar</button></div></div>
       </div>
       <input type="file" id="inFotoEq" accept="image/*" capture="environment" hidden />
@@ -1399,7 +1425,7 @@ Render["cad-equip"] = function (editId) {
     <h3 class="secao">${Estado.equipamentos.length} equipamento(s)</h3>
     ${Estado.equipamentos.map(x => `<div class="item" data-ed="${h(x.id)}">
       <div><b>${h(nomeEquip(x))}</b><small>${h(TIPOS[x.tipo] || "")}${x.descricao ? " · " + h(x.descricao) : ""}</small></div>
-      <div class="dir"><span class="tag ${SITUACOES[situacaoDe(x)].cls}">${SITUACOES[situacaoDe(x)].ico} ${SITUACOES[situacaoDe(x)].txt}</span>
+      <div class="dir"><span class="tag ${SITUACOES[situacaoDe(x)].cls}">${I(SITUACOES[situacaoDe(x)].icone)} ${SITUACOES[situacaoDe(x)].txt}</span>
       <small>${h((ms.find(m => m.id === x.modeloId) || {}).nome || "automático")}</small></div></div>`).join("")}`;
   let foto;   // undefined = não mexeu · "" = sem foto · data URL = nova
   const mostrarFoto = () => {
@@ -1425,7 +1451,7 @@ Render["cad-equip"] = function (editId) {
     const repetido = Estado.equipamentos.find(x => x.id !== e.id && ((f.prefixo && x.prefixo === f.prefixo) || (f.placa && x.placa === f.placa)));
     if (repetido) return toast("Já existe: " + nomeEquip(repetido), "erro");
     Dados.salvar("equipamentos", e.id, f).enviado.catch(() => toast("Não deu para salvar (permissão).", "erro"));
-    toast("Salvo ✔", "ok");
+    toast("Salvo.", "ok");
     Telas.atual.arg = null; Telas.render();
   };
   if (e.id) {
@@ -1446,7 +1472,7 @@ Render["cad-modelos"] = function () {
     ${Estado.modelosEfetivos().map(m => `<div class="item" data-md="${h(m.id)}">
       <div><b>${h(m.nome)}</b><small>${h(TIPOS[m.tipo] || "")} · ${m.itens.length} itens · ${m.itens.filter(x => x.critico).length} críticos · ${m.itens.filter(x => !x.critico).length} com observação</small></div>
       <div class="dir"><small>${m.padrao ? "padrão · " : ""}editar ›</small></div></div>`).join("")}
-    <button class="btn" id="mdNovo">➕ Novo modelo</button>`;
+    <button class="btn" id="mdNovo">${I("mais")} Novo modelo</button>`;
   $("#mdNovo").onclick = () => Telas.ir("cad-modelo", null);
   app().onclick = ev => { const it = ev.target.closest("[data-md]"); if (it) Telas.ir("cad-modelo", it.dataset.md); };
 };
@@ -1477,7 +1503,7 @@ Render["cad-modelo"] = function (id) {
       <select class="md-nivel" aria-label="Nível">
         <option value="critico" ${it.critico ? "selected" : ""}>Crítico</option>
         <option value="operacional" ${it.critico ? "" : "selected"}>Operacional com observação</option></select>
-      <button class="mini-bt" data-acao="sobe">↑</button><button class="mini-bt" data-acao="tira">✕</button></div>`).join("")}</div>
+      <button class="mini-bt" data-acao="sobe" aria-label="Subir">${I("subir")}</button><button class="mini-bt" data-acao="tira" aria-label="Tirar">${I("nok")}</button></div>`).join("")}</div>
     <div class="card"><b>Novo item</b>
       <input id="mdNovoItem" placeholder="ex.: Pneus" />
       <div class="linha"><select id="mdNovoNivel" aria-label="Nível do item novo">
@@ -1514,7 +1540,7 @@ Render["cad-modelo"] = function (id) {
     Dados.salvar("modelos", base && base.id, { nome: m.nome.trim(), tipo: m.tipo, itens: m.itens, removido: false })
       .enviado.catch(() => toast("Não deu para salvar (permissão).", "erro"));
     Render["cad-modelo"]._ed = null;
-    toast("Modelo salvo ✔", "ok"); Telas.voltar();
+    toast("Modelo salvo.", "ok"); Telas.voltar();
   };
   if (base) $("#mdApagar").onclick = async () => {
     if (!(await confirmar(base.nome, { titulo: "Apagar modelo?", ok: "Apagar", perigo: true }))) return;
@@ -1538,7 +1564,8 @@ Render["cad-usuarios"] = async function () {
         <label>Senha inicial<input name="senha" type="text" placeholder="mín. 6 caracteres" autocomplete="new-password" /></label>
         <label>Função<select name="perfil">${Object.entries(PERFIS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
       </div>
-      <p class="muted mini"><b>Motorista</b> e <b>Operador</b> fazem checklist. <b>Gestor</b> também vê o Painel e resolve os defeitos.
+      <p class="muted mini"><b>Motorista</b> e <b>Operador</b> fazem checklist. <b>Técnico de Segurança</b> também vê o Painel e todos os checklists, marca como visualizado e gera o PDF, mas não resolve.
+        <b>Gestor</b> também resolve os defeitos.
         <b>Administrador</b> também apaga checklists e mexe em Cadastros.</p>
       <p class="muted mini">A pessoa entra com <b>usuário</b> e senha — não precisa ter e-mail. Cada um troca a própria senha em Conta; esqueceu, redefina no console do Firebase (Authentication).</p>
       <button class="btn" id="usCriar">Criar e liberar</button>
@@ -1551,7 +1578,7 @@ Render["cad-usuarios"] = async function () {
     const r = await Dados.criarUsuario(f.usuario, f.senha, { nome: f.nome.trim(), perfil: f.perfil, ativo: true });
     b.disabled = false;
     if (!r.ok) return toast(r.erro, "erro");
-    toast(r.jaExistia ? "Liberado. Esse usuário já existia: vale a senha que ele já usa." : "Acesso criado ✔", "ok");
+    toast(r.jaExistia ? "Liberado. Esse usuário já existia: vale a senha que ele já usa." : "Acesso criado.", "ok");
     Telas.render();
   };
   try {
@@ -1588,7 +1615,7 @@ Render.conta = function () {
   app().innerHTML = `
     <div class="card"><b>${h(u.nome)}</b><p class="muted">${h(u.usuario)} · ${PERFIS[u.perfil] || ""}</p>
       <p class="muted mini" data-pendentes></p>
-      <button class="btn btn-ghost" id="ctEnviar">⬆ Enviar pendentes agora</button></div>
+      <button class="btn btn-ghost" id="ctEnviar">${I("enviar")} Enviar pendentes agora</button></div>
     <form class="card" id="fSenha">
       <b>Trocar senha</b>
       <input type="text" name="u" autocomplete="username" value="${h(u.usuario)}" hidden />
@@ -1605,7 +1632,7 @@ Render.conta = function () {
     ev.preventDefault();
     const f = Object.fromEntries(new FormData(ev.target));
     const r = await Dados.trocarSenha(f.atual, f.nova);
-    toast(r.ok ? "Senha trocada ✔" : r.erro, r.ok ? "ok" : "erro");
+    toast(r.ok ? "Senha trocada." : r.erro, r.ok ? "ok" : "erro");
     if (r.ok) ev.target.reset();
   };
   $("#ctSair").onclick = async () => {
@@ -1640,7 +1667,7 @@ const Atualizacao = {
     setInterval(() => this.procurar(), 30 * 60000);
     try {
       const de = sessionStorage.getItem("ck_atualizado_de");
-      if (de && de !== VERSAO) setTimeout(() => toast("App atualizado ✔ versão " + VERSAO, "ok"), 600);
+      if (de && de !== VERSAO) setTimeout(() => toast("App atualizado: versão " + VERSAO + ".", "ok"), 600);
       sessionStorage.removeItem("ck_atualizado_de");
     } catch (e) {}
   },
@@ -1665,7 +1692,7 @@ const Atualizacao = {
 function entrouNoApp() {
   document.body.classList.remove("tela-login");
   document.body.classList.toggle("admin", Dados.ehAdmin());
-  document.body.classList.toggle("gestao", Dados.ehGestao());
+  document.body.classList.toggle("gestao", Dados.veTodos());
   $("#abas").hidden = false;
   Historico.migrar();
   try {   // rascunho da versão antiga (um por celular) fica com quem entrar primeiro
@@ -1681,7 +1708,7 @@ function entrouNoApp() {
     const r = Historico.aplicar(meus);
     r.mudancas.forEach(m => {
       const S = RESULTADOS[m.para];
-      toast(m.para === "liberado" ? "✅ " + m.equip + " voltou a operar" : S.ico + " " + m.equip + ": agora " + (m.para === "bloqueado" ? "em manutenção" : "com restrição"), m.para === "liberado" ? "ok" : "");
+      toast(m.para === "liberado" ? m.equip + " voltou a operar." : m.equip + ": agora " + (m.para === "bloqueado" ? "em manutenção" : "com restrição"), m.para === "liberado" ? "ok" : "");
       try { if (navigator.vibrate) navigator.vibrate(200); } catch (e) {}
     });
     const d = Estado.detalhe, novo = d && meus.find(x => x.id === d.id);
