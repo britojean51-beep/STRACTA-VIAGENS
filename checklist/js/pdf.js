@@ -127,7 +127,7 @@ const PDF = {
       doc.setFontSize(10); doc.setFont("helvetica", it.st === "nok" ? "bold" : "normal"); cor(COR.texto);
       doc.text(linhasTxt, COL.item, y);
       doc.setFontSize(9); doc.setFont("helvetica", "normal"); cor(it.critico ? COR.perigo : COR.muted);
-      doc.text(it.critico ? "Crítico" : "Observação", COL.nivel, y);
+      doc.text(it.critico ? "Crítico" : "Não crítico", COL.nivel, y);
       doc.setFont("helvetica", "bold");
       const st = it.st === "ok" ? ["Conforme", COR.ok] : it.st === "nok" ? [(r || legado) ? "Não conforme - resolvido" : "NÃO CONFORME", (r || legado) ? COR.ok : COR.perigo] : ["Não se aplica", COR.muted];
       cor(st[1]); doc.text(st[0], COL.sit, y);
