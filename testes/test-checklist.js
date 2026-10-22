@@ -396,6 +396,9 @@ async function sair(page) {
   ok(pdf.slice(0, 5).toString() === '%PDF-' && /checklist-CB-12-\d{4}-\d{2}-\d{2}\.pdf/.test(dl.suggestedFilename())
     && pdf.toString('latin1').includes('/Subtype /Image'), 'PDF do checklist gerado, com nome do equipamento e a foto (' + Math.round(pdf.length / 1024) + ' KB)');
   ok((await page.textContent('#dtPdf')).includes('Enviar em PDF') && !(await page.isDisabled('#dtPdf')), 'botão do PDF volta ao normal');
+  ok(pdf.toString('latin1').includes('(Buzina)') && pdf.toString('latin1').includes('(Conforme)'), 'PDF traz também os itens OK');
+  const zap = await page.evaluate(() => { let u = ''; const o = window.open; window.open = x => { u = x; }; document.querySelector('#dtZap').click(); window.open = o; return decodeURIComponent(u.split('text=')[1] || ''); });
+  ok(zap.includes('*Itens OK (16):*') && zap.includes('✅ Buzina') && zap.includes('*Não conformes (2):*'), 'resumo do WhatsApp traz os não conformes e também os itens OK');
   ok(JSON.stringify(await page.evaluate(() => (Object.entries(JSON.parse(localStorage.getItem('__ck_banco__'))).find(([k, d]) => k.startsWith('checklist_equipamentos/') && d.prefixo === 'CB-12')[1].pendencias || {}))) === JSON.stringify({ [insp.id]: 'restricao' }),
     'com solicitação o CB-12 continua COM RESTRIÇÃO');
   ok((await page.textContent('#dtSituacao')).includes('1 com solicitação'), 'detalhe avisa "1 com solicitação, aguardando"');
