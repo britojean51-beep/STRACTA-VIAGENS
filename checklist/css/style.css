@@ -367,3 +367,20 @@ svg.i { width: 1.15em; height: 1.15em; vertical-align: -0.22em; flex: none; }
 .nc { display: inline-block; padding: 1px 6px; border-radius: 6px; font-size: 11px; font-weight: 800; background: var(--alerta-bg); color: #7c2d12; border: 1px solid var(--alerta); }
 .nc.parado { background: var(--perigo); color: #fff; border-color: var(--perigo); }
 .frota .legenda { margin: 8px 0 0; }
+/* lubrificação e inspeção */
+.srv-card { display: flex; flex-direction: column; gap: 6px; }
+.srv-linha { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.srv-linha span { color: var(--muted); }
+.srv-linha b { margin-left: auto; }
+.srv-linha small { color: var(--muted); min-width: 62px; text-align: right; }
+.srv-prox { display: flex; align-items: center; gap: 8px; margin-top: 4px; padding: 8px 10px; border-radius: 10px; font-weight: 700; background: var(--card-2); }
+.srv-prox.alerta { background: var(--alerta-bg); color: #7c2d12; }
+.srv-prox.perigo { background: var(--perigo-bg); color: var(--perigo); }
+.srv-checks { gap: 18px; margin: 4px 0 8px; }
+.check { display: flex; align-items: center; gap: 8px; font-weight: 700; margin: 0; }
+.check input { width: 22px; height: 22px; margin: 0; }
+.srv-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
+.srv-hist p { margin: 4px 0; }
+.menu.compacto { padding: 12px; }
+.menu.compacto span { width: 38px; height: 38px; }
+.equip em.tag + em.tag { margin-top: 2px; }

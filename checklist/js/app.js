@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck29";
+const VERSAO = "ck30";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -161,6 +161,9 @@ const ICONES = {
   enviar: ic('<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>'),
   subir: ic('<path d="M12 19V5M6 11l6-6 6 6"/>'),
   clipe: ic('<path d="M21 11.5 12.5 20a5 5 0 0 1-7-7L14 4.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.7-7.7"/>'),
+  gota: ic('<path d="M12 3s6 7 6 11.5a6 6 0 0 1-12 0C6 10 12 3 12 3z"/>'),
+  inspecao: ic('<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2.5h6V4M9 13l2 2 4-4"/>'),
+  calendario: ic('<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>'),
   play: ic('<path d="M8 5v14l11-7z" fill="currentColor"/>'),
   caminhao: ic('<path d="M2 6h11v10H2zM13 9h4.5l3.5 3.5V16h-8z"/><circle cx="6.5" cy="17.5" r="2"/><circle cx="17" cy="17.5" r="2"/>'),
   lista: ic('<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01" stroke-width="3"/>'),
@@ -281,7 +284,7 @@ const Estado = {
     this.parar();
     this._ouvintes.push(Dados.ouvir("equipamentos", l => {
       if (l) this.equipamentos = l.sort((a, b) => String(a.prefixo).localeCompare(String(b.prefixo), "pt-BR", { numeric: true }));
-      Telas.atualizarSeVisivel(["novo", "cad-equip"]);
+      Telas.atualizarSeVisivel(["novo", "cad-equip", "servicos"]);
     }));
     this._ouvintes.push(Dados.ouvir("modelos", l => {
       if (l) this.modelos = l.sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR"));
@@ -358,8 +361,8 @@ const Telas = {
   atual: null,
   pilha: [],
   ir(nome, arg, semPilha) {
-    const soGestao = ["painel"], soAdmin = ["cadastros", "cad-equip", "cad-modelos", "cad-modelo", "cad-usuarios"];
-    if ((soGestao.includes(nome) && !Dados.veTodos()) || (soAdmin.includes(nome) && !Dados.ehAdmin())) nome = "inicio";
+    const soGestao = ["painel"], soResolve = ["servicos"], soAdmin = ["cadastros", "cad-equip", "cad-modelos", "cad-modelo", "cad-usuarios"];
+    if ((soGestao.includes(nome) && !Dados.veTodos()) || (soResolve.includes(nome) && !Dados.ehGestao()) || (soAdmin.includes(nome) && !Dados.ehAdmin())) nome = "inicio";
     if (!semPilha && this.atual && this.atual.nome !== nome) this.pilha.push(this.atual);
     if (["inicio", "painel", "cadastros", "conta"].includes(nome)) this.pilha = [];
     this.atual = { nome, arg };
@@ -376,7 +379,7 @@ const Telas = {
     $("#btnVoltar").style.visibility = this.pilha.length ? "visible" : "hidden";
     document.querySelectorAll(".aba").forEach(b => {
       const raiz = { "novo": "novo", "checklist": "novo", "detalhe": "painel", "cad-equip": "cadastros",
-        "cad-modelos": "cadastros", "cad-modelo": "cadastros", "cad-usuarios": "cadastros" }[nome] || nome;
+        "cad-modelos": "cadastros", "cad-modelo": "cadastros", "cad-usuarios": "cadastros", "servicos": "painel" }[nome] || nome;
       b.classList.toggle("ativa", b.dataset.ir === raiz);
     });
     if (fn) fn(arg);
@@ -537,6 +540,7 @@ Render.novo = function (busca) {
         ${visualEquip(e)}
         <b>${h(e.prefixo || e.placa)}</b><small>${h(e.placa && e.prefixo ? e.placa : (e.descricao || TIPOS[e.tipo] || ""))}</small>
         ${S.cls !== "ok" ? `<em class="tag ${S.cls}">${I(S.icone)} ${S.txt}</em>` : ""}
+        ${avisoLub(e) ? `<em class="tag ${avisoLub(e).cls}">${I("gota")} ${avisoLub(e).curto}</em>` : ""}
       </button>`; }).join("")}
     </div>
     ${!lista.length ? `<p class="vazio">${Estado.equipamentos.length ? "Nada encontrado." : "Nenhum equipamento cadastrado ainda."}</p>` : ""}
@@ -554,6 +558,7 @@ Render.novo = function (busca) {
     const el = ev.target.closest(".equip"); if (!el || $("#grade").classList.contains("indo")) return;
     const e = Estado.equipamentos.find(x => x.id === el.dataset.id);
     if (situacaoDe(e) === "manutencao") toast("Atenção: " + nomeEquip(e) + " está EM MANUTENÇÃO.", "erro");
+    else if (avisoLub(e)) toast(avisoLub(e).txt + ".", avisoLub(e).n <= 0 ? "erro" : "");
     const ir = () => iniciarChecklist({ id: e.id, prefixo: e.prefixo || "", placa: e.placa || "", tipo: e.tipo || "outro", modeloId: e.modeloId || "" });
     // o veículo sai andando e aí abre o checklist (sem animação se o celular pede menos movimento)
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return ir();
@@ -698,6 +703,119 @@ document.addEventListener("click", ev => {
   if (d && !d.closest(".doc-fundo")) { ev.preventDefault(); abrirDocumento(d.dataset.doc); }
 });
 
+
+/* ---------- lubrificação e inspeção ---------- */
+const diaBR = d => d ? String(d).split("-").reverse().join("/") : "";
+const diasAte = dia => Math.round((new Date(dia + "T12:00:00") - new Date(diaDe(Date.now()) + "T12:00:00")) / 864e5);
+const quando = dia => { const n = diasAte(dia);
+  return n === 0 ? "hoje" : n === 1 ? "amanhã" : n === -1 ? "ontem" : n > 0 ? "em " + n + " dias" : "há " + (-n) + " dias"; };
+/* lubrificação marcada: avisa o motorista quando está atrasada, é hoje ou nos próximos 7 dias */
+function avisoLub(e) {
+  const d = e && e.proxLubrificacao; if (!d) return null;
+  const n = diasAte(d); if (n > 7) return null;
+  return { n, cls: n <= 0 ? "perigo" : "alerta",
+    txt: n < 0 ? "Lubrificação atrasada: era " + diaBR(d) : n === 0 ? "Lubrificação marcada para hoje" : "Lubrificação marcada para " + diaBR(d) + " (" + quando(d) + ")",
+    curto: n < 0 ? "Lubrificação atrasada" : n === 0 ? "Lubrificar hoje" : "Lubrificar " + diaBR(d).slice(0, 5) };
+}
+/* o que o motorista vê ao escolher o equipamento */
+function cartaoServicos(e) {
+  if (!e) return "";
+  const linha = (ico, rot, d) => `<div class="srv-linha">${I(ico)} <span>${rot}</span>
+    ${d ? `<b>${diaBR(d)}</b><small>${quando(d)}</small>` : `<small>sem registro</small>`}</div>`;
+  const a = avisoLub(e);
+  return `<div class="card srv-card">
+    ${linha("gota", "Última lubrificação", e.ultLubrificacao)}
+    ${linha("inspecao", "Última inspeção", e.ultInspecao)}
+    ${e.proxLubrificacao ? `<div class="srv-prox ${a ? a.cls : ""}">${I("calendario")} ${a ? a.txt : "Próxima lubrificação: " + diaBR(e.proxLubrificacao)}</div>` : ""}
+  </div>`;
+}
+/* recalcula a última lubrificação e a última inspeção pelos lançamentos que sobraram */
+async function refazerResumo(equipId) {
+  const l = await Dados.servicos(equipId);
+  const ult = campo => (l.filter(x => x[campo]).map(x => x.data).sort().pop()) || "";
+  await Dados.resumoEquip(equipId, { ultLubrificacao: ult("lubrificacao"), ultInspecao: ult("inspecao") });
+}
+Render.servicos = function (equipId) {
+  const e = Estado.equipamentos.find(x => x.id === equipId);
+  if (!e) {
+    titulo("LUBRIFICAÇÃO E INSPEÇÃO", "Escolha o equipamento");
+    app().innerHTML = `${Estado.equipamentos.filter(x => x.ativo !== false).map(x => { const a = avisoLub(x); return `<div class="item srv-item" data-sv="${h(x.id)}">
+      <div><b>${h(nomeEquip(x))}</b><small>Lubrificação: ${x.ultLubrificacao ? diaBR(x.ultLubrificacao) : "sem registro"} · Inspeção: ${x.ultInspecao ? diaBR(x.ultInspecao) : "sem registro"}</small></div>
+      <div class="dir">${x.proxLubrificacao ? `<span class="tag ${a ? a.cls : "sem"}">${I("calendario")} ${diaBR(x.proxLubrificacao).slice(0, 5)}</span>` : ""}<small>abrir ›</small></div></div>`; }).join("")
+      || `<p class="vazio">Nenhum equipamento cadastrado.</p>`}`;
+    app().onclick = ev => { const it = ev.target.closest("[data-sv]"); if (it) Telas.ir("servicos", it.dataset.sv); };
+    return;
+  }
+  titulo(nomeEquip(e), "Lubrificação e inspeção");
+  const hoje = diaDe(Date.now());
+  app().innerHTML = `
+    ${cartaoServicos(e)}
+    <form class="card" id="svAgenda">
+      <b>${I("calendario")} Agendar a próxima lubrificação</b>
+      <p class="mini muted">O motorista vê o aviso ao escolher este equipamento, a partir de 7 dias antes.</p>
+      <label>Dia da lubrificação<input type="date" id="svProx" value="${h(e.proxLubrificacao || "")}" min="${hoje}" /></label>
+      <div class="linha"><button class="btn">Salvar</button>
+        ${e.proxLubrificacao ? `<button type="button" class="btn btn-ghost" id="svTirar">Tirar</button>` : ""}</div>
+    </form>
+    <form class="card" id="svLanca">
+      <b>Lançar o que foi feito</b>
+      <label>Dia<input type="date" name="data" value="${hoje}" max="${hoje}" required /></label>
+      <div class="linha srv-checks">
+        <label class="check"><input type="checkbox" name="lubrificacao" /> Lubrificado</label>
+        <label class="check"><input type="checkbox" name="inspecao" /> Inspecionado</label>
+      </div>
+      <label>O que foi feito<textarea name="descricao" rows="3" placeholder="ex.: graxa nos pinos da báscula, troca do filtro de ar, revisão dos freios"></textarea></label>
+      <button class="btn">Lançar</button>
+    </form>
+    <h3 class="secao">Histórico</h3>
+    <div id="svHist"><p class="carregando">Carregando…</p></div>`;
+  const desenharHist = async () => {
+    let l;
+    try { l = await Dados.servicos(e.id); } catch (err) { $("#svHist").innerHTML = `<p class="erro">Não deu para carregar o histórico.</p>`; return; }
+    if (Telas.atual.nome !== "servicos" || Telas.atual.arg !== e.id) return;
+    $("#svHist").innerHTML = l.length ? l.map(x => `<div class="item srv-hist">
+      <div><b>${diaBR(x.data)}</b>
+        <div class="srv-tags">${x.lubrificacao ? `<span class="tag ok">${I("gota")} Lubrificado</span>` : ""}${x.inspecao ? `<span class="tag ok">${I("inspecao")} Inspecionado</span>` : ""}</div>
+        ${x.descricao ? `<p>${h(x.descricao)}</p>` : ""}<small>${h(x.por || "")} · lançado em ${dataHora(x.em)}</small></div>
+      <div class="dir"><button class="apagar" data-sv-apagar="${h(x.id)}" aria-label="Apagar lançamento">${ICONES.lixo}</button></div></div>`).join("")
+      : `<p class="vazio">Nenhum lançamento ainda.</p>`;
+  };
+  desenharHist();
+  $("#svAgenda").onsubmit = ev => {
+    ev.preventDefault();
+    const d = $("#svProx").value;
+    if (!d) return toast("Escolha o dia da lubrificação.", "erro");
+    Dados.resumoEquip(e.id, { proxLubrificacao: d }).catch(() => toast("Não deu para salvar (permissão).", "erro"));
+    toast("Lubrificação marcada para " + diaBR(d) + ". O motorista vai ver o aviso.", "ok");
+  };
+  if ($("#svTirar")) $("#svTirar").onclick = () => { Dados.resumoEquip(e.id, { proxLubrificacao: "" }).catch(() => {}); toast("Agendamento tirado.", "ok"); };
+  $("#svLanca").onsubmit = ev => {
+    ev.preventDefault();
+    const f = new FormData(ev.target);
+    const reg = { equipId: e.id, equip: nomeEquip(e), data: f.get("data"), lubrificacao: !!f.get("lubrificacao"), inspecao: !!f.get("inspecao"),
+      descricao: String(f.get("descricao") || "").trim(), por: Dados.usuario.nome || Dados.usuario.usuario, porEmail: Dados.usuario.email, em: Date.now() };
+    if (!reg.data || reg.data > hoje) return toast("Escolha um dia até hoje.", "erro");
+    if (!reg.lubrificacao && !reg.inspecao && !reg.descricao) return toast("Marque Lubrificado ou Inspecionado, ou escreva o que foi feito.", "erro");
+    Dados.salvar("servicos", null, reg).enviado.catch(() => toast("Não deu para lançar (permissão).", "erro"));
+    const upd = {};
+    if (reg.lubrificacao && !(e.ultLubrificacao > reg.data)) upd.ultLubrificacao = reg.data;
+    if (reg.inspecao && !(e.ultInspecao > reg.data)) upd.ultInspecao = reg.data;
+    // lubrificou no dia marcado (ou depois): o aviso sai sozinho
+    if (reg.lubrificacao && e.proxLubrificacao && reg.data >= e.proxLubrificacao) upd.proxLubrificacao = "";
+    if (Object.keys(upd).length) Dados.resumoEquip(e.id, upd).catch(() => {});
+    toast("Lançado.", "ok");
+    ev.target.reset(); ev.target.data.value = hoje;
+    setTimeout(desenharHist, 300);
+  };
+  app().onclick = async ev => {
+    const b = ev.target.closest("[data-sv-apagar]"); if (!b) return;
+    if (!(await confirmar("O lançamento sai do histórico.", { titulo: "Apagar lançamento?", ok: "Apagar", perigo: true }))) return;
+    await Dados.remover("servicos", b.dataset.svApagar).catch(() => toast("Não deu para apagar.", "erro"));
+    await refazerResumo(e.id).catch(() => {});
+    desenharHist();
+  };
+};
+
 /* ---------- o checklist ---------- */
 Render.checklist = function () {
   const r = Estado.rascunho;
@@ -707,6 +825,7 @@ Render.checklist = function () {
   app().innerHTML = `
     <div class="progresso"><div style="width:${Math.round(feitos / total * 100)}%"></div></div>
     <p class="muted mini">${feitos} de ${total} itens · toque em OK, Não conforme ou N/A</p>
+    ${cartaoServicos(Estado.equipamentos.find(e => e.id === r.equip.id))}
     <p class="muted mini">${I("local")} A localização é registrada uma vez, ao começar, se o celular permitir. <a href="#" data-doc="privacidade">Privacidade</a></p>
     <div class="card linha2">
       <label>KM atual<input id="ckKm" inputmode="decimal" value="${h(r.km)}" placeholder="opcional" /></label>
@@ -958,6 +1077,8 @@ Render.painel = async function () {
     const [a, m, d] = p.dia.split("-");
     const nomeDia = ehHoje ? "hoje" : p.dia === diaDe(Date.now() - 864e5) ? "ontem" : `${d}/${m}/${a}`;
     app().innerHTML = `
+      ${Dados.ehGestao() ? `<button class="menu compacto" data-ir-servicos><span>${ICONES.gota}</span><div><b>Lubrificação e inspeção</b>
+        <small>${Estado.equipamentos.filter(avisoLub).length ? Estado.equipamentos.filter(avisoLub).length + " com lubrificação marcada para os próximos dias" : "agendar e lançar"}</small></div></button>` : ""}
       <div class="dia-sel" id="pDias">
         <button data-passo="-1" aria-label="Dia anterior">‹</button>
         <input type="date" id="pDia" value="${p.dia}" max="${hoje}" aria-label="Dia" />
@@ -1014,6 +1135,7 @@ Render.painel = async function () {
         if (i && await apagarInspecao(i)) desenhar();
         return;
       }
+      if (ev.target.closest("[data-ir-servicos]")) return Telas.ir("servicos");
       const a = ev.target.closest("[data-abrir]"); if (a) Telas.ir("detalhe", a.dataset.abrir);
     };
     if ($("#pCsv")) $("#pCsv").onclick = () => baixarCSV(l);
@@ -1392,6 +1514,7 @@ Render.cadastros = function () {
   app().innerHTML = `
     <button class="menu" data-ir="cad-equip"><span>${ICONES.caminhao}</span><div><b>Equipamentos</b><small>${Estado.equipamentos.length} cadastrado(s)</small></div></button>
     <button class="menu" data-ir="cad-modelos"><span>${ICONES.lista}</span><div><b>Modelos de checklist</b><small>${Estado.modelosEfetivos().length} modelo(s) · itens e nível de cada um</small></div></button>
+    <button class="menu" data-ir="servicos"><span>${ICONES.gota}</span><div><b>Lubrificação e inspeção</b><small>agendar e lançar o que foi feito em cada equipamento</small></div></button>
     <button class="menu" data-ir="cad-usuarios"><span>${ICONES.equipe}</span><div><b>Usuários</b><small>quem pode entrar e fazer checklist</small></div></button>`;
   app().onclick = ev => { const b = ev.target.closest("[data-ir]"); if (b) Telas.ir(b.dataset.ir); };
 };

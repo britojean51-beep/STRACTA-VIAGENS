@@ -110,10 +110,18 @@ service cloud.firestore {
       allow read: if ckLiberado();
       allow create, delete: if ckAdmin();
       allow update: if ckAdmin()
-        || (ckGestao() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendencias']))
+        || (ckGestao() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendencias', 'ultLubrificacao', 'ultInspecao', 'proxLubrificacao']))
         || (ckLiberado()
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendencias'])
             && request.resource.data.get('pendencias', {}).keys().hasAll(resource.data.get('pendencias', {}).keys()));
+    }
+    // Lubrificação e inspeção: a gestão lança o que foi feito em cada equipamento.
+    // O resumo (última lubrificação/inspeção e a próxima marcada) fica no equipamento,
+    // que todos leem; o histórico, só quem vê todos os checklists.
+    match /checklist_servicos/{id} {
+      allow read: if ckVeTodos();
+      allow create: if ckGestao() && request.resource.data.porEmail == meuEmail();
+      allow update, delete: if ckGestao();
     }
     match /checklist_modelos/{id} {
       allow read: if ckLiberado();
