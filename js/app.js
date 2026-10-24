@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "22/10/2026 · r60 (segurança e LGPD)";
+const VERSION = "22/10/2026 · r62 (quantidade de diesel disponível)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -237,6 +237,39 @@ function medidores(eq) {
     // "12.500 km · 1.200,5 h" — em máquina de horímetro, só a hora
     linha() { return (this.temKm ? this.kmTxt + " · " : "") + this.horTxt; }
   };
+}
+
+/* A quantidade de diesel disponível, para o relatório. É sempre o saldo de
+   AGORA: addEstoque e setEstoque não guardam data, então o saldo de uma terça
+   passada não existe. O "(agora)" saiu do título a pedido dele — "Disponível"
+   já é presente —, mas a limitação continua: relatório de um dia passado traz
+   o tanque de hoje.
+
+   Cada linha começa com "Tanque" de propósito: o RESUMO GERAL logo acima tem
+   "Diesel S-10: 374 L", que é o CONSUMO do dia. Sem a palavra Tanque, dois
+   números com o mesmo rótulo e significados opostos ficariam a cinco linhas um
+   do outro, num relatório que é lido no corre pelo WhatsApp. */
+function blocoTanques() {
+  const db = DB.load();
+  const baixos = {};
+  DB.dieselNoMinimo().forEach(t => { baixos[t.tanque] = true; });
+  const aviso = t => baixos[t] ? "  ⚠️ abaixo do mínimo" : "";
+  let txt = `🛢️ QUANTIDADE DE DIESEL DISPONÍVEL\n\n`;
+  txt += `Tanque S-10: ${fmtL(db.estoque.s10)} L${aviso("s10")}\n`;
+  txt += `Tanque S-500: ${fmtL(db.estoque.s500)} L${aviso("s500")}\n`;
+  txt += `Total Diesel: ${fmtL((db.estoque.s10 || 0) + (db.estoque.s500 || 0))} L\n`;
+  txt += `Tanque ARLA 32: ${fmtL(db.estoque.arla)} L\n`;
+  return txt + `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+}
+
+/* O mesmo saldo, em uma linha, para a tira da folha de imagem. */
+function tanquesEmLinha() {
+  const db = DB.load();
+  const baixos = {};
+  DB.dieselNoMinimo().forEach(t => { baixos[t.tanque] = true; });
+  return [["S-10", "s10"], ["S-500", "s500"], ["ARLA", "arla"]]
+    .map(([rot, t]) => `${rot} ${fmtL(db.estoque[t])} L${baixos[t] ? " ⚠" : ""}`)
+    .join("   ·   ");
 }
 
 /* O motivo da manutenção do equipamento naquele dia: o serviço apontado, com o
@@ -2059,6 +2092,8 @@ function gerarRelatorioTexto(iso) {
   if (totalTon > 0) txt += `L/Ton Frota: ${fmt(totalDiesel / totalTon, 2)} L/t\n`;
   txt += `Equipamentos Operando: ${String(operando.size).padStart(2, "0")}\n`;
   txt += `Equipamentos Manutenção: ${String(emManut.size).padStart(2, "0")}\n`;
+  txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+  txt += blocoTanques();
   return txt;
 }
 
@@ -2127,6 +2162,9 @@ function gerarRelatorioPeriodo(dias, titulo) {
     txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n🔧 MANUTENÇÕES\n\n`;
     manut.forEach(m => { txt += `${DB.fmtBR(m.iso)} · ${m.equipamento} · ${m.tipo}: ${m.servico || "—"}\n`; });
   }
+  // o saldo é de agora, não do fim do período — o rótulo do bloco diz isso
+  txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+  txt += blocoTanques();
   return txt;
 }
 
@@ -2510,6 +2548,7 @@ function dadosDaFolha(dias, titulo) {
   return {
     titulo: titulo || "RELATÓRIO DIÁRIO",
     quadros,
+    tanques: tanquesEmLinha(),
     periodo: varios ? `${DB.fmtBR(lista[0])} a ${DB.fmtBR(lista[lista.length - 1])}` : DB.fmtBR(lista[0]),
     varios, totais, linhas, viag, manut,
     nEquip: equips.size, nManut: manuts.size, arla,
@@ -2526,6 +2565,7 @@ function alturaDaFolha(d) {
      ninguém pediu e que só pioravam o encolhimento do WhatsApp. */
   let h = 128 + 48;                            // faixa do topo + respiro
   h += Math.ceil(d.totais.length / 3) * 96 + 22;   // quadros de total
+  if (d.tanques) h += 58;                          // tira do saldo dos tanques
 
   if (d.quadros && d.quadros.length) {
     // dois equipamentos por linha; o ímpar que sobra ocupa a linha inteira
@@ -2623,7 +2663,23 @@ function desenharFolha(d, estilo) {
       txt(" " + t.un, x + 16 + c.measureText(t.val).width, yy + 68, F.fonte(18, 600), F.cinza);
     }
   });
-  y += Math.ceil(d.totais.length / COLS) * (ch + 14) + 22;
+  y += Math.ceil(d.totais.length / COLS) * (ch + 14) + 14;
+
+  /* ---- tira do saldo dos tanques ----
+     Tira fina e não quadros grandes: três quadros custariam uma linha a mais
+     (~96 px) e desfariam parte da compactação do r59. E é outro tipo de
+     informação — estoque, não produção —, então ganha faixa própria. */
+  if (d.tanques) {
+    c.fillStyle = "#eef3fb"; c.fillRect(L, y, LARG, 44);
+    c.fillStyle = F.navy; c.fillRect(L, y, 5, 44);
+    const ROT = "🛢️ DIESEL DISPONÍVEL";
+    txt(ROT, L + 18, y + 28, F.fonte(16, 700), F.navy);
+    c.font = F.fonte(16, 700);
+    const xT = L + 18 + c.measureText(ROT).width + 22;
+    txt(cortar(d.tanques, R - xT - 14, F.fonte(19, 600)), xT, y + 28, F.fonte(19, 600), F.tinta);
+    y += 58;
+  }
+
 
   /* ---- os quadros de equipamento, DOIS POR LINHA ----
      Eram metade da altura da folha (51,5%), e altura é o que o WhatsApp
