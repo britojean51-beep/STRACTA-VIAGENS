@@ -218,6 +218,14 @@ const Dados = {
         .sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0)).slice(0, 40);
     } catch (e) { return null; }
   },
+  /* ---- lubrificação e inspeção (lançamentos da gestão) ---- */
+  async servicos(equipId) {
+    const snap = await this.col("servicos").where("equipId", "==", equipId).limit(300).get();
+    return snap.docs.map(d => Object.assign({ id: d.id }, d.data()))
+      .sort((a, b) => String(b.data).localeCompare(String(a.data)) || (b.em || 0) - (a.em || 0));
+  },
+  /* resumo no equipamento (todo celular já baixa): última lubrificação, última inspeção e a próxima marcada */
+  resumoEquip(equipId, campos) { return this.col("equipamentos").doc(equipId).update(campos); },
   async inspecoes(desdeMs, ateMs) {
     let q = this.col("inspecoes").where("criadoEm", ">=", desdeMs);
     if (ateMs) q = q.where("criadoEm", "<", ateMs);
