@@ -73,7 +73,7 @@ const PDF = {
     y += Math.ceil(dados.length / 2) * 6 + 2;
 
     // resultado
-    const nok = (i.itens || []).filter(x => x.st === "nok");
+    const nok = itensDe(i).filter(x => x.st === "nok");
     const resolvidos = nok.filter(x => legado || res[x.id]).length;
     doc.setDrawColor(...clsCor(R.cls)); doc.setLineWidth(0.8);
     doc.roundedRect(M, y, L, nok.length ? 20 : 13, 2, 2, "S");
@@ -96,7 +96,7 @@ const PDF = {
 
     // itens: os que pedem atenção primeiro, como na tela
     const peso = it => it.st !== "nok" ? 3 : (legado || res[it.id]) ? 2 : it.critico ? 0 : 1;
-    const itens = (i.itens || []).map((it, n) => [it, n]).sort((a, b) => peso(a[0]) - peso(b[0]) || a[1] - b[1]).map(x => x[0]);
+    const itens = itensDe(i).map((it, n) => [it, n]).sort((a, b) => peso(a[0]) - peso(b[0]) || a[1] - b[1]).map(x => x[0]);
     const COL = { item: M + 2, nivel: M + 104, sit: M + 128 };
     const cabecalhoItens = () => {
       doc.setFillColor(241, 245, 249); doc.rect(M, y - 4.5, L, 7, "F");
@@ -111,6 +111,7 @@ const PDF = {
       doc.setFontSize(10);
       const linhasTxt = doc.splitTextToSize(t(it.texto), COL.nivel - COL.item - 3);
       const extras = [];
+      if (it.depois) extras.push({ c: COR.alerta, s: "Apontado durante o serviço por " + t(it.depois.por) + " em " + t(dataHora(it.depois.em)) });
       if (it.st === "nok" && it.obs) extras.push({ c: COR.perigo, s: "Defeito: " + t(it.obs) });
       const r = res[it.id], sl = sol[it.id];
       if (it.st === "nok" && r) extras.push({ c: COR.ok, s: "Resolvido por " + t(r.por) + " em " + t(dataHora(r.em)) + (r.nota ? ": " + t(r.nota) : "") });

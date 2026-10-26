@@ -129,7 +129,8 @@ service cloud.firestore {
     }
     // O checklist feito: quem fez lê o seu; gestor e admin leem todos.
     // Depois de enviado, quem fez só mexe em "midias" e "pendentes" (marcar a
-    // foto como enviada) — as respostas não mudam mais. O gestor só mexe na
+    // foto como enviada) e acrescenta "apontamentos" (problema que apareceu
+    // durante o serviço) — as respostas originais não mudam mais. O gestor só mexe na
     // resolução (tratativa, resolucoes e solicitacoes por item e as fotos). Apagar: só o admin.
     // resource == null: checklist que não existe (foi apagado) responde "não
     // existe" em vez de "sem permissão" — é assim que o celular de quem fez
@@ -140,7 +141,9 @@ service cloud.firestore {
       allow update: if ckAdmin()
         || (ckGestao() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tratativa', 'resolucoes', 'solicitacoes', 'midias', 'pendentes', 'vistos']))
         || (ckLiberado() && resource.data.criadoPor == meuEmail()
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['midias', 'pendentes']))
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['midias', 'pendentes', 'apontamentos'])
+            // problema apontado durante o serviço: só acrescenta, nunca tira um apontamento
+            && request.resource.data.get('apontamentos', {}).keys().hasAll(resource.data.get('apontamentos', {}).keys()))
         || (ckVeTodos() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['vistos']));
       allow delete: if ckAdmin();
     }

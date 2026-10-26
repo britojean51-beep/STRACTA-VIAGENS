@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck32";
+const VERSAO = "ck33";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -96,10 +96,18 @@ function situacaoDe(e) {
    (o resultado original continua guardado e aparece no detalhe). */
 /* Itens não conformes ainda sem resolução. O resolvido pelo botão geral da
    versão anterior (tratativa resolvida, sem resoluções por item) conta como tudo resolvido. */
+/* Itens do checklist já com os problemas apontados depois do envio, durante o serviço
+   (ficam em "apontamentos": o checklist original não muda, só ganha os novos defeitos). */
+function itensDe(i) {
+  const ap = (i && i.apontamentos) || {};
+  return ((i && i.itens) || []).map(x => ap[x.id] && x.st !== "nok" ? Object.assign({}, x, { st: "nok", obs: ap[x.id].obs, depois: ap[x.id], antes: x.st }) : x);
+}
+/* motorista/operador aponta problema no próprio checklist, no dia em que fez */
+const podeApontar = i => !!(i && Dados.usuario && i.criadoPor === Dados.usuario.email && diaDe(i.criadoEm) === diaDe(Date.now()));
 function itensAbertos(i) {
   if (i.tratativa && i.tratativa.status === "resolvido" && !i.resolucoes) return [];
   const res = i.resolucoes || {};
-  return (i.itens || []).filter(x => x.st === "nok" && !res[x.id]);
+  return itensDe(i).filter(x => x.st === "nok" && !res[x.id]);
 }
 /* Itens ainda abertos com solicitação registrada (ex.: peça pedida, aguardando compra) */
 function solicitadosAbertos(i) {
@@ -279,7 +287,7 @@ const Avisos = {
     const agora = [], novos = [];
     meus.forEach(d => {
       const legado = d.tratativa && d.tratativa.status === "resolvido" && !d.resolucoes;
-      (d.itens || []).filter(x => x.st === "nok").forEach(it => {
+      itensDe(d).filter(x => x.st === "nok").forEach(it => {
         const r = (d.resolucoes || {})[it.id];
         if (!r && !legado) return;
         const k = d.id + ":" + it.id;
@@ -396,8 +404,8 @@ const Historico = {
   /* resumo de um checklist para o Início, com o andamento da manutenção */
   resumo(d) {
     const atual = statusAtual(d);
-    const nok = (d.itens || []).filter(x => x.st === "nok").length;
-    return { id: d.id, equip: nomeEquip(d.equipamento), resultado: d.resultado, defeitos: d.defeitos || 0,
+    const nok = itensDe(d).filter(x => x.st === "nok").length;
+    return { id: d.id, equip: nomeEquip(d.equipamento), resultado: d.resultado, defeitos: nok,
       criadoEm: d.criadoEm, enviado: true, atual, resolvido: atual === "liberado",
       itensNok: nok, resolvidos: nok - itensAbertos(d).length, solicitados: solicitadosAbertos(d).length,
       vistoPor: vistosDe(d).map(x => x.por) };
@@ -556,6 +564,9 @@ Render.inicio = function () {
         </div></div>` : ""}
     <button class="btn btn-grande btn-novo" id="btnNovo">${I("mais")} Novo checklist</button>
     ${Avisos.cartao()}
+    ${deHoje.some(x => x.enviado) ? `<div class="card apontar-hoje"><b>${I("alerta")} Apareceu problema durante o serviço?</b>
+      <p class="mini">Toque no equipamento e aponte o problema no item.</p>
+      <div class="chips-eq">${deHoje.filter(x => x.enviado).map(x => `<button class="chip-eq" data-ver="${h(x.id)}">${h(String(x.equip).split(" · ")[0])}</button>`).join("")}</div></div>` : ""}
     <div class="kpis">
       <div class="kpi"><b>${deHoje.length}</b><span>hoje</span></div>
       <div class="kpi"><b>${deHoje.filter(x => statusPainel(x) !== "liberado").length}</b><span>não conformes</span></div>
@@ -1184,7 +1195,7 @@ Render.painel = async function () {
         return `<div class="item ${R.cls}" data-abrir="${h(i.id)}">
           <div><b>${h(nomeEquip(i.equipamento))}</b><small>${dataHora(i.criadoEm)} · ${h(i.criadoNome)}${PERFIS[i.criadoPerfil] ? " (" + PERFIS[i.criadoPerfil].toLowerCase() + ")" : ""}${statusPainel(i) !== i.resultado ? " · era " + RESULTADOS[i.resultado].txt.toLowerCase() : ""}
             ${vistosDe(i).length ? `<span class="visto">${I("olho")} ${h(vistosDe(i).map(x => x.por).join(", "))}</span>` : `<span class="nao-visto">não visualizado</span>`}</small></div>
-          <div class="dir">${Dados.ehAdmin() ? `<button class="apagar" data-apagar="${h(i.id)}" aria-label="Apagar checklist">${ICONES.lixo}</button>` : ""}<span class="tag ${R.cls}">${I(R.icone)} ${i.defeitos || 0}</span>
+          <div class="dir">${Dados.ehAdmin() ? `<button class="apagar" data-apagar="${h(i.id)}" aria-label="Apagar checklist">${ICONES.lixo}</button>` : ""}<span class="tag ${R.cls}">${I(R.icone)} ${itensDe(i).filter(x => x.st === "nok").length}</span>
           <small>${statusPainel(i) === "liberado" && i.resultado !== "liberado" ? "resolvido" : statusPainel(i) !== i.resultado ? "em andamento" : i.tratativa ? "aberto" : ""}
           ${solicitadosAbertos(i).length ? " · " + solicitadosAbertos(i).length + " solicitado(s)" : ""}
           ${Object.keys(i.midias || {}).length ? " · " + Object.keys(i.midias).length + " foto(s)" : ""}</small></div></div>`;
@@ -1240,7 +1251,7 @@ function baixarCSV(lista) {
   const cab = ["Data", "Equipamento", "Tipo", "Quem fez", "Resultado", "Não conformes", "Itens não conformes", "KM", "Horímetro", "Observação", "Tratativa", "Fotos/vídeos", "ID"];
   const linhas = lista.map(i => [dataHora(i.criadoEm), nomeEquip(i.equipamento), TIPOS[(i.equipamento || {}).tipo] || "",
     i.criadoNome, (RESULTADOS[i.resultado] || {}).txt, i.defeitos,
-    (i.itens || []).filter(x => x.st === "nok").map(x => x.texto + (x.obs ? ": " + x.obs : "")).join(" | "),
+    itensDe(i).filter(x => x.st === "nok").map(x => x.texto + (x.obs ? ": " + x.obs : "")).join(" | "),
     i.km == null ? "" : i.km, i.horimetro == null ? "" : i.horimetro, i.obs || "",
     i.tratativa ? i.tratativa.status + (i.tratativa.nota ? " - " + i.tratativa.nota : "") : "",
     Object.keys(i.midias || {}).length, i.id]);
@@ -1254,7 +1265,7 @@ function baixarCSV(lista) {
 
 /* ---------- detalhe de um checklist (admin) ---------- */
 /* Resolução por item: o que está sendo resolvido agora (nota + fotos ainda no aparelho) */
-const Resolver = { inspId: "", itemId: "", nota: "", mids: [], modo: "resolver" };   // modo: resolver | solicitar
+const Resolver = { inspId: "", itemId: "", nota: "", mids: [], modo: "resolver" };   // modo: resolver | solicitar | apontar
 
 /* Gestão marca que viu o checklist: aparece para todos (painel, detalhe e o Início de quem fez) */
 async function marcarVisto(i) {
@@ -1289,19 +1300,33 @@ function desenharDetalhe(i) {
   const A = RESULTADOS[statusAtual(i)];
   const res = i.resolucoes || {};
   const legado = i.tratativa && i.tratativa.status === "resolvido" && !i.resolucoes;   // resolvido pelo botão geral antigo
-  const nok = (i.itens || []).filter(x => x.st === "nok");
+  const nok = itensDe(i).filter(x => x.st === "nok");
   const resolvidos = nok.filter(x => legado || res[x.id]).length;
   titulo(nomeEquip(i.equipamento), dataHora(i.criadoEm));
   const vistos = vistosDe(i), euVi = !!((i.vistos || {})[chaveVisto(Dados.usuario.email)]);
   // os que pedem atenção primeiro: não conforme em aberto (crítico antes), depois os já resolvidos, depois os ok
   const peso = it => it.st !== "nok" ? 3 : (legado || res[it.id]) ? 2 : it.critico ? 0 : 1;
-  const ordenados = (i.itens || []).map((it, n) => [it, n]).sort((a, b) => peso(a[0]) - peso(b[0]) || a[1] - b[1]).map(x => x[0]);
+  const ordenados = itensDe(i).map((it, n) => [it, n]).sort((a, b) => peso(a[0]) - peso(b[0]) || a[1] - b[1]).map(x => x[0]);
   const midiasDe = item => Object.entries(i.midias || {}).filter(([, m]) => m.item === item).map(([mid, m]) =>
     `<button class="mini-midia remota" data-path="${h(m.path)}" data-tipo="${m.tipo}" ${m.ok ? "" : "disabled"}>
       ${m.ok ? (m.tipo === "video" ? `<span class="play">${ICONES.play}</span>` : `<img data-thumb="${h(m.path)}" alt="foto" />`)
         : `<span class="espera">${ICONES.relogio}<small>enviando</small></span>`}</button>`).join("");
   const blocoItem = it => {
-    if (it.st !== "nok") return "";
+    if (it.st !== "nok") {
+      if (!podeApontar(i)) return "";
+      if (Resolver.inspId === i.id && Resolver.itemId === it.id && Resolver.modo === "apontar") return `<div class="resolvendo apontando">
+        <b>${I("alerta")} Problema em: ${h(it.texto)}</b>
+        ${it.critico ? `<p class="mini"><b>Este item obriga parada:</b> o equipamento entra em manutenção.</p>` : ""}
+        <textarea id="rsNota" rows="2" placeholder="Qual é o problema? (obrigatório)">${h(Resolver.nota)}</textarea>
+        <div class="midias">${Resolver.mids.map(mid => `<div class="mini-midia"><img data-mid="${mid}" alt="foto" />
+          <button class="tirar" data-rs-tirar="${mid}" aria-label="Remover">${ICONES.nok}</button></div>`).join("")}
+          <button class="add-midia" id="rsFoto" aria-label="Tirar foto do problema">${ICONES.camera}</button>
+          <button class="add-midia" id="rsGaleria" aria-label="Escolher da galeria">${ICONES.galeria}</button></div>
+        <div class="linha"><button class="btn btn-ghost" id="rsCancelar">Cancelar</button>
+          <button class="btn" id="apConfirmar">${I("alerta")} Apontar</button></div>
+      </div>`;
+      return `<button class="mini-bt apontar" data-apontar="${h(it.id)}">${I("alerta")} Apontar problema</button>`;
+    }
     const r = res[it.id], sl = (i.solicitacoes || {})[it.id];
     const caixaSol = sl ? `<div class="solicitado"><b>${I("pedido")} Solicitado</b> <span class="muted mini">· ${h(sl.por)} · ${dataHora(sl.em)}</span>
         <p>${h(sl.nota)}</p></div>` : "";
@@ -1358,6 +1383,7 @@ function desenharDetalhe(i) {
     ${ordenados.map(it => `<div class="ck-item ${it.st} ${it.st === "nok" && (legado || res[it.id]) ? "feito" : ""} leitura" data-item="${h(it.id)}">
       <div class="ck-txt"><span class="stico">${it.st === "ok" ? ICONES.ok : it.st === "nok" ? ICONES.nok : "–"}</span>${h(it.texto)}
       ${it.critico ? ' <span class="critico">CRÍTICO</span>' : ""}</div>
+      ${it.depois ? `<p class="mini apontado">${I("relogio")} Apontado durante o serviço · ${dataHora(it.depois.em)}${it.depois.por ? " · " + h(it.depois.por) : ""}</p>` : ""}
       ${it.obs ? `<p class="obs">${h(it.obs)}</p>` : ""}
       <div class="midias">${midiasDe(it.id)}</div>
       ${blocoItem(it)}</div>`).join("")}
@@ -1389,6 +1415,13 @@ function desenharDetalhe(i) {
       catch (e) { toast("Não deu para abrir o arquivo.", "erro"); }
       return;
     }
+    const ap = alvo.closest("[data-apontar]");
+    if (ap) {
+      await cancelarResolucao();
+      Object.assign(Resolver, { inspId: i.id, itemId: ap.dataset.apontar, nota: "", mids: [], modo: "apontar" });
+      return redesenhar(i, ap.dataset.apontar);
+    }
+    if (id === "apConfirmar") return confirmarApontamento(i);
     const abrir = alvo.closest("[data-resolver]");
     if (abrir) {
       await cancelarResolucao();
@@ -1478,10 +1511,11 @@ function fotoResolucao(i, galeria) {
     const arq = inp.files && inp.files[0]; if (!arq) return;
     toast("Processando foto…");
     try {
-      const carimbo = carimboFoto("RESOLVIDO · " + nomeEquip(i.equipamento), arq, galeria);
+      const apontar = Resolver.modo === "apontar";
+      const carimbo = carimboFoto((apontar ? "PROBLEMA · " : "RESOLVIDO · ") + nomeEquip(i.equipamento), arq, galeria);
       const p = await Midia.prepararFoto(arq, carimbo);
       const mid = Midia.novoId();
-      await Midia.guardar({ mid, estado: "rascunho", blob: p.blob, tipo: "foto", ext: p.ext, item: "res:" + Resolver.itemId });
+      await Midia.guardar({ mid, estado: "rascunho", blob: p.blob, tipo: "foto", ext: p.ext, item: (apontar ? "" : "res:") + Resolver.itemId });
       Resolver.mids.push(mid);
       redesenhar(i, Resolver.itemId);
       toast("Foto adicionada.", "ok");
@@ -1521,6 +1555,40 @@ async function confirmarResolucao(i) {
   redesenhar(i, itemId);
 }
 
+/* Problema que apareceu durante o serviço, num item que estava OK: vira não conforme
+   (e, se o item obriga parada, o equipamento entra em manutenção). */
+async function confirmarApontamento(i) {
+  const itemId = Resolver.itemId, obs = String(Resolver.nota || "").trim();
+  if (!obs) { toast("Descreva o problema.", "erro"); const t = $("#rsNota"); if (t) t.focus(); return; }
+  const it = (i.itens || []).find(x => x.id === itemId); if (!it) return;
+  const upd = {}, novas = {};
+  for (const mid of Resolver.mids) {
+    const reg = await Midia.ler(mid); if (!reg) continue;
+    const path = Midia.caminho(i.id, mid, reg.ext);
+    novas[mid] = { item: itemId, tipo: "foto", path, ok: false, tam: reg.blob.size, origem: "apontamento" };
+    Object.assign(reg, { estado: "fila", inspId: i.id, path });
+    await Midia.guardar(reg);
+    upd["midias." + mid] = novas[mid];
+  }
+  const fotos = Object.keys(novas);
+  if (fotos.length) upd.pendentes = firebase.firestore.FieldValue.increment(fotos.length);
+  const a = { obs, em: Date.now(), por: Dados.usuario.nome || Dados.usuario.usuario };
+  upd["apontamentos." + itemId] = a;
+  i.apontamentos = Object.assign({}, i.apontamentos, { [itemId]: a });
+  i.midias = Object.assign({}, i.midias, novas);
+  i.pendentes = (i.pendentes || 0) + fotos.length;
+  Dados.atualizarInspecao(i.id, upd).catch(() => toast("Não deu para salvar o apontamento.", "erro"));
+  const atual = statusAtual(i);
+  Dados.abrirPendencia((i.equipamento || {}).id, i.id, atual);
+  Historico.marcar(i.id, { atual, resolvido: false });
+  Object.assign(Resolver, { inspId: "", itemId: "", nota: "", mids: [], modo: "resolver" });
+  fotos.forEach(liberarURL);
+  Midia.processar();
+  if (it.critico) { toast("Problema apontado. Acione a manutenção: o equipamento está em manutenção.", "erro"); vibrar([200, 100, 200]); }
+  else toast("Problema apontado. A manutenção foi avisada.", "ok");
+  redesenhar(i, itemId);
+}
+
 async function reabrirItem(i, itemId) {
   if (!(await confirmar("O item volta a ficar em aberto e o equipamento volta para a situação dele.", { titulo: "Reabrir item?", ok: "Reabrir" }))) return;
   const upd = {}; upd["resolucoes." + itemId] = firebase.firestore.FieldValue.delete();
@@ -1554,11 +1622,11 @@ async function aplicarSituacao(i, upd, por, em) {
 function zapDetalhe(i) {
   const R = RESULTADOS[i.resultado] || RESULTADOS.liberado, A = RESULTADOS[statusAtual(i)];
   const res = i.resolucoes || {};
-  const def = (i.itens || []).filter(x => x.st === "nok");
-  const oks = (i.itens || []).filter(x => x.st === "ok"), nas = (i.itens || []).filter(x => x.st !== "ok" && x.st !== "nok");
+  const def = itensDe(i).filter(x => x.st === "nok");
+  const oks = itensDe(i).filter(x => x.st === "ok"), nas = itensDe(i).filter(x => x.st !== "ok" && x.st !== "nok");
   const txt = `*CHECKLIST: ${R.txt}*\nEquipamento: ${nomeEquip(i.equipamento)}\nFeito por: ${i.criadoNome}\nData: ${dataHora(i.criadoEm)}`
     + (i.km != null ? `\nKM: ${i.km}` : "") + (i.horimetro != null ? `\nHorímetro: ${i.horimetro}` : "")
-    + (def.length ? `\n\n*Não conformes (${def.length}):*\n` + def.map(d => `• ${d.texto}${d.critico ? " (CRÍTICO)" : ""}${d.obs ? " — " + d.obs : ""}`
+    + (def.length ? `\n\n*Não conformes (${def.length}):*\n` + def.map(d => `• ${d.texto}${d.critico ? " (CRÍTICO)" : ""}${d.obs ? " — " + d.obs : ""}${d.depois ? " (apontado às " + dataHora(d.depois.em).slice(11) + ")" : ""}`
       + (res[d.id] ? `\n   Resolvido: ${res[d.id].nota}` : (i.solicitacoes || {})[d.id] ? `\n   Solicitado: ${i.solicitacoes[d.id].nota}` : "")).join("\n") : "\n\nSem não conformes.")
     + (oks.length ? `\n\n*Itens OK (${oks.length}):*\n` + oks.map(d => `• ${d.texto}`).join("\n") : "")
     + (nas.length ? `\n\n*Não se aplica (${nas.length}):*\n` + nas.map(d => `– ${d.texto}`).join("\n") : "")
