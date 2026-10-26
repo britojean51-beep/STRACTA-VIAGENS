@@ -1,7 +1,7 @@
 /* Checklist · Service Worker
    "Rede primeiro": com internet sempre baixa a versão nova; sem sinal usa a
    última cópia. O escopo é só /checklist/ — o app de frota tem o dele. */
-const CACHE = "ck-v30";
+const CACHE = "ck-v31";
 const ASSETS = [
   "./",
   "./index.html",
@@ -64,4 +64,16 @@ self.addEventListener("fetch", e => {
       .catch(() => caches.match(e.request, { ignoreSearch: true })
         .then(hit => hit || caches.match("./index.html")))
   );
+});
+
+/* Toque na notificação ("problema resolvido"): leva ao checklist. App aberto:
+   foca e avisa a tela; fechado: abre já no checklist. */
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  const id = (e.notification.data || {}).abrir;
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(lista => {
+    const c = lista.find(x => x.url.startsWith(self.registration.scope));
+    if (c) { c.postMessage({ abrir: id }); return c.focus(); }
+    return self.clients.openWindow("./" + (id ? "?abrir=" + encodeURIComponent(id) : ""));
+  }));
 });

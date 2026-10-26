@@ -291,8 +291,8 @@ async function sair(page) {
   await page.evaluate(id => firebase.firestore().collection('checklist_inspecoes').doc(id).update({
     'resolucoes.i5': { nota: 'Lâmpada trocada', por: 'Ana Gestora', em: Date.now(), fotos: [] } }), insp.id);
   await page.waitForFunction(id => (document.querySelector(`.acompanhe:has([data-ver="${id}"])`) || {}).textContent.includes('Voltou a operar'), insp.id);
-  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('voltou a operar'));
-  ok(true, 'tudo resolvido: cartão verde "Voltou a operar" e aviso');
+  await page.waitForFunction(() => /Problema resolvido.*voltou a operar/.test(document.querySelector('#toast').textContent));
+  ok(true, 'tudo resolvido: cartão verde "Voltou a operar" e aviso "Problema resolvido … voltou a operar"');
   // checklist de outra pessoa: não abre
   await page.evaluate(() => { const b = JSON.parse(localStorage.getItem('__ck_banco__'));
     b['checklist_inspecoes/alheio'] = { criadoPor: 'beto@gp2t.local', criadoEm: Date.now(), resultado: 'liberado', equipamento: { prefixo: 'ZZ-9' }, itens: [] };

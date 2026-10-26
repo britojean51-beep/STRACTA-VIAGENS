@@ -384,3 +384,6 @@ svg.i { width: 1.15em; height: 1.15em; vertical-align: -0.22em; flex: none; }
 .menu.compacto { padding: 12px; }
 .menu.compacto span { width: 38px; height: 38px; }
 .equip em.tag + em.tag { margin-top: 2px; }
+/* convite para as notificações */
+.aviso-notif { border-left: 4px solid var(--brand); }
+.aviso-notif p { margin: 4px 0 10px; }
