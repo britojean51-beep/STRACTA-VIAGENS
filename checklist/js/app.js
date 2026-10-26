@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck30";
+const VERSAO = "ck31";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -164,6 +164,7 @@ const ICONES = {
   gota: ic('<path d="M12 3s6 7 6 11.5a6 6 0 0 1-12 0C6 10 12 3 12 3z"/>'),
   inspecao: ic('<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2.5h6V4M9 13l2 2 4-4"/>'),
   calendario: ic('<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>'),
+  sino: ic('<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>'),
   play: ic('<path d="M8 5v14l11-7z" fill="currentColor"/>'),
   caminhao: ic('<path d="M2 6h11v10H2zM13 9h4.5l3.5 3.5V16h-8z"/><circle cx="6.5" cy="17.5" r="2"/><circle cx="17" cy="17.5" r="2"/>'),
   lista: ic('<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01" stroke-width="3"/>'),
@@ -256,6 +257,76 @@ const Instalar = {
 window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); Instalar.evento = e; Instalar.preencher(); });
 window.addEventListener("appinstalled", () => { Instalar.evento = null; Instalar.preencher(); toast("App instalado. Abra pelo ícone na tela.", "ok"); });
 document.addEventListener("click", e => { if (e.target.closest("#btnInstalar")) Instalar.instalar(); });
+
+
+/* ---------- notificação: problema do MEU checklist resolvido ----------
+   Chega pelo ouvinte ao vivo dos meus checklists. Com o app aberto ou em segundo
+   plano, aparece na hora; com o app fechado, aparece assim que ele for aberto. */
+const AVISADOS_KEY = "ck_avisados";   // + ":" + email — itens resolvidos já avisados
+const Avisos = {
+  suportado() { return "Notification" in window; },
+  estado() { return this.suportado() ? Notification.permission : "indisponivel"; },
+  async pedir() {
+    if (!this.suportado()) return false;
+    try { return (await Notification.requestPermission()) === "granted"; } catch (e) { return false; }
+  },
+  /* compara os itens resolvidos com os já avisados; a primeira vez só anota (não dispara o passado) */
+  conferir(meus) {
+    const chave = chaveDe(AVISADOS_KEY), antes = lerJSON(chave, null);
+    const eu = Dados.usuario && (Dados.usuario.nome || Dados.usuario.usuario);
+    const agora = [], novos = [];
+    meus.forEach(d => {
+      const legado = d.tratativa && d.tratativa.status === "resolvido" && !d.resolucoes;
+      (d.itens || []).filter(x => x.st === "nok").forEach(it => {
+        const r = (d.resolucoes || {})[it.id];
+        if (!r && !legado) return;
+        const k = d.id + ":" + it.id;
+        agora.push(k);
+        if (antes && !antes.includes(k) && !(r && r.por === eu)) novos.push({ d, it, r });
+      });
+    });
+    try { localStorage.setItem(chave, JSON.stringify(agora.slice(-800))); } catch (e) {}
+    const porChecklist = {};
+    novos.forEach(n => (porChecklist[n.d.id] = porChecklist[n.d.id] || []).push(n));
+    Object.values(porChecklist).forEach(l => this.mostrar(l));
+  },
+  async mostrar(l) {
+    const d = l[0].d, equip = nomeEquip(d.equipamento);
+    const titulo = (l.length > 1 ? l.length + " problemas resolvidos" : "Problema resolvido") + " · " + equip;
+    const corpo = l.map(n => n.it.texto + (n.r ? ": " + n.r.nota + " (" + n.r.por + ")" : ": resolvido")).join("\n")
+      + (statusAtual(d) === "liberado" ? "\nO equipamento voltou a operar." : "");
+    if (document.visibilityState === "visible")
+      toast(titulo + ". " + (statusAtual(d) === "liberado" ? "O equipamento voltou a operar." : corpo.split("\n")[0]), "ok");
+    try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {}
+    if (this.estado() !== "granted") return;
+    const opc = { body: corpo, icon: "icons/icon-192.png", badge: "icons/icon-192.png", tag: "res-" + d.id, renotify: true, data: { abrir: d.id } };
+    try {
+      const reg = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration() : null;
+      if (reg) await reg.showNotification(titulo, opc);
+      else new Notification(titulo, opc);
+    } catch (e) {}
+  },
+  /* convite no Início: só aparece enquanto a pessoa não decidiu */
+  cartao() {
+    if (this.estado() !== "default") return "";
+    return `<div class="card aviso-notif"><b>${I("sino")} Receba o aviso no celular</b>
+      <p class="mini">Quando a manutenção resolver um problema do seu checklist, chega uma notificação.</p>
+      <button class="btn" id="btnNotif">Ativar notificações</button></div>`;
+  },
+  texto() {
+    const e = this.estado();
+    return e === "granted" ? "Ligadas: você recebe o aviso quando um problema do seu checklist for resolvido."
+      : e === "denied" ? "Bloqueadas neste celular. Para ligar: configurações do navegador → Notificações → permitir para este site."
+      : e === "indisponivel" ? "Este celular não aceita notificações deste app. No iPhone, instale o app na tela de início primeiro."
+      : "Desligadas.";
+  }
+};
+document.addEventListener("click", async ev => {
+  if (!ev.target.closest("#btnNotif")) return;
+  const ok = await Avisos.pedir();
+  toast(ok ? "Notificações ligadas." : "Notificações não foram permitidas.", ok ? "ok" : "erro");
+  Telas.render();
+});
 
 /* ---------- estado ---------- */
 const Estado = {
@@ -482,6 +553,7 @@ Render.inicio = function () {
           <button class="btn btn-ghost" id="btnDescartar">Descartar</button>
         </div></div>` : ""}
     <button class="btn btn-grande btn-novo" id="btnNovo">${I("mais")} Novo checklist</button>
+    ${Avisos.cartao()}
     <div class="kpis">
       <div class="kpi"><b>${deHoje.length}</b><span>hoje</span></div>
       <div class="kpi"><b>${deHoje.filter(x => statusPainel(x) !== "liberado").length}</b><span>não conformes</span></div>
@@ -1752,6 +1824,8 @@ Render.conta = function () {
       <label>Senha nova<input name="nova" type="password" autocomplete="new-password" minlength="6" required /></label>
       <button class="btn">Trocar senha</button>
     </form>
+    <div class="card"><b>${I("sino")} Notificações</b><p class="mini">${Avisos.texto()}</p>
+      ${Avisos.estado() === "default" ? `<button class="btn btn-ghost" id="btnNotif">Ativar notificações</button>` : ""}</div>
     <div data-slot-instalar="sempre"></div>
     <button class="btn btn-ghost perigo" id="ctSair">Sair deste aparelho</button>
     <p class="mini centro legal"><a href="#" data-doc="privacidade">Política de privacidade</a> · <a href="#" data-doc="termos">Termos de uso</a></p>
@@ -1788,6 +1862,9 @@ const Atualizacao = {
   iniciar() {
     if (!("serviceWorker" in navigator)) return;
     const tinhaControle = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener("message", ev => {   // toque na notificação com o app aberto
+      if (ev.data && ev.data.abrir && Dados.usuario) Telas.ir("detalhe", ev.data.abrir);
+    });
     navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(reg => { this._reg = reg; }).catch(() => {});
     // primeira instalação também dispara controllerchange: aí não é atualização
     navigator.serviceWorker.addEventListener("controllerchange", () => { if (tinhaControle) this.chegou(); });
@@ -1835,6 +1912,7 @@ function entrouNoApp() {
   // os meus checklists ao vivo: o Início e o detalhe acompanham a manutenção sem recarregar
   Estado._ouvintes.push(Dados.ouvirMinhas(Dados.usuario.email, meus => {
     const r = Historico.aplicar(meus);
+    Avisos.conferir(meus);
     r.mudancas.forEach(m => {
       const S = RESULTADOS[m.para];
       toast(m.para === "bloqueado" ? m.equip + ": agora em manutenção." : m.equip + " voltou a operar.", m.para === "bloqueado" ? "" : "ok");
@@ -1848,6 +1926,9 @@ function entrouNoApp() {
     } else if (r.mudou) Telas.atualizarSeVisivel(["inicio"]);
   }));
   Telas.ir("inicio", null, true);
+  // veio pela notificação: abre direto o checklist
+  const abrir = new URLSearchParams(location.search).get("abrir");
+  if (abrir) { history.replaceState(null, "", location.pathname); Telas.ir("detalhe", abrir); }
   Midia.aoMudar = atualizarRede;
   Midia.processar();
   Historico.conferirPendentes()
