@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck34";
+const VERSAO = "ck35";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -443,7 +443,7 @@ const Telas = {
   pilha: [],
   ir(nome, arg, semPilha) {
     const soGestao = ["painel"], soResolve = ["servicos"], soAdmin = ["cadastros", "cad-equip", "cad-modelos", "cad-modelo", "cad-usuarios"];
-    if ((soGestao.includes(nome) && !Dados.veTodos()) || (soResolve.includes(nome) && !Dados.ehGestao()) || (soAdmin.includes(nome) && !Dados.ehAdmin())) nome = "inicio";
+    if ((soGestao.includes(nome) && !Dados.veTodos()) || (soResolve.includes(nome) && !Dados.ehGestao()) || (soAdmin.includes(nome) && !Dados.ehGestao())) nome = "inicio";
     if (!semPilha && this.atual && this.atual.nome !== nome) this.pilha.push(this.atual);
     if (["inicio", "painel", "cadastros", "conta"].includes(nome)) this.pilha = [];
     this.atual = { nome, arg };
@@ -629,7 +629,7 @@ Render.novo = function (busca) {
       </button>`; }).join("")}
     </div>
     ${!lista.length ? `<p class="vazio">${Estado.equipamentos.length ? "Nada encontrado." : "Nenhum equipamento cadastrado ainda."}</p>` : ""}
-    ${!Dados.ehAdmin() ? (Estado.equipamentos.length ? "" : `<p class="vazio">Peça ao administrador para cadastrar os equipamentos.</p>`) : `
+    ${!Dados.ehGestao() ? (Estado.equipamentos.length ? "" : `<p class="vazio">Peça ao gestor para cadastrar os equipamentos.</p>`) : `
     <details class="card" id="avulso" ${Estado.equipamentos.length ? "" : "open"}>
       <summary>Equipamento não está na lista?</summary>
       <label>Prefixo ou placa<input id="avPlaca" placeholder="ex.: CB-12 ou ABC1D23" /></label>
@@ -1833,10 +1833,10 @@ Render["cad-usuarios"] = async function () {
       </div>
       <div class="linha2">
         <label>Senha inicial<input name="senha" type="text" placeholder="mín. 6 caracteres" autocomplete="new-password" /></label>
-        <label>Função<select name="perfil">${Object.entries(PERFIS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
+        <label>Função<select name="perfil">${Object.entries(PERFIS).filter(([k]) => k !== "admin" || Dados.ehAdmin()).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
       </div>
       <p class="muted mini"><b>Motorista</b> e <b>Operador</b> fazem checklist. <b>Técnico de Segurança</b> também vê o Painel e todos os checklists, marca como visualizado e gera o PDF, mas não resolve.
-        <b>Gestor</b> também resolve os defeitos.
+        <b>Gestor</b> também resolve os defeitos, agenda lubrificação e mexe em Cadastros (não nomeia administrador).
         <b>Administrador</b> também apaga checklists e mexe em Cadastros.</p>
       <p class="muted mini">A pessoa entra com <b>usuário</b> e senha — não precisa ter e-mail. Cada um troca a própria senha em Conta; esqueceu, redefina no console do Firebase (Authentication).</p>
       <button class="btn" id="usCriar">Criar e liberar</button>
@@ -1858,11 +1858,11 @@ Render["cad-usuarios"] = async function () {
     $("#usLista").innerHTML = `<h3 class="secao">${l.length} usuário(s)</h3>` + l.map(u => `<div class="item usuario ${u.ativo === false ? "apagado" : ""}">
       <div class="us-topo"><div><b>${h(u.nome || u.usuario)}</b><small>${h(u.usuario)}</small></div>
         ${u.ativo === false ? `<span class="tag perigo">Bloqueado</span>` : ""}</div>
-      <div class="us-acoes">
-        <select class="mini-sel" data-perfil="${h(u.email)}" aria-label="Função de ${h(u.nome || u.usuario)}">${Object.entries(PERFIS).map(([k, v]) =>
+      ${u.perfil === "admin" && !Dados.ehAdmin() ? `<p class="mini muted">Administrador: só outro administrador muda a função ou bloqueia.</p>` : `<div class="us-acoes">
+        <select class="mini-sel" data-perfil="${h(u.email)}" aria-label="Função de ${h(u.nome || u.usuario)}">${Object.entries(PERFIS).filter(([k]) => k !== "admin" || Dados.ehAdmin()).map(([k, v]) =>
           `<option value="${k}" ${(PERFIS[u.perfil] ? u.perfil : "motorista") === k ? "selected" : ""}>${v}</option>`).join("")}</select>
         <button class="mini-bt ${u.ativo === false ? "liberar" : "bloq"}" data-ativo="${h(u.email)}" data-v="${u.ativo === false ? "1" : "0"}">${u.ativo === false ? "Desbloquear" : "Bloquear"}</button>
-      </div></div>`).join("");
+      </div>`}</div>`).join("");
     $("#usLista").onchange = async ev => {
       const s = ev.target.closest("[data-perfil]"); if (!s) return;
       const r = await Dados.salvarUsuario(s.dataset.perfil, { perfil: s.value });
@@ -1968,7 +1968,7 @@ const Atualizacao = {
 
 function entrouNoApp() {
   document.body.classList.remove("tela-login");
-  document.body.classList.toggle("admin", Dados.ehAdmin());
+  document.body.classList.toggle("admin", Dados.ehGestao());   // aba Cadastros: gestor e administrador
   document.body.classList.toggle("gestao", Dados.veTodos());
   $("#abas").hidden = false;
   Historico.migrar();
