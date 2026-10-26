@@ -387,3 +387,9 @@ svg.i { width: 1.15em; height: 1.15em; vertical-align: -0.22em; flex: none; }
 /* convite para as notificações */
 .aviso-notif { border-left: 4px solid var(--brand); }
 .aviso-notif p { margin: 4px 0 10px; }
+/* problema apontado durante o serviço */
+.mini-bt.apontar { margin-top: 8px; color: #7c2d12; background: var(--alerta-bg); border-color: var(--alerta); font-weight: 700; }
+.resolvendo.apontando { border-color: var(--alerta); background: var(--alerta-bg); }
+.apontado { color: #7c2d12; font-weight: 700; margin: 4px 0; }
+.apontar-hoje { border-left: 4px solid var(--alerta); }
+.apontar-hoje p { margin: 4px 0 10px; }
