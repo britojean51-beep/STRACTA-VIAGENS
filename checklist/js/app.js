@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck31";
+const VERSAO = "ck32";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -186,6 +186,8 @@ const $ = s => document.querySelector(s);
 const app = () => $("#app");
 const h = v => String(v == null ? "" : v).replace(/[&<>"']/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+/* vibrar só depois que a pessoa já tocou na tela (antes disso o navegador bloqueia e reclama) */
+const vibrar = p => { try { if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(p); } catch (e) {} };
 const pad2 = n => String(n).padStart(2, "0");
 const diaDe = ms => { const d = new Date(ms); return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); };
 const dataHora = ms => { const d = new Date(ms);
@@ -297,7 +299,7 @@ const Avisos = {
       + (statusAtual(d) === "liberado" ? "\nO equipamento voltou a operar." : "");
     if (document.visibilityState === "visible")
       toast(titulo + ". " + (statusAtual(d) === "liberado" ? "O equipamento voltou a operar." : corpo.split("\n")[0]), "ok");
-    try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {}
+    vibrar([200, 100, 200]);
     if (this.estado() !== "granted") return;
     const opc = { body: corpo, icon: "icons/icon-192.png", badge: "icons/icon-192.png", tag: "res-" + d.id, renotify: true, data: { abrir: d.id } };
     try {
@@ -635,7 +637,7 @@ Render.novo = function (busca) {
     // o veículo sai andando e aí abre o checklist (sem animação se o celular pede menos movimento)
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return ir();
     $("#grade").classList.add("indo"); el.classList.add("saindo");
-    if (navigator.vibrate) navigator.vibrate(15);
+    vibrar(15);
     setTimeout(() => { if (Telas.atual.nome === "novo") ir(); }, 650);
   };
   if ($("#avIr")) $("#avIr").onclick = () => {
@@ -964,7 +966,7 @@ Render.checklist = function () {
         const item = r.modelo.itens.find(x => x.id === id);
         if (item && item.critico) {
           toast("Acione a manutenção.", "erro");
-          try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {}
+          vibrar([200, 100, 200]);
         }
         const ta = document.querySelector(`[data-item="${CSS.escape(id)}"] .ck-obs`);
         if (ta) ta.focus();
@@ -1916,7 +1918,7 @@ function entrouNoApp() {
     r.mudancas.forEach(m => {
       const S = RESULTADOS[m.para];
       toast(m.para === "bloqueado" ? m.equip + ": agora em manutenção." : m.equip + " voltou a operar.", m.para === "bloqueado" ? "" : "ok");
-      try { if (navigator.vibrate) navigator.vibrate(200); } catch (e) {}
+      vibrar(200);
     });
     const d = Estado.detalhe, novo = d && meus.find(x => x.id === d.id);
     const andamento = x => JSON.stringify([x.resolucoes, x.solicitacoes, x.tratativa, x.midias]);
