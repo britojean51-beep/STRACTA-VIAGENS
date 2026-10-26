@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck33";
+const VERSAO = "ck34";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -1855,12 +1855,13 @@ Render["cad-usuarios"] = async function () {
   try {
     const l = (await Dados.usuarios()).sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR"));
     if (Telas.atual.nome !== "cad-usuarios") return;
-    $("#usLista").innerHTML = `<h3 class="secao">${l.length} usuário(s)</h3>` + l.map(u => `<div class="item ${u.ativo === false ? "apagado" : ""}">
-      <div><b>${h(u.nome || u.usuario)}</b><small>${h(u.usuario)}${u.ativo === false ? " · bloqueado" : ""}</small></div>
-      <div class="dir linha">
-        <select class="mini-sel" data-perfil="${h(u.email)}" aria-label="Função">${Object.entries(PERFIS).map(([k, v]) =>
+    $("#usLista").innerHTML = `<h3 class="secao">${l.length} usuário(s)</h3>` + l.map(u => `<div class="item usuario ${u.ativo === false ? "apagado" : ""}">
+      <div class="us-topo"><div><b>${h(u.nome || u.usuario)}</b><small>${h(u.usuario)}</small></div>
+        ${u.ativo === false ? `<span class="tag perigo">Bloqueado</span>` : ""}</div>
+      <div class="us-acoes">
+        <select class="mini-sel" data-perfil="${h(u.email)}" aria-label="Função de ${h(u.nome || u.usuario)}">${Object.entries(PERFIS).map(([k, v]) =>
           `<option value="${k}" ${(PERFIS[u.perfil] ? u.perfil : "motorista") === k ? "selected" : ""}>${v}</option>`).join("")}</select>
-        <button class="mini-bt" data-ativo="${h(u.email)}" data-v="${u.ativo === false ? "1" : "0"}">${u.ativo === false ? "desbloquear" : "bloquear"}</button>
+        <button class="mini-bt ${u.ativo === false ? "liberar" : "bloq"}" data-ativo="${h(u.email)}" data-v="${u.ativo === false ? "1" : "0"}">${u.ativo === false ? "Desbloquear" : "Bloquear"}</button>
       </div></div>`).join("");
     $("#usLista").onchange = async ev => {
       const s = ev.target.closest("[data-perfil]"); if (!s) return;

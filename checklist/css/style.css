@@ -393,3 +393,13 @@ svg.i { width: 1.15em; height: 1.15em; vertical-align: -0.22em; flex: none; }
 .apontado { color: #7c2d12; font-weight: 700; margin: 4px 0; }
 .apontar-hoje { border-left: 4px solid var(--alerta); }
 .apontar-hoje p { margin: 4px 0 10px; }
+/* lista de usuários: nome em cima; função e bloquear embaixo, dentro do cartão */
+.item.usuario { flex-direction: column; align-items: stretch; gap: 10px; cursor: default; }
+.us-topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.us-topo b { font-size: 16px; }
+.us-acoes { display: flex; gap: 8px; align-items: center; }
+.us-acoes .mini-sel { flex: 1; min-width: 0; width: auto; font-size: 15px; padding: 10px; }
+.us-acoes .mini-bt { flex: 0 0 auto; padding: 10px 14px; font-size: 14px; font-weight: 700; }
+.mini-bt.bloq { color: var(--perigo); border-color: var(--perigo); background: var(--card); }
+.mini-bt.liberar { color: #fff; border-color: var(--ok); background: var(--ok); }
+.item.usuario.apagado { opacity: 1; background: var(--card-2); }
