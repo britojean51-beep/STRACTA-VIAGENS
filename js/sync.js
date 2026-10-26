@@ -241,6 +241,28 @@ const Sync = {
     };
   },
 
+  /* Reenvia registros específicos para a planilha num ENVIO SÓ por tipo.
+     Um upsert por registro faria a fila levar centenas de requisições depois de
+     uma fusão de operadores; o bulk já existe e é o que o "Sincronizar tudo"
+     usa. A linha é achada pelo _id, então ela se corrige no lugar. */
+  pushLancamentosEmLote(tocados) {
+    if (!this.ativo() || !tocados || !tocados.length) return 0;
+    const porTipo = { lancamento: [], viagem: [], manutencao: [] };
+    tocados.forEach(({ iso, col, reg }) => {
+      if (col === "abastecimentos") porTipo.lancamento.push(this.lancamentoRow(iso, reg));
+      else if (col === "viagens") porTipo.viagem.push(this.viagemRow(iso, reg));
+      else if (col === "manutencoes") porTipo.manutencao.push(this.manutencaoRow(iso, reg));
+    });
+    let envios = 0;
+    Object.keys(porTipo).forEach(kind => {
+      if (porTipo[kind].length) { this._enqueue({ action: "bulk", kind, rows: porTipo[kind] }); envios++; }
+    });
+    // os operadores da planilha também mudam: o nome errado sai da lista
+    this._enqueue({ action: "bulk", kind: "operador",
+      rows: DB.load().motoristas.map(n => this.operadorRow(n)) });
+    return envios + 1;
+  },
+
   /* ---- API pública (chamada pelos handlers do app) ---- */
   pushLancamento(iso, reg) { this._enqueue({ action: "upsert", kind: "lancamento", row: this.lancamentoRow(iso, reg) }); },
   deleteLancamento(id)     { this._enqueue({ action: "delete", kind: "lancamento", id }); },

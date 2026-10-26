@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "22/10/2026 · r62 (quantidade de diesel disponível)";
+const VERSION = "26/10/2026 · r63 (operadores juntos · parte diária)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -237,6 +237,63 @@ function medidores(eq) {
     // "12.500 km · 1.200,5 h" — em máquina de horímetro, só a hora
     linha() { return (this.temKm ? this.kmTxt + " · " : "") + this.horTxt; }
   };
+}
+
+/* ---------- Fusão de operador digitado errado ----------
+   "Maciano" entrou como se fosse outra pessoa (desde o r36 o nome é digitado à
+   mão) e o Jean pediu para juntar com "Marciano".
+
+   Autolimitada, no formato que funcionou no r49: só age enquanto existir um
+   "Maciano". Depois da fusão não há mais nenhum e ela não faz nada — o próprio
+   dado é a trava, sem marcador para se perder.
+
+   Precisa empurrar para a nuvem: o ouvinte de lançamentos sobrescreve o local
+   sempre que difere, então renomear só no aparelho seria desfeito na próxima
+   leitura e o nome velho voltaria sozinho.
+
+   PODE SER APAGADA depois que todos os celulares abrirem o app uma vez. */
+const FUSOES_PENDENTES = [["Maciano", "Marciano"]];
+let fusaoAvisada = false;
+let fusaoRodando = false;
+let fusaoPendente = [];       // tocados esperando a nuvem conectar para subir
+
+async function juntarOperadoresPendentes() {
+  if (fusaoRodando) return;                       // o onMudanca pode chamar durante o envio
+  fusaoRodando = true;
+  try {
+    for (const [errado, certo] of FUSOES_PENDENTES) {
+      let r;
+      try { r = DB.juntarOperador(errado, certo); } catch (e) { continue; }
+      if (r && r.n) {
+        fusaoPendente = fusaoPendente.concat(r.tocados);
+        if (!fusaoAvisada) {
+          fusaoAvisada = true;
+          toast(`✔ ${r.n} lançamento(s) de ${errado} passaram para ${certo}`);
+          if (typeof navegar === "function" && rotaAtual) navegar(rotaAtual);
+        }
+      }
+    }
+
+    /* O envio fica GUARDADO até a nuvem estar de pé. No boot, ligarNuvem() é
+       assíncrono e não é aguardado, então na primeira passada Cloud.ativa() é
+       falso — e se eu desistisse aqui, o local ficaria renomeado e a nuvem não,
+       até o ouvinte trazer o nome velho de volta. Guardando, o gancho do
+       onMudanca empurra assim que a nuvem conecta. */
+    if (fusaoPendente.length && typeof Cloud !== "undefined" && Cloud.ativa()) {
+      const lote = fusaoPendente;
+      fusaoPendente = [];
+      let r2 = null;
+      try { r2 = await Cloud.reenviarLancamentos(lote); } catch (e) { r2 = null; }
+      /* reenviarLancamentos NÃO lança: ele devolve {ok:false}. Confiar no catch
+         deixaria a lista esvaziada depois de um envio que falhou, e os registros
+         nunca subiriam. Só esvazia de verdade quando a nuvem confirmou. */
+      if (r2 && r2.ok) {
+        if (typeof Sync !== "undefined") Sync.pushLancamentosEmLote(lote);
+      } else {
+        fusaoPendente = lote;                     // volta para a fila
+      }
+    }
+  } finally { fusaoRodando = false; }
 }
 
 /* A quantidade de diesel disponível, para o relatório. É sempre o saldo de
@@ -1111,7 +1168,9 @@ function horaAgora() { return DB.horaAgora(); }
 function resumoLancamento(a) {
   const km = DB.toN(a.kmRodado), horas = DB.toN(a.horasTrabalhadas);
   const kmL = DB.kmLDoLancamento(a), lh = DB.lhDoLancamento(a);
-  const p = [`${fmtL(a.litros)} L ${a.combustivel || "S-10"}`];
+  const p = [];
+  if (a.parteDiaria) p.push(`<b>PD ${a.parteDiaria}</b>`);   // o número do papel vem primeiro
+  p.push(`${fmtL(a.litros)} L ${a.combustivel || "S-10"}`);
   if (km > 0) p.push(`${fmt(km)} km`);
   if (horas > 0) p.push(`${fmt(horas, 1)} h`);
   if (kmL > 0) p.push(`<b>${fmt(kmL, 2)}</b> km/L`);
@@ -1178,6 +1237,11 @@ function telaAbastecimento() {
         <div class="field">
           <label>Horário do abastecimento</label>
           <input id="fHora" type="time" value="${ed && ed.hora ? ed.hora : horaAgora()}">
+        </div>
+        <div class="field">
+          <label>Parte diária <span class="badge-auto">opcional</span></label>
+          <input id="fParte" inputmode="numeric" autocomplete="off"
+                 value="${ed && ed.parteDiaria ? ed.parteDiaria : ""}" placeholder="ex: 001234">
         </div>
         <div class="field">
           <label>Motorista / Operador</label>
@@ -1429,6 +1493,9 @@ function telaAbastecimento() {
       lton: lton ? fmt(lton, 2) : "",
       media: fmt(media, 2),
       unidadeMedia: unidade,
+      /* TEXTO, nunca num(): o papel vem com zeros à esquerda ("001234"), e por
+         num() viraria 1234 — e aí o cruzamento com a folha física não bate. */
+      parteDiaria: $("#fParte").value.trim(),
       situacao: $("#fSit").value,
       abastecedor: $("#fAbast").value,
       observacoes: $("#fObs").value.trim()
@@ -2016,6 +2083,7 @@ function gerarRelatorioTexto(iso) {
     const und = a.unidadeMedia || "km/L";
     txt += `🚛 ${a.equipamento}\n`;
     txt += `Operador: ${a.motorista}\n`;
+    if (a.parteDiaria) txt += `Parte diária: ${a.parteDiaria}\n`;
     txt += `Horímetro: ${fmtN1(a.horimetroInicial)} → ${fmtN1(a.horimetroFinal)}\n`;
     txt += `Horas (horímetro): ${a.horasTrabalhadas} h\n`;
     // o KM só existe em equipamento com odômetro
@@ -2492,6 +2560,7 @@ function dadosDaFolha(dias, titulo) {
       quadros.push({
         equip: a.equipamento,
         operador: a.motorista || nada,
+        parte: a.parteDiaria || "",
         situacao: a.situacao || "",
         motivo: motivoManutencao(a.equipamento, iso),
         /* Os campos em três faixas: medidor, rodagem, consumo. Os rótulos são
@@ -2707,7 +2776,11 @@ function desenharFolha(d, estilo) {
       // a situação tem prioridade na direita; o operador usa o que sobrar
       c.font = F.fonte(17, 700);
       const largSit = q.situacao ? c.measureText(q.situacao).width + 12 : 0;
-      txt(cortar(q.operador, Math.max(40, pr - xOp - largSit), F.fonte(18, 500)),
+      /* A parte diária entra no CABEÇALHO, junto do equipamento e do operador:
+         é identificador, e um 12º campo viraria faixa nova no quadro — +62 px
+         por equipamento, desfazendo a compactação do r59. */
+      const quemEPD = q.operador + (q.parte ? `  ·  PD ${q.parte}` : "");
+      txt(cortar(quemEPD, Math.max(40, pr - xOp - largSit), F.fonte(18, 500)),
           xOp, yq + 31, F.fonte(18, 500), F.cinza);
       if (q.situacao) txt(q.situacao, pr, yq + 31, F.fonte(17, 700), corSit(q.situacao), "right");
       c.strokeStyle = F.linha; c.lineWidth = 1;
@@ -3854,6 +3927,7 @@ function iniciarApp() {
   navegar(rotas[rotaInicial] && podeVer(rotaInicial) ? rotaInicial : "home");
   avisarDieselBaixo();
   checarVersaoPublicada();
+  juntarOperadoresPendentes();
 }
 
 /* Diesel no mínimo: o gestor vê assim que entra, e não só se for até o Índice.
@@ -3891,6 +3965,10 @@ function ligarNuvem() {
     if (typeof Auth !== "undefined" && Auth.configurado() && !Auth.usuario) return;
     if (document.body.classList.contains("sem-login")) return;
     checarVersaoPublicada();
+    /* De novo aqui de propósito: se outro celular ainda tiver o nome velho e
+       empurrar para a nuvem, ele volta — e a fusão pega na chegada. O aviso
+       sai uma vez só por sessão, senão pipocaria a cada mudança. */
+    juntarOperadoresPendentes();
     const el = document.getElementById("nuvemBadge");
     if (el) pintarBadgeNuvem(el);
     if (TELAS_LEITURA.includes(rotaAtual)) navegar(rotaAtual);

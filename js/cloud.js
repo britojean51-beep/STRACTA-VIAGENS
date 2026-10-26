@@ -364,6 +364,35 @@ const Cloud = {
   },
 
   /* ---- sobe a base inteira deste celular (idempotente: grava por id) ---- */
+  /* Reenvia registros específicos, em lote. Serve à fusão de operadores: o
+     ouvinte sobrescreve o local sempre que difere da nuvem, então sem isto o
+     nome velho voltaria sozinho na próxima leitura.
+     Usa a mesma máquina de lote do enviarTudo (400 por commit) — alguns meses
+     de lançamentos são centenas de registros, e um set por registro seria
+     lento e ruidoso. */
+  async reenviarLancamentos(tocados) {
+    if (!this.ativa() || !tocados || !tocados.length) return { ok: false, total: 0 };
+    try {
+      let lote = this._fs().batch(), n = 0, total = 0;
+      for (const { iso, col, reg } of tocados) {
+        if (!reg || !reg.id || COLECOES.indexOf(col) < 0) continue;
+        const dados = Object.assign({}, reg, {
+          dia: iso, criadoPor: reg.criadoPor || this._quem(),
+          atualizadoPor: this._quem(), atualizadoEm: Date.now()
+        });
+        delete dados.id;
+        lote.set(this._col(col).doc(reg.id), dados, { merge: false });
+        n++; total++;
+        if (n >= 400) { await lote.commit(); lote = this._fs().batch(); n = 0; }
+      }
+      if (n) await lote.commit();
+      return { ok: true, total };
+    } catch (e) {
+      this._falha(e, "reenviar lançamentos");
+      return { ok: false, total: 0, erro: String(e) };
+    }
+  },
+
   async enviarTudo() {
     if (!this.disponivel()) return { ok: false, erro: "Entre com seu usuário para usar a nuvem." };
     if (!this.ligada()) return { ok: false, erro: "Ligue a nuvem primeiro." };

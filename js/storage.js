@@ -1244,6 +1244,59 @@ const DB = {
     });
     return n;
   },
+  /* Junta dois operadores num só: o nome ERRADO vira o CERTO em todo lugar.
+     O nome mora em cinco lugares — a lista, o operadorEquip, e o campo
+     motorista de cada abastecimento, de cada viagem e de cada manutenção.
+     Deixar um de fora faria metade do histórico continuar separada.
+
+     Compara sem caixa e sem acento: "Maciano", "maciano" e "MACIANO" são a
+     mesma pessoa, e pegar só um deles deixaria o resto para trás.
+
+     Devolve o que TOCOU, porque quem chamou precisa empurrar esses registros
+     para a nuvem — o ouvinte de lançamentos sobrescreve o local sempre que
+     difere da nuvem, então renomear só aqui seria desfeito na próxima leitura. */
+  juntarOperador(errado, certo) {
+    const db = this.load();
+    const norm = t => String(t || "").trim().toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const alvo = norm(errado);
+    if (!alvo || !String(certo || "").trim()) return { n: 0, tocados: [] };
+    certo = String(certo).trim();
+    if (alvo === norm(certo)) return { n: 0, tocados: [] };
+
+    const tocados = [];
+    Object.keys(db.dias).forEach(iso => {
+      const d = db.dias[iso] || {};
+      ["abastecimentos", "viagens", "manutencoes"].forEach(col => {
+        (d[col] || []).forEach(reg => {
+          let mexeu = false;
+          if (norm(reg.motorista) === alvo) { reg.motorista = certo; mexeu = true; }
+          if (norm(reg.responsavel) === alvo) { reg.responsavel = certo; mexeu = true; }
+          if (mexeu) tocados.push({ iso, col, reg });
+        });
+      });
+    });
+
+    // quem está no equipamento agora
+    Object.keys(db.operadorEquip).forEach(eq => {
+      if (norm(db.operadorEquip[eq]) === alvo) db.operadorEquip[eq] = certo;
+    });
+
+    // a lista: o certo entra se faltar, e todas as grafias do errado saem
+    if (!db.motoristas.some(m => norm(m) === norm(certo))) db.motoristas.push(certo);
+    const antes = db.motoristas.length;
+    db.motoristas = db.motoristas.filter(m => norm(m) !== alvo);
+    const mexeuLista = db.motoristas.length !== antes;
+
+    if (!tocados.length && !mexeuLista) return { n: 0, tocados: [] };
+    this.save();
+    this._nuvem(C => {
+      C.patch("frota", { motoristas: db.motoristas });
+      C.patch("operacao", { operadorEquip: db.operadorEquip });
+    });
+    return { n: tocados.length, tocados, certo };
+  },
+
   /* Tira o operador da lista. O histórico dos dias fica intacto. */
   removerMotorista(nome) {
     const db = this.load();

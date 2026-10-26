@@ -167,7 +167,26 @@ window.__ENVIOS_FS__ = 0;
     return {
       enablePersistence: async () => true,
       collection: nome => new Col(nome),
-      doc: caminho => Documento(caminho)
+      doc: caminho => Documento(caminho),
+      /* batch() existe no Firestore de verdade e é por onde o app grava muitos
+         registros de uma vez (enviarTudo, e a fusão de operadores do r63). Sem
+         ele aqui, o teste aprovava um caminho que simplesmente não existia —
+         e foi o que escondeu a falha do reenvio em lote. */
+      batch: function () {
+        const ops = [];
+        return {
+          set(ref, dados, opts) { ops.push({ ref, dados, opts }); return this; },
+          update(ref, dados) { ops.push({ ref, dados, opts: { merge: true } }); return this; },
+          delete(ref) { ops.push({ ref, apagar: true }); return this; },
+          async commit() {
+            for (const o of ops) {
+              if (o.apagar) await o.ref.delete();
+              else await o.ref.set(o.dados, o.opts || {});
+            }
+            ops.length = 0;
+          }
+        };
+      }
     };
   }
   firestore.FieldValue = {
