@@ -37,7 +37,7 @@ async function foto(page) {
     localStorage.setItem('__ck_banco__', JSON.stringify({
       'checklist_usuarios/ze@gp2t.local': { nome: 'Zé Motorista', perfil: 'motorista' },
       'checklist_equipamentos/e1': { prefixo: 'CB-12', placa: 'ABC1D23', tipo: 'caminhao' },
-      'checklist_inspecoes/hoje': { criadoPor: 'ze@gp2t.local', criadoNome: 'Zé Motorista', criadoEm: Date.now() - 3600000, equipamento: eq,
+      'checklist_inspecoes/hoje': { criadoPor: 'ze@gp2t.local', criadoNome: 'Zé Motorista', criadoEm: Math.max(new Date().setHours(0, 0, 1, 0), Date.now() - 3600000), equipamento: eq,   // hoje mesmo logo após a meia-noite
         modelo: { id: 'm', nome: 'Caminhão' }, resultado: 'liberado', defeitos: 0, tratativa: null, midias: {}, itens },
       'checklist_inspecoes/ontem': { criadoPor: 'ze@gp2t.local', criadoNome: 'Zé Motorista', criadoEm: Date.now() - 30 * 3600000, equipamento: eq,
         modelo: { id: 'm', nome: 'Caminhão' }, resultado: 'liberado', defeitos: 0, tratativa: null, midias: {}, itens }
