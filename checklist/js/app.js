@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck35";
+const VERSAO = "ck36";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -181,13 +181,12 @@ const ICONES = {
 };
 /* ícone dentro do texto (tamanho da letra) */
 const I = n => ICONES[n].replace("<svg ", '<svg class="i" ');
-/* logo: o mesmo desenho do ícone do app (prancheta com visto) */
-const LOGO = `<svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="96" fill="#0f172a"/>
-  <rect x="120" y="84" width="272" height="352" rx="36" fill="#16223b" stroke="#ff7a1a" stroke-width="16"/>
-  <rect x="196" y="60" width="120" height="56" rx="20" fill="#ff7a1a"/>
-  <g stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="22">
-  <path d="M168 196l26 26 46-50" stroke="#22c55e"/><path d="M168 300l26 26 46-50" stroke="#22c55e"/>
-  <path d="M276 200h76M276 304h76" stroke="#93a2c4"/></g></svg>`;
+/* logo: o mesmo desenho do ícone do app (prancheta laranja com dois vistos, sem moldura) */
+const logoSvg = clip => `<svg viewBox="0 0 512 512" aria-hidden="true"><rect x="104" y="72" width="304" height="400" rx="44" fill="#ff7a1a"/>
+  <rect x="186" y="40" width="140" height="72" rx="24" fill="${clip}"/>
+  <g fill="none" stroke="#fff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"><path d="M172 222l40 40 84-90"/><path d="M172 360l40 40 84-90"/></g></svg>`;
+const LOGO = logoSvg("#0f172a");
+const LOGO_FUNDO_ESCURO = logoSvg("#ffffff");   // na faixa escura do login a presilha fica branca
 
 /* ---------- utilidades ---------- */
 const $ = s => document.querySelector(s);
@@ -496,7 +495,7 @@ Render.login = function (erro) {
   $("#btnVoltar").style.visibility = "hidden";
   app().innerHTML = `
     <div class="marca">
-      <div class="marca-logo">${LOGO}</div>
+      <div class="marca-logo">${LOGO_FUNDO_ESCURO}</div>
       <h1>Checklist de Frota</h1>
       <p>Máquinas e caminhões</p>
     </div>
