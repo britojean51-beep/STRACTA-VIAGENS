@@ -17,10 +17,10 @@
   <header class="app-header" id="appHeader">
     <button class="btn-back" id="btnBack" aria-label="Voltar">‹</button>
     <div class="header-titles">
-      <h1 class="header-title" id="headerTitle">🚛 STRACTA MINERAÇÃO</h1>
+      <h1 class="header-title" id="headerTitle"><span data-ico="caminhao"></span> STRACTA MINERAÇÃO</h1>
       <p class="header-sub" id="headerSub">CONTROLE DE FROTA</p>
     </div>
-    <button class="btn-tema" id="btnTema" aria-label="Trocar o tema">☀️</button>
+    <button class="btn-tema" id="btnTema" aria-label="Trocar o tema"></button>
     <div class="header-day" id="headerDay">--/--/----</div>
   </header>
 
@@ -28,11 +28,11 @@
 
   <!-- ===== BARRA DE NAVEGAÇÃO INFERIOR ===== -->
   <nav class="tabbar" id="tabbar">
-    <button class="tab" data-nav="home"><span>🏠</span>Início</button>
-    <button class="tab" data-nav="abastecimento"><span>⛽</span>Abast.</button>
-    <button class="tab" data-nav="viagens"><span>🚚</span>Viagens</button>
-    <button class="tab" data-nav="relatorio"><span>📋</span>Relatório</button>
-    <button class="tab" data-nav="dashboard"><span>📊</span>Índice</button>
+    <button class="tab" data-nav="home"><span data-ico="inicio"></span>Início</button>
+    <button class="tab" data-nav="abastecimento"><span data-ico="bomba"></span>Abast.</button>
+    <button class="tab" data-nav="viagens"><span data-ico="local"></span>Viagens</button>
+    <button class="tab" data-nav="relatorio"><span data-ico="arquivo"></span>Relatório</button>
+    <button class="tab" data-nav="dashboard"><span data-ico="painel"></span>Índice</button>
   </nav>
 
   <!-- ===== TOAST / NOTIFICAÇÃO ===== -->
@@ -53,6 +53,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="js/icones.js?v=20261022a"></script>
   <script src="js/firebase-config.js?v=20261022a"></script>
   <script src="js/auth.js?v=20261022a"></script>
   <script src="js/storage.js?v=20261022a"></script>

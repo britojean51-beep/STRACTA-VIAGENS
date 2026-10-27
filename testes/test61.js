@@ -82,10 +82,10 @@ const URL = 'http://localhost:8130/index.html';
 
   /* ---- 3. o aviso de mínimo ---- */
   ok('tanque abaixo do mínimo ganha o aviso',
-     /Tanque S-500: 900 L\s+⚠️ abaixo do mínimo/.test(texto),
+     /Tanque S-500: 900 L\s+\(abaixo do mínimo\)/.test(texto),
      (texto.match(/Tanque S-500:.*/) || ['FALTOU'])[0]);
   ok('tanque acima do mínimo NÃO ganha aviso',
-     !/Tanque S-10: 4\.250 L\s+⚠️/.test(texto), (texto.match(/Tanque S-10:.*/) || [''])[0]);
+     !/Tanque S-10: 4\.250 L\s+\(abaixo/.test(texto), (texto.match(/Tanque S-10:.*/) || [''])[0]);
 
   /* ---- 4. tanque zerado e nunca usado não vira alerta falso ---- */
   const semUso = await p.evaluate(() => {
@@ -124,7 +124,7 @@ const URL = 'http://localhost:8130/index.html';
   ok('e os três números batem com o db.estoque',
      img.tira.includes('4.250') && img.tira.includes('900') && img.tira.includes('450'),
      img.tira + ' vs ' + JSON.stringify(img.estoque));
-  ok('o tanque baixo tem o ⚠ na tira', /S-500 900 L ⚠/.test(img.tira), img.tira);
+  ok('o tanque baixo é marcado na tira', /S-500 900 L \(baixo\)/.test(img.tira), img.tira);
 
   /* ---- 7. a compactação do r59 não se perdeu ---- */
   await p.evaluate(d => {

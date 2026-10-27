@@ -57,7 +57,7 @@ const URL = 'http://localhost:8130/index.html';
   await p.waitForTimeout(600);
 
   const texto = await p.evaluate(d => gerarRelatorioTexto(d), hoje);
-  const bloco = (texto.match(/🚛 CB-17[\s\S]*?(?=━)/) || [''])[0];
+  const bloco = (texto.match(/^CB-17$[\s\S]*?(?=━)/m) || [''])[0];
 
   /* ---- 1. os onze campos no TEXTO (WhatsApp e PDF saem daqui) ---- */
   const campos = [
@@ -76,7 +76,7 @@ const URL = 'http://localhost:8130/index.html';
   ok('texto · L/km NÃO aparece (ele corrigiu o pedido)', !/L\/km/.test(texto));
 
   /* ---- 2. o motivo da manutenção ---- */
-  const bloco22 = (texto.match(/🚛 CB-22[\s\S]*?(?=━)/) || [''])[0];
+  const bloco22 = (texto.match(/^CB-22$[\s\S]*?(?=━)/m) || [''])[0];
   ok('texto · o motivo aparece no equipamento em manutenção',
      /Motivo: Corretiva · Troca do cubo da roda traseira direita \(13:00 às 16:30\)/.test(bloco22),
      (bloco22.match(/Motivo:.*/) || ['FALTOU'])[0]);
@@ -84,7 +84,7 @@ const URL = 'http://localhost:8130/index.html';
      (bloco.match(/Motivo:.*/) || ['nenhum'])[0]);
 
   /* ---- 3. máquina de horímetro: "—" no KM, e não 0 ---- */
-  const blocoPC = (texto.match(/🚛 PC-01[\s\S]*?(?=━)/) || [''])[0];
+  const blocoPC = (texto.match(/^PC-01$[\s\S]*?(?=━)/m) || [''])[0];
   ok('texto · máquina de horímetro não mostra linha de KM', !/KM/.test(blocoPC),
      (blocoPC.match(/KM.*/) || ['nenhuma'])[0]);
   ok('texto · e não repete o L/h (a média dela já é o L/h)', !/Consumo:/.test(blocoPC),

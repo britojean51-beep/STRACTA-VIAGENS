@@ -320,7 +320,7 @@ const Cloud = {
   },
 
   /* ---- Diagnóstico: refaz cada operação isolada e diz qual delas trava ----
-     A ordem é a mesma que o app usa, então o primeiro ❌ é a causa. */
+     A ordem é a mesma que o app usa, então o primeiro é a causa. */
   async diagnosticar() {
     const passos = [];
     const tentar = async (nome, fn) => {

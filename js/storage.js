@@ -1156,13 +1156,15 @@ const DB = {
     const db = this.load();
     const iso = this.garantirDiaAtual();
     const out = [];
+    /* icone é o NOME de um ícone do js/icones.js, não um desenho: a camada de
+       dados não monta HTML, quem desenha é o app.js. */
     const push = (nivel, icone, msg) => out.push({ nivel, icone, msg }); // nivel: 'alto' | 'medio'
 
     // estoque baixo (por tanque em uso)
     this.dieselNoMinimo().forEach(t =>
-      push("alto", "🛢️", `${t.nome} baixo: ${this.fmtL(t.litros)} L (mínimo ${t.minimo} L)`));
+      push("alto", "tanque", `${t.nome} baixo: ${this.fmtL(t.litros)} L (mínimo ${t.minimo} L)`));
     if (this.tanqueEmUso("arla") && db.estoque.arla <= db.config.estoqueArlaMin)
-      push("medio", "💧", `ARLA 32 baixo: ${this.fmtL(db.estoque.arla)} L (mínimo ${db.config.estoqueArlaMin} L)`);
+      push("medio", "gota", `ARLA 32 baixo: ${this.fmtL(db.estoque.arla)} L (mínimo ${db.config.estoqueArlaMin} L)`);
 
     const dia = this.getDia(iso) || { abastecimentos: [] };
     db.equipamentos.forEach(eq => {
@@ -1170,7 +1172,7 @@ const DB = {
       const st = this.getStatus(eq);
       if (st === "manutencao") {
         const ab = this.paradaAberta(eq);
-        push("medio", "🔧", ab
+        push("medio", "manutencao", ab
           ? `${eq} está em MANUTENÇÃO desde ${this.fmtBR(ab.entradaDia).slice(0, 5)} ${ab.entradaHora} (${this.duracaoParada(ab)})`
           : `${eq} está em MANUTENÇÃO`);
       }
@@ -1180,10 +1182,10 @@ const DB = {
         const m = this.toN(a.media);
         if (a.unidadeMedia === "L/h") {
           if (m > 0 && m > db.config.metaLh)
-            push("medio", "📈", `${eq}: consumo ${a.media} L/h acima da meta (${db.config.metaLh})`);
+            push("medio", "painel", `${eq}: consumo ${a.media} L/h acima da meta (${db.config.metaLh})`);
         } else {
           if (m > 0 && m < db.config.metaMedia)
-            push("medio", "📉", `${eq}: média ${a.media} km/L abaixo da meta (${db.config.metaMedia})`);
+            push("medio", "painel", `${eq}: média ${a.media} km/L abaixo da meta (${db.config.metaMedia})`);
         }
       });
 
@@ -1191,8 +1193,8 @@ const DB = {
       const rev = this.getProximaRevisao(eq);
       const hor = this.ultimo(eq).horimetroFinal;
       if (rev != null && hor != null) {
-        if (hor >= rev) push("alto", "🔴", `${eq}: revisão VENCIDA (horímetro ${Math.round(hor)} ≥ ${rev})`);
-        else if (hor >= rev - 50) push("medio", "🟡", `${eq}: revisão próxima (faltam ${Math.round(rev - hor)} h)`);
+        if (hor >= rev) push("alto", "alerta", `${eq}: revisão VENCIDA (horímetro ${Math.round(hor)} ≥ ${rev})`);
+        else if (hor >= rev - 50) push("medio", "relogio", `${eq}: revisão próxima (faltam ${Math.round(rev - hor)} h)`);
       }
     });
     return out;

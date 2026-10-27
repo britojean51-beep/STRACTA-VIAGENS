@@ -1,7 +1,7 @@
 /* ============================================================
    STRACTA · Controle de Frota — Lógica da interface
    ============================================================ */
-const VERSION = "26/10/2026 · r63 (operadores juntos · parte diária)";
+const VERSION = "27/10/2026 · r64 (layout profissional · sem emojis)";
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const app = $("#app");
@@ -124,7 +124,7 @@ function faixaAtualizacao(texto) {
 /* Limpa o que está guardado e recarrega: sem isso o celular voltaria com os
    mesmos arquivos de antes. */
 async function aplicarAtualizacao() {
-  faixaAtualizacao("🚀 Atualizando o app…");
+  faixaAtualizacao("Atualizando o app…");
   try {
     if ("serviceWorker" in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations();
@@ -155,7 +155,7 @@ function checarVersaoPublicada() {
   if (v.versao === VERSION) return;                // já estamos na versão publicada
   if (formSujo) {                                  // no meio de um lançamento: espera salvar
     atualizacaoPendente = true;
-    faixaAtualizacao("🚀 Atualização pronta — entra assim que você terminar este lançamento.");
+    faixaAtualizacao("Atualização pronta — entra assim que você terminar este lançamento.");
     return;
   }
   aplicarAtualizacao();
@@ -310,8 +310,8 @@ function blocoTanques() {
   const db = DB.load();
   const baixos = {};
   DB.dieselNoMinimo().forEach(t => { baixos[t.tanque] = true; });
-  const aviso = t => baixos[t] ? "  ⚠️ abaixo do mínimo" : "";
-  let txt = `🛢️ QUANTIDADE DE DIESEL DISPONÍVEL\n\n`;
+  const aviso = t => baixos[t] ? "  (abaixo do mínimo)" : "";
+  let txt = `QUANTIDADE DE DIESEL DISPONÍVEL\n\n`;
   txt += `Tanque S-10: ${fmtL(db.estoque.s10)} L${aviso("s10")}\n`;
   txt += `Tanque S-500: ${fmtL(db.estoque.s500)} L${aviso("s500")}\n`;
   txt += `Total Diesel: ${fmtL((db.estoque.s10 || 0) + (db.estoque.s500 || 0))} L\n`;
@@ -325,7 +325,7 @@ function tanquesEmLinha() {
   const baixos = {};
   DB.dieselNoMinimo().forEach(t => { baixos[t.tanque] = true; });
   return [["S-10", "s10"], ["S-500", "s500"], ["ARLA", "arla"]]
-    .map(([rot, t]) => `${rot} ${fmtL(db.estoque[t])} L${baixos[t] ? " ⚠" : ""}`)
+    .map(([rot, t]) => `${rot} ${fmtL(db.estoque[t])} L${baixos[t] ? " (baixo)" : ""}`)
     .join("   ·   ");
 }
 
@@ -390,7 +390,7 @@ function aplicarTema(t) {
   if (meta) meta.setAttribute("content", claro ? "#1b2b4d" : "#0f172a");
   const b = document.getElementById("btnTema");
   if (b) {
-    b.textContent = claro ? "🌙" : "☀️";
+    b.innerHTML = claro ? ICONES.lua : ICONES.sol;
     b.setAttribute("aria-label", claro ? "Usar o tema escuro" : "Usar o tema claro");
   }
 }
@@ -399,6 +399,22 @@ function trocarTema() {
   try { localStorage.setItem(TEMA_KEY, novo); } catch (e) {}
   aplicarTema(novo);
 }
+/* Título do topo. Com ícone desenhado tem de ser innerHTML: com textContent
+   o usuário veria a tag <svg ...> escrita na tela, em todas as telas. */
+function tituloTopo(icone, texto) {
+  $("#headerTitle").innerHTML = I(icone) + " " + texto;
+}
+
+/* Os ícones do HTML fixo (abas de baixo, topo) vêm do js/icones.js, então
+   ficam marcados com data-ico e são preenchidos aqui — assim o desenho mora
+   num lugar só, e não copiado dentro do index.html. */
+function pintarIcones(raiz) {
+  (raiz || document).querySelectorAll("[data-ico]").forEach(el => {
+    const d = ICONES[el.dataset.ico];
+    if (d) el.innerHTML = d;
+  });
+}
+pintarIcones();
 aplicarTema(temaAtual());          // aplica antes de desenhar, para não piscar
 
 const rotas = {
@@ -461,7 +477,7 @@ function atualizarCabecalho() {
    TELA INICIAL
    ============================================================ */
 function telaHome() {
-  $("#headerTitle").textContent = "🚛 STRACTA MINERAÇÃO";
+  tituloTopo("caminhao", "STRACTA MINERAÇÃO");
   $("#headerSub").textContent = "CONTROLE DE FROTA";
 
   const gestor = (typeof Auth === "undefined") || Auth.ehGestor();
@@ -469,61 +485,61 @@ function telaHome() {
 
   app.innerHTML = `
     ${logado ? `<div class="card user-card">
-      <div><b>👤 ${logado.nome}</b> <span class="pill ${logado.perfil === "gestor" ? "pill-green" : "pill-blue"}">${logado.perfil === "gestor" ? "Gestor" : "Operador"}</span>
+      <div><b>${logado.nome}</b> <span class="pill ${logado.perfil === "gestor" ? "pill-green" : "pill-blue"}">${logado.perfil === "gestor" ? "Gestor" : "Operador"}</span>
       <div class="sub">usuário: ${logado.usuario || logado.email}</div></div>
       <div class="btn-col">
-        <button class="btn btn-ghost btn-sm" data-go="conta">👤 Minha conta</button>
+        <button class="btn btn-ghost btn-sm" data-go="conta">${I("usuario")} Minha conta</button>
         <button class="btn btn-ghost btn-sm" id="btnSair">Sair</button>
       </div>
     </div><div class="spacer"></div>` : ""}
     <div class="menu-grid">
       ${gestor ? `<button class="menu-card accent wide" data-go="novodia">
-        <span class="ico">🟢</span>
+        <span class="ico">${ICONES.calendario}</span>
         <span class="lbl">NOVO DIA</span>
         <span class="desc">Fecha o dia e abre o próximo copiando KM e horímetro finais</span>
       </button>` : ""}
       <button class="menu-card" data-go="abastecimento">
-        <span class="ico">⛽</span><span class="lbl">Abastecimento</span>
+        <span class="ico">${ICONES.bomba}</span><span class="lbl">Abastecimento</span>
         <span class="desc">Diesel, KM e horímetro</span>
       </button>
       <button class="menu-card" data-go="viagens">
-        <span class="ico">🚚</span><span class="lbl">Viagens</span>
+        <span class="ico">${ICONES.local}</span><span class="lbl">Viagens</span>
         <span class="desc">Origem, destino e ciclos</span>
       </button>
       ${!gestor ? `<button class="menu-card" data-go="corrigir">
-        <span class="ico">✏️</span><span class="lbl">Meus lançamentos</span>
+        <span class="ico">${ICONES.lapis}</span><span class="lbl">Meus lançamentos</span>
         <span class="desc">Corrigir o que você lançou hoje</span>
       </button>` : ""}
       ${gestor ? `<button class="menu-card" data-go="manutencao">
-        <span class="ico">🔧</span><span class="lbl">Manutenção</span>
+        <span class="ico">${ICONES.manutencao}</span><span class="lbl">Manutenção</span>
         <span class="desc">Preventiva e corretiva</span>
       </button>
       <button class="menu-card" data-go="corrigir">
-        <span class="ico">✏️</span><span class="lbl">Corrigir Dados</span>
+        <span class="ico">${ICONES.lapis}</span><span class="lbl">Corrigir Dados</span>
         <span class="desc">Editar ou excluir</span>
       </button>
       <button class="menu-card" data-go="relatorio">
-        <span class="ico">📋</span><span class="lbl">Relatório Diário</span>
+        <span class="ico">${ICONES.arquivo}</span><span class="lbl">Relatório Diário</span>
         <span class="desc">Gerado automático</span>
       </button>
       <button class="menu-card" data-go="frota">
-        <span class="ico">🚛</span><span class="lbl">Frota</span>
+        <span class="ico">${ICONES.caminhao}</span><span class="lbl">Frota</span>
         <span class="desc">Status e ficha por equipamento</span>
       </button>
       <button class="menu-card" data-go="operadores">
-        <span class="ico">👷</span><span class="lbl">Operadores</span>
+        <span class="ico">${ICONES.equipe}</span><span class="lbl">Operadores</span>
         <span class="desc">Quem opera a frota</span>
       </button>
       <button class="menu-card" data-go="dashboard">
-        <span class="ico">📊</span><span class="lbl">Índice</span>
+        <span class="ico">${ICONES.painel}</span><span class="lbl">Índice</span>
         <span class="desc">Alertas, gráficos e tendências</span>
       </button>
       ${(logado && Auth.ehGestor()) ? `<button class="menu-card" data-go="usuarios">
-        <span class="ico">👥</span><span class="lbl">Usuários</span>
+        <span class="ico">${ICONES.conta}</span><span class="lbl">Usuários</span>
         <span class="desc">Quem pode entrar no app</span>
       </button>` : ""}
       <button class="menu-card" data-go="configuracoes">
-        <span class="ico">⚙️</span><span class="lbl">Configurações</span>
+        <span class="ico">${ICONES.engrenagem}</span><span class="lbl">Configurações</span>
         <span class="desc">Planilha na nuvem e integrações</span>
       </button>` : ""}
     </div>
@@ -551,7 +567,7 @@ function telaHome() {
    MINHA CONTA — nome e senha da própria pessoa (gestor e operador)
    ============================================================ */
 function telaMinhaConta() {
-  $("#headerTitle").textContent = "👤 Minha conta";
+  tituloTopo("usuario", "Minha conta");
   $("#headerSub").textContent = "NOME · SENHA";
   const u = (typeof Auth !== "undefined" && Auth.usuario) || null;
 
@@ -562,19 +578,19 @@ function telaMinhaConta() {
 
   app.innerHTML = `
     <div class="card">
-      <h3>👤 Meu nome</h3>
+      <h3>Meu nome</h3>
       <p class="hint">É o nome que aparece no Início e na lista de Usuários. Seu usuário para entrar
       continua <b>${u.usuario || u.email}</b> — esse não muda.</p>
       <div class="field">
         <label>Nome</label>
         <input id="cnNome" value="${u.nome || ""}" placeholder="Seu nome" autocomplete="off">
       </div>
-      <button class="btn btn-primary btn-sm" id="btnCnNome">💾 Salvar nome</button>
+      <button class="btn btn-primary btn-sm" id="btnCnNome">${I("salvar")} Salvar nome</button>
       <p class="hint" id="cnNomeMsg" style="margin-top:8px"></p>
     </div>
 
     <div class="card">
-      <h3>🔑 Minha senha</h3>
+      <h3>Minha senha</h3>
       <p class="hint">Precisa de internet. Depois de trocar, use a senha nova também para entrar
       sem sinal neste celular.</p>
       <div class="field">
@@ -589,7 +605,7 @@ function telaMinhaConta() {
         <label>Repetir a senha nova</label>
         <input id="cnNova2" type="password" autocomplete="new-password" autocapitalize="none" spellcheck="false">
       </div>
-      <button class="btn btn-primary btn-sm" id="btnCnSenha">🔑 Trocar senha</button>
+      <button class="btn btn-primary btn-sm" id="btnCnSenha">${I("cadeado")} Trocar senha</button>
       <p class="hint" id="cnSenhaMsg" style="margin-top:8px"></p>
       ${Legal.links()}
     </div>
@@ -601,22 +617,22 @@ function telaMinhaConta() {
     const b = $("#btnCnNome");
     b.disabled = true; b.textContent = "Salvando…";
     const r = await Auth.trocarNome($("#cnNome").value);
-    b.disabled = false; b.textContent = "💾 Salvar nome";
-    if (!r.ok) { diz("#cnNomeMsg", "❌ " + r.erro, "var(--red)"); toast(r.erro, "err"); return; }
-    diz("#cnNomeMsg", "✅ Nome salvo.", "var(--green)");
+    b.disabled = false; b.innerHTML = I("salvar") + " Salvar nome";
+    if (!r.ok) { diz("#cnNomeMsg", r.erro, "var(--red)"); toast(r.erro, "err"); return; }
+    diz("#cnNomeMsg", "Nome salvo.", "var(--green)");
     toast("✔ Nome salvo");
   };
 
   $("#btnCnSenha").onclick = async () => {
     const atual = $("#cnAtual").value, nova = $("#cnNova").value, nova2 = $("#cnNova2").value;
-    if (nova !== nova2) { diz("#cnSenhaMsg", "❌ As duas senhas novas estão diferentes.", "var(--red)"); return; }
+    if (nova !== nova2) { diz("#cnSenhaMsg", "As duas senhas novas estão diferentes.", "var(--red)"); return; }
     const b = $("#btnCnSenha");
     b.disabled = true; b.textContent = "Trocando…";
     const r = await Auth.trocarSenha(atual, nova);
-    b.disabled = false; b.textContent = "🔑 Trocar senha";
-    if (!r.ok) { diz("#cnSenhaMsg", "❌ " + r.erro, "var(--red)"); toast(r.erro, "err"); return; }
+    b.disabled = false; b.innerHTML = I("cadeado") + " Trocar senha";
+    if (!r.ok) { diz("#cnSenhaMsg", r.erro, "var(--red)"); toast(r.erro, "err"); return; }
     $("#cnAtual").value = ""; $("#cnNova").value = ""; $("#cnNova2").value = "";
-    diz("#cnSenhaMsg", "✅ Senha trocada. Use a nova da próxima vez que entrar.", "var(--green)");
+    diz("#cnSenhaMsg", "Senha trocada. Use a nova da próxima vez que entrar.", "var(--green)");
     toast("✔ Senha trocada");
   };
 }
@@ -625,7 +641,7 @@ function telaMinhaConta() {
    CONFIGURAÇÕES (só gestor)
    ============================================================ */
 function telaConfiguracoes() {
-  $("#headerTitle").textContent = "⚙️ Configurações";
+  tituloTopo("engrenagem", "Configurações");
   $("#headerSub").textContent = "PLANILHA · INTEGRAÇÕES";
   const db = DB.load();
   /* O link da planilha vale para TODOS os celulares: um link errado aqui quebra a
@@ -636,23 +652,23 @@ function telaConfiguracoes() {
   app.innerHTML = `
     ${donoDaPlanilha ? `
     <div class="card">
-      <h3>☁️ Planilha na nuvem <span id="syncBadge" class="pill pill-gray">desligada</span></h3>
+      <h3>Planilha na nuvem <span id="syncBadge" class="pill pill-gray">desligada</span></h3>
       <p class="hint">A planilha já vem conectada de fábrica — não precisa colar nada em cada celular. Só mexa aqui se for trocar de planilha.</p>
       <div class="field">
         <label>Link da planilha (termina em /exec)</label>
         <input id="cfgSheets" placeholder="https://script.google.com/.../exec" value="${db.config.sheetsUrl || ""}">
       </div>
       <div class="btn-row">
-        <button class="btn btn-primary btn-sm" id="btnSheetsSalvar">💾 Salvar</button>
-        <button class="btn btn-ghost btn-sm" id="btnSheetsTestar">🔌 Testar conexão</button>
+        <button class="btn btn-primary btn-sm" id="btnSheetsSalvar">${I("salvar")} Salvar</button>
+        <button class="btn btn-ghost btn-sm" id="btnSheetsTestar">${I("tomada")} Testar conexão</button>
       </div>
       <div class="spacer"></div>
-      <button class="btn btn-green" id="btnSheetsSync">🔄 Sincronizar tudo</button>
+      <button class="btn btn-green" id="btnSheetsSync">${I("recarregar")} Sincronizar tudo</button>
       <p class="hint" id="sheetsMsg" style="margin-top:8px"></p>
     </div>
 
     <div class="card">
-      <h3>🚀 Atualizar o app de todo mundo</h3>
+      <h3>Atualizar o app de todo mundo</h3>
       <p class="hint">Manda todos os celulares passarem a rodar a <b>versão que está neste aparelho</b>.
       Cada um recarrega sozinho, sem ninguém tocar em nada. Quem estiver no meio de um lançamento
       atualiza assim que salvar — nada do que foi digitado se perde.</p>
@@ -662,12 +678,12 @@ function telaConfiguracoes() {
         <div class="itemrow"><div class="info">Lançada para a frota
           <div class="sub">${pub ? `${pub.versao}${pub.por ? " · por " + usuarioDe(pub.por) : ""}${pub.em ? " · " + new Date(pub.em).toLocaleString("pt-BR") : ""}` : "nenhuma ainda"}</div></div></div>
       </div>
-      <button class="btn btn-primary" id="btnLancarVersao">🚀 Lançar atualização</button>
+      <button class="btn btn-primary" id="btnLancarVersao">${I("subir")} Lançar atualização</button>
       <p class="hint" id="versaoMsg" style="margin-top:8px"></p>
     </div>` : ""}
 
     <div class="card">
-      <h3>☁️ Dados na nuvem <span id="nuvemBadge" class="pill pill-gray">desligada</span></h3>
+      <h3>Dados na nuvem <span id="nuvemBadge" class="pill pill-gray">desligada</span></h3>
       <p class="hint">A nuvem já vem ligada: o que o operador lança aparece aqui na hora, e o horímetro/KM
       que o app preenche sozinho é o último de <b>toda a frota</b>. Sem internet o app continua funcionando:
       o lançamento fica guardado e sobe quando a rede voltar. Só desligue se algo der errado neste aparelho.</p>
@@ -676,23 +692,23 @@ function telaConfiguracoes() {
         <span>Ligar os dados na nuvem neste celular</span>
       </label>
       <div class="spacer"></div>
-      <button class="btn btn-green" id="btnNuvemEnviar">⬆️ Enviar os dados deste celular</button>
+      <button class="btn btn-green" id="btnNuvemEnviar">${I("enviar")} Enviar os dados deste celular</button>
       <div class="spacer"></div>
       <div class="btn-row">
-        <button class="btn btn-ghost btn-sm" id="btnNuvemTestar">🔍 Testar nuvem</button>
-        <button class="btn btn-ghost btn-sm" id="btnNuvemReconectar">🔄 Reconectar</button>
+        <button class="btn btn-ghost btn-sm" id="btnNuvemTestar">${I("busca")} Testar nuvem</button>
+        <button class="btn btn-ghost btn-sm" id="btnNuvemReconectar">${I("recarregar")} Reconectar</button>
       </div>
       <p class="hint" id="nuvemMsg" style="margin-top:8px"></p>
       <div id="nuvemDiag"></div>
     </div>
 
     <div class="card">
-      <h3>💾 Backup dos dados</h3>
+      <h3>Backup dos dados</h3>
       <p class="hint">Os lançamentos ficam guardados <b>neste celular</b>. Faça um backup antes de trocar
       de aparelho ou de endereço do app, e guarde o arquivo no Drive ou no WhatsApp.</p>
       <div class="btn-row">
-        <button class="btn btn-primary btn-sm" id="btnBackup">⬇️ Fazer backup</button>
-        <button class="btn btn-ghost btn-sm" id="btnRestaurar">⬆️ Restaurar backup</button>
+        <button class="btn btn-primary btn-sm" id="btnBackup">${I("baixar")} Fazer backup</button>
+        <button class="btn btn-ghost btn-sm" id="btnRestaurar">${I("enviar")} Restaurar backup</button>
       </div>
       <input type="file" id="arqBackup" accept="application/json,.json" style="display:none">
       <p class="hint" id="backupMsg" style="margin-top:8px"></p>
@@ -717,9 +733,9 @@ function telaConfiguracoes() {
     Sync.testar(res => {
       if (res && res.ok) {
         const l = res.linhas || {};
-        msg(`✅ Conectado a <b>${res.planilha}</b>.<br>Linhas — lançamentos: ${l.lancamento || 0} · equip.: ${l.equipamento || 0} · manut.: ${l.manutencao || 0}`, "var(--green)");
+        msg(`Conectado a <b>${res.planilha}</b>.<br>Linhas — lançamentos: ${l.lancamento || 0} · equip.: ${l.equipamento || 0} · manut.: ${l.manutencao || 0}`, "var(--green)");
       } else {
-        msg("❌ " + ((res && res.erro) || "Falha na conexão."), "var(--red)");
+        msg((res && res.erro) || "Falha na conexão.", "var(--red)");
       }
     });
   };
@@ -731,9 +747,9 @@ function telaConfiguracoes() {
       Sync._badge();
       if (res && res.ok) {
         const l = res.linhas || {};
-        msg(`✅ Sincronizado! Na planilha — lançamentos: ${l.lancamento || 0} · equip.: ${l.equipamento || 0} · manut.: ${l.manutencao || 0}`, "var(--green)");
+        msg(`Sincronizado! Na planilha — lançamentos: ${l.lancamento || 0} · equip.: ${l.equipamento || 0} · manut.: ${l.manutencao || 0}`, "var(--green)");
       } else {
-        msg("⚠️ " + ((res && res.erro) || "Não deu para confirmar. Veja se há internet."), "var(--red)");
+        msg((res && res.erro) || "Não deu para confirmar. Veja se há internet.", "var(--red)");
       }
     });
   };
@@ -743,7 +759,7 @@ function telaConfiguracoes() {
     const msgV = (t, cor) => { const m = $("#versaoMsg"); if (m) { m.innerHTML = t; m.style.color = cor || "var(--muted)"; } };
     $("#btnLancarVersao").onclick = async () => {
       if (typeof Cloud === "undefined" || !Cloud.ligada()) {
-        msgV("❌ A nuvem está desligada neste aparelho — é por ela que o aviso chega nos outros.", "var(--red)");
+        msgV("A nuvem está desligada neste aparelho — é por ela que o aviso chega nos outros.", "var(--red)");
         return;
       }
       const ok = await confirmar(`Mandar todos os celulares atualizarem para "${VERSION}"? ` +
@@ -753,8 +769,8 @@ function telaConfiguracoes() {
       DB.setVersaoApp(dados);
       // este aparelho já roda a versão lançada: marca como tratada para não recarregar à toa
       try { localStorage.setItem(VERSAO_APLICADA_KEY, String(dados.em)); } catch (e) {}
-      msgV("✅ Atualização lançada. Os outros celulares recarregam sozinhos quando receberem.", "var(--green)");
-      toast("🚀 Atualização lançada");
+      msgV("Atualização lançada. Os outros celulares recarregam sozinhos quando receberem.", "var(--green)");
+      toast("Atualização lançada");
     };
   }
 
@@ -786,14 +802,14 @@ function telaConfiguracoes() {
     const passos = await Cloud.diagnosticar();
     msgN("");
     $("#nuvemDiag").innerHTML = passos.map(p => `
-      <div class="itemrow"><div class="info">${p.ok ? "✅" : "❌"} ${p.passo}
+      <div class="itemrow"><div class="info">${p.ok ? "✔" : "✕"} ${p.passo}
         <div class="sub">${p.ok ? (p.info || "certo") : "erro: " + p.erro}</div></div></div>`).join("");
     const ruim = passos.find(p => !p.ok);
-    if (!ruim) msgN("✅ Tudo certo. Se a etiqueta ainda estiver vermelha, toque em <b>Reconectar</b>.", "var(--green)");
+    if (!ruim) msgN("Tudo certo. Se a etiqueta ainda estiver vermelha, toque em <b>Reconectar</b>.", "var(--green)");
     else if (String(ruim.erro).includes("permission-denied"))
-      msgN("❌ O Firebase recusou em <b>" + ruim.passo + "</b>. As regras publicadas não estão liberando isso — " +
+      msgN("O Firebase recusou em <b>" + ruim.passo + "</b>. As regras publicadas não estão liberando isso — " +
            "confira se a versão que está valendo é a nova (ela tem <b>match /frota/{frota}</b> e <b>criadoPor</b>).", "var(--red)");
-    else msgN("❌ Parou em <b>" + ruim.passo + "</b> (" + ruim.erro + ").", "var(--red)");
+    else msgN("Parou em <b>" + ruim.passo + "</b> (" + ruim.erro + ").", "var(--red)");
     badge();
   };
   $("#btnNuvemReconectar").onclick = async () => {
@@ -801,7 +817,7 @@ function telaConfiguracoes() {
     msgN("Reconectando…");
     const e = await Cloud.reconectar();
     badge();
-    msgN(e.chave === "ok" ? "✅ Reconectado — a nuvem está em dia." : "Situação agora: " + e.texto,
+    msgN(e.chave === "ok" ? "Reconectado — a nuvem está em dia." : "Situação agora: " + e.texto,
          e.chave === "ok" ? "var(--green)" : "var(--red)");
   };
   $("#btnNuvemEnviar").onclick = async () => {
@@ -809,8 +825,8 @@ function telaConfiguracoes() {
     msgN("Enviando… pode levar alguns segundos.");
     const r = await Cloud.enviarTudo();
     badge();
-    if (r.ok) msgN(`✅ Enviado: ${r.total} registro(s) na nuvem.`, "var(--green)");
-    else msgN("❌ " + r.erro, "var(--red)");
+    if (r.ok) msgN(`Enviado: ${r.total} registro(s) na nuvem.`, "var(--green)");
+    else msgN(r.erro, "var(--red)");
   };
 
   const msgB = (t, cor) => { const m = $("#backupMsg"); if (m) { m.innerHTML = t; m.style.color = cor || "var(--muted)"; } };
@@ -830,12 +846,12 @@ function telaConfiguracoes() {
    USUÁRIOS (só gestor)
    ============================================================ */
 async function telaUsuarios() {
-  $("#headerTitle").textContent = "👥 Usuários";
+  tituloTopo("conta", "Usuários");
   $("#headerSub").textContent = "QUEM PODE ENTRAR NO APP";
 
   app.innerHTML = `
     <div class="card">
-      <h3>➕ Liberar acesso</h3>
+      <h3>Liberar acesso</h3>
       <p class="hint">O app cria a pessoa no Firebase e libera o acesso de uma vez. Ela entra digitando
       só o usuário (sem e-mail) e a senha que você definir aqui.</p>
       <div class="field"><label>Usuário (sem e-mail)</label><input id="uEmail" placeholder="ex: saulo" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
@@ -844,17 +860,17 @@ async function telaUsuarios() {
         <input id="uSenha" value="gp2t2026" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
       <div class="field"><label>Perfil</label>
         <select id="uPerfil">
-          <option value="operador">👷 Operador — só lança abastecimento e viagens</option>
-          <option value="gestor">🧑‍💼 Gestor — acesso total</option>
+          <option value="operador">Operador — só lança abastecimento e viagens</option>
+          <option value="gestor">Gestor — acesso total</option>
         </select>
       </div>
       <button class="btn btn-primary" id="btnAddUser">Criar e liberar</button>
       <p class="hint" style="margin-top:10px">Cada pessoa troca a <b>própria</b> senha e o próprio nome
-      no app, em <b>👤 Minha conta</b> (no Início). Só quando alguém <b>esquece</b> a senha é que se
+      no app, em <b>Minha conta</b> (no Início). Só quando alguém <b>esquece</b> a senha é que se
       resolve no Firebase → Authentication → Users: o app não mexe na senha de outra pessoa.</p>
     </div>
     <div class="card">
-      <h3>👥 Liberados</h3>
+      <h3>Liberados</h3>
       <div id="uLista"><p class="empty">Carregando…</p></div>
     </div>
   `;
@@ -872,14 +888,14 @@ async function telaUsuarios() {
       return `
       <div class="itemrow"><div class="info"><b>${u.nome || u.usuario}</b>
         <span class="pill ${u.perfil === "gestor" ? "pill-green" : "pill-blue"}">${u.perfil === "gestor" ? "Gestor" : "Operador"}</span>
-        ${dono ? '<span class="pill pill-gray">🔒 desenvolvedor</span>' : ""}
+        ${dono ? '<span class="pill pill-gray">desenvolvedor</span>' : ""}
         ${souEu ? '<span class="pill pill-gray">você</span>' : ""}
         ${u.ativo === false ? '<span class="pill pill-red">Bloqueado</span>' : ""}
         <div class="sub">usuário: ${u.usuario}${nota}</div></div>
         ${(souEu || dono) ? "" : `
         <button class="btn btn-ghost btn-sm" data-troca="${u.usuario}" data-perfil="${u.perfil}">Trocar perfil</button>
         <button class="btn btn-ghost btn-sm" data-bloq="${u.usuario}" data-ativo="${u.ativo === false ? "0" : "1"}">${u.ativo === false ? "Liberar" : "Bloquear"}</button>
-        <button class="del" data-excluir="${u.usuario}">🗑️</button>`}
+        <button class="del" data-excluir="${u.usuario}" aria-label="Excluir acesso">${ICONES.lixo}</button>`}
       </div>`;
     }).join("");
 
@@ -931,13 +947,13 @@ async function telaUsuarios() {
    OPERADORES (só gestor) — a lista que aparece no campo Motorista
    ============================================================ */
 function telaOperadores() {
-  $("#headerTitle").textContent = "👷 Operadores";
+  tituloTopo("equipe", "Operadores");
   $("#headerSub").textContent = "OPERADORES E ABASTECEDORES";
   const db = DB.load();
 
   app.innerHTML = `
     <div class="card">
-      <h3>➕ Adicionar operador</h3>
+      <h3>Adicionar operador</h3>
       <p class="hint">Esta é a lista que aparece no campo <b>Motorista</b> ao lançar. Quem for entrar no
       app também precisa de acesso em <b>Usuários</b>.</p>
       <div class="field"><label>Nome</label><input id="opNome" placeholder="ex: José Silva"></div>
@@ -945,19 +961,19 @@ function telaOperadores() {
     </div>
 
     <div class="card">
-      <h3>👷 Operadores <span class="mini">(${db.motoristas.length})</span></h3>
+      <h3>Operadores <span class="mini">(${db.motoristas.length})</span></h3>
       <div class="itemlist" id="opLista"></div>
     </div>
 
     <div class="card">
-      <h3>⛽ Adicionar abastecedor</h3>
+      <h3>Adicionar abastecedor</h3>
       <p class="hint">Quem enche o tanque. Aparece no campo <b>Abastecedor</b> do lançamento.</p>
       <div class="field"><label>Nome</label><input id="abNome" placeholder="ex: Pedro"></div>
       <button class="btn btn-primary" id="btnAddAb">Adicionar</button>
     </div>
 
     <div class="card">
-      <h3>⛽ Abastecedores <span class="mini">(${db.abastecedores.length})</span></h3>
+      <h3>Abastecedores <span class="mini">(${db.abastecedores.length})</span></h3>
       <div class="itemlist" id="abLista"></div>
     </div>
   `;
@@ -972,7 +988,7 @@ function telaOperadores() {
       return `<div class="itemrow"><div class="info"><b>${m}</b>
         ${eqs.length ? `<span class="pill pill-blue">${eqs.join(", ")}</span>` : ""}
         <div class="sub">${n ? n + " lançamento(s)" : "sem lançamentos ainda"}</div></div>
-        <button class="del" data-del-op="${m}">🗑️</button></div>`;
+        <button class="del" data-del-op="${m}" aria-label="Remover operador">${ICONES.lixo}</button></div>`;
     }).join("");
 
     $$("[data-del-op]").forEach(b => b.onclick = async () => {
@@ -996,7 +1012,7 @@ function telaOperadores() {
       const n = DB.lancamentosDoAbastecedor(a);
       return `<div class="itemrow"><div class="info"><b>${a}</b>
         <div class="sub">${n ? n + " abastecimento(s)" : "sem lançamentos ainda"}</div></div>
-        <button class="del" data-del-ab2="${a}">🗑️</button></div>`;
+        <button class="del" data-del-ab2="${a}" aria-label="Remover abastecedor">${ICONES.lixo}</button></div>`;
     }).join("");
     $$("[data-del-ab2]").forEach(b => b.onclick = async () => {
       const nome = b.dataset.delAb2;
@@ -1039,7 +1055,7 @@ function telaOperadores() {
    NOVO DIA
    ============================================================ */
 function telaNovoDia() {
-  $("#headerTitle").textContent = "🟢 Novo Dia";
+  tituloTopo("calendario", "Novo Dia");
   $("#headerSub").textContent = "FECHAMENTO E ABERTURA";
   const db = DB.load();
   const atual = DB.garantirDiaAtual();
@@ -1053,24 +1069,24 @@ function telaNovoDia() {
   app.innerHTML = `
     <p class="section-title">Resumo do dia aberto · ${DB.fmtBR(atual)}</p>
     <div class="kpi-grid" style="margin-bottom:14px">
-      ${kpi("⛽ Diesel", fmtL(r.diesel) + '<span class="k-unit"> L</span>')}
-      ${kpi("📈 Média", fmt(r.media, 2) + '<span class="k-unit"> km/L</span>', "k-green")}
-      ${kpi("🚚 Viagens", r.viagens, "k-blue")}
-      ${kpi("🛣️ KM", fmt(r.km) + '<span class="k-unit"> km</span>')}
-      ${kpi("🟢 Operando", String(r.operando.length).padStart(2, "0"), "k-green")}
-      ${kpi("🔧 Manutenção", String(r.manutencao.length).padStart(2, "0"), "k-red")}
+      ${kpi("Diesel", fmtL(r.diesel) + '<span class="k-unit"> L</span>')}
+      ${kpi("Média", fmt(r.media, 2) + '<span class="k-unit"> km/L</span>', "k-green")}
+      ${kpi("Viagens", r.viagens, "k-blue")}
+      ${kpi("KM", fmt(r.km) + '<span class="k-unit"> km</span>')}
+      ${kpi("Operando", String(r.operando.length).padStart(2, "0"), "k-green")}
+      ${kpi("Manutenção", String(r.manutencao.length).padStart(2, "0"), "k-red")}
     </div>
 
     <div class="card">
-      <h3>⚠️ Pendências do dia</h3>
+      <h3>Pendências do dia</h3>
       ${semMov.length
         ? `<p class="hint">Equipamentos sem nenhum lançamento em ${DB.fmtBR(atual)}:</p>
            <div class="chip-row">${semMov.map(e => `<span class="chip">${e}</span>`).join("")}</div>`
-        : `<p class="empty" style="padding:8px 0">✅ Todos os equipamentos tiveram movimento hoje.</p>`}
+        : `<p class="empty" style="padding:8px 0">Todos os equipamentos tiveram movimento hoje.</p>`}
     </div>
 
     <div class="card">
-      <h3>🟢 Fechar dia e abrir outro</h3>
+      <h3>Fechar dia e abrir outro</h3>
       <p class="hint">O <b>KM Final</b> e o <b>Horímetro Final</b> de cada equipamento já entram como iniciais no novo dia, automaticamente.</p>
       <div class="field">
         <label>Data do novo dia</label>
@@ -1080,7 +1096,7 @@ function telaNovoDia() {
     </div>
 
     <div class="card">
-      <h3>📌 Acumulado que será copiado</h3>
+      <h3>Acumulado que será copiado</h3>
       <div class="itemlist">${db.equipamentos.map(eq => {
         const u = DB.ultimo(eq);
         return `<div class="itemrow"><div class="info"><b>${eq}</b>
@@ -1089,7 +1105,7 @@ function telaNovoDia() {
     </div>
 
     <div class="card">
-      <h3>📅 Histórico de dias</h3>
+      <h3>Histórico de dias</h3>
       <div class="itemlist">${DB.listaDias().map(iso => {
         const rr = DB.resumoDia(iso);
         return `<div class="itemrow" data-dia="${iso}"><div class="info"><b>${DB.fmtBR(iso)}</b>${iso === atual ? ' <span class="pill pill-green">aberto</span>' : ""}
@@ -1100,7 +1116,7 @@ function telaNovoDia() {
 
   const dataInput = $("#ndData");
   const btn = $("#btnNovoDia");
-  const rotulo = () => { btn.textContent = `🟢 FECHAR ${DB.fmtBR(atual)} → ABRIR ${DB.fmtBR(dataInput.value || sugestao)}`; };
+  const rotulo = () => { btn.innerHTML = `${I("calendario")} FECHAR ${DB.fmtBR(atual)} → ABRIR ${DB.fmtBR(dataInput.value || sugestao)}`; };
   rotulo();
   dataInput.oninput = rotulo;
 
@@ -1183,7 +1199,7 @@ function resumoLancamento(a) {
 const SITUACOES = ["Operando", "Manutenção"];
 
 function telaAbastecimento() {
-  $("#headerTitle").textContent = "⛽ Abastecimento";
+  tituloTopo("bomba", "Abastecimento");
   $("#headerSub").textContent = "DIESEL · ARLA · SITUAÇÃO";
   const db = DB.load();
   const dia = DB.garantirDiaAtual();
@@ -1198,25 +1214,25 @@ function telaAbastecimento() {
   const podeTanque = (typeof Auth === "undefined") || Auth.ehGestor();
   const tanquesHtml = !podeTanque ? "" : `
     <div class="card">
-      <h3>🛢️ Entrada nos tanques</h3>
+      <h3>Entrada nos tanques</h3>
       <p class="hint">Cada abastecimento de equipamento já desconta do estoque. Aqui entra o que o caminhão-pipa trouxe.</p>
       <div class="kpi-grid">
-        <div class="kpi k-yellow"><div class="k-label">🛢️ Diesel S-10</div><div class="k-value">${fmtL(db.estoque.s10)}<span class="k-unit"> L</span></div></div>
-        <div class="kpi k-yellow"><div class="k-label">🛢️ Diesel S-500</div><div class="k-value">${fmtL(db.estoque.s500)}<span class="k-unit"> L</span></div></div>
-        <div class="kpi k-blue"><div class="k-label">💧 ARLA 32</div><div class="k-value">${fmtL(db.estoque.arla)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi k-yellow"><div class="k-label">Diesel S-10</div><div class="k-value">${fmtL(db.estoque.s10)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi k-yellow"><div class="k-label">Diesel S-500</div><div class="k-value">${fmtL(db.estoque.s500)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi k-blue"><div class="k-label">ARLA 32</div><div class="k-value">${fmtL(db.estoque.arla)}<span class="k-unit"> L</span></div></div>
       </div>
       <div class="spacer"></div>
       <div class="field">
         <label>Tanque</label>
         <select id="tqTipo">
-          <option value="s10">🛢️ Diesel S-10</option>
-          <option value="s500">🛢️ Diesel S-500</option>
-          <option value="arla">💧 ARLA 32</option>
+          <option value="s10">Diesel S-10</option>
+          <option value="s500">Diesel S-500</option>
+          <option value="arla">ARLA 32</option>
         </select>
       </div>
       <div class="field-row">
         <div class="field"><label>Litros recebidos</label><input id="tqAdd" inputmode="decimal" placeholder="ex: 3000"></div>
-        <div class="field"><label>&nbsp;</label><button class="btn btn-green" id="btnTqAdd">➕ Entrada</button></div>
+        <div class="field"><label>&nbsp;</label><button class="btn btn-green" id="btnTqAdd">${I("mais")} Entrada</button></div>
       </div>
       <div class="field"><label>Ou ajustar o saldo manualmente</label>
         <input id="tqSet" inputmode="decimal" placeholder="definir valor total"></div>
@@ -1225,7 +1241,7 @@ function telaAbastecimento() {
 
   app.innerHTML = `
     <div class="card">
-      <h3>⛽ ${ed ? "Editar" : "Novo"} abastecimento <span class="badge-auto">auto-cálculo</span></h3>
+      <h3>${ed ? "Editar" : "Novo"} abastecimento <span class="badge-auto">auto-cálculo</span></h3>
 
       <div class="field">
         <label>Equipamento <span id="fTipoTag" class="badge-auto"></span></label>
@@ -1315,7 +1331,7 @@ function telaAbastecimento() {
           <input id="fLton" class="computed" readonly value="${ed?.lton ?? ""}">
         </div>
       </div>
-      <p class="hint">🚚 Para <b>caminhões</b>, deixe em branco: o L/Ton usa o <b>peso lançado nas Viagens</b> (aparece no Índice e no Relatório).</p>
+      <p class="hint">Para <b>caminhões</b>, deixe em branco: o L/Ton usa o <b>peso lançado nas Viagens</b> (aparece no Índice e no Relatório).</p>
 
       <div class="field-row">
         <div class="field">
@@ -1342,12 +1358,12 @@ function telaAbastecimento() {
         <textarea id="fObs">${ed?.observacoes ?? ""}</textarea>
       </div>
 
-      <button class="btn btn-primary" id="btnSalvar">💾 ${ed ? "ATUALIZAR" : "SALVAR"}</button>
+      <button class="btn btn-primary" id="btnSalvar">${I("salvar")} ${ed ? "ATUALIZAR" : "SALVAR"}</button>
       ${ed ? '<div class="spacer"></div><button class="btn btn-ghost" id="btnCancelEdit">Cancelar edição</button>' : ""}
     </div>
 
     <div class="card">
-      <h3>📈 Últimos abastecimentos <span id="fRecTitulo" class="mini"></span></h3>
+      <h3>Últimos abastecimentos <span id="fRecTitulo" class="mini"></span></h3>
       <div id="fRecentes"></div>
     </div>
 
@@ -1415,11 +1431,11 @@ function telaAbastecimento() {
     const al = $("#fMediaAlerta");
     const avisos = [];
     if (!hor && media > 0 && media < db.config.metaMedia) {
-      avisos.push(`⚠️ Média <b>${fmt(media, 2)}</b> km/L abaixo da meta (${fmt(db.config.metaMedia, 2)}).`);
+      avisos.push(`Média <b>${fmt(media, 2)}</b> km/L abaixo da meta (${fmt(db.config.metaMedia, 2)}).`);
     }
     const lhAtual = hor ? media : lh;
     if (lhAtual > 0 && lhAtual > db.config.metaLh) {
-      avisos.push(`⚠️ Consumo <b>${fmt(lhAtual, 2)}</b> L/h acima da meta (${fmt(db.config.metaLh, 0)}).`);
+      avisos.push(`Consumo <b>${fmt(lhAtual, 2)}</b> L/h acima da meta (${fmt(db.config.metaLh, 0)}).`);
     }
     al.style.display = avisos.length ? "block" : "none";
     if (avisos.length) { al.innerHTML = avisos.join("<br>"); al.style.color = "var(--red)"; }
@@ -1516,8 +1532,8 @@ function telaAbastecimento() {
       Sync.pushResumoDia(dia);
       Sync.pushParadas();          // a situação do lançamento abre ou fecha manutenção
       const foraMeta = hor ? (media > db.config.metaLh) : (media > 0 && media < db.config.metaMedia);
-      if (reg.situacao === "Final de expediente") toast(`🌙 ${equip}: final de expediente`);
-      else if (foraMeta) toast(`⚠️ ${equip}: consumo fora da meta`, "err");
+      if (reg.situacao === "Final de expediente") toast(`${equip}: final de expediente`);
+      else if (foraMeta) toast(`${equip}: consumo fora da meta`, "err");
       else toast(`✔ ${equip} salvo · ${fmtL(litros)} L`);
       telaAbastecimento();
       terminouLancamento();
@@ -1543,14 +1559,14 @@ function telaAbastecimento() {
    VIAGENS
    ============================================================ */
 function telaViagens() {
-  $("#headerTitle").textContent = "🚚 Viagens";
+  tituloTopo("local", "Viagens");
   $("#headerSub").textContent = "ORIGEM · DESTINO · CICLOS";
   const db = DB.load();
   const dia = DB.garantirDiaAtual();
 
   app.innerHTML = `
     <div class="card">
-      <h3>🚚 Registrar viagens</h3>
+      <h3>Registrar viagens</h3>
       <div class="field">
         <label>Equipamento</label>
         <input id="vEquip" list="dlVEquip" placeholder="selecione ou digite" autocapitalize="characters" autocomplete="off">
@@ -1590,7 +1606,7 @@ function telaViagens() {
         </div>
       </div>
       <p class="hint" id="vPesoTotal" style="display:none"></p>
-      <button class="btn btn-blue" id="btnAdd">➕ ADICIONAR ROTA</button>
+      <button class="btn btn-blue" id="btnAdd">${I("mais")} ADICIONAR ROTA</button>
     </div>
 
     <div class="card">
@@ -1599,11 +1615,11 @@ function telaViagens() {
         <span class="tag-total" id="somaBuffer">0 viagens</span>
       </div>
       <div class="itemlist" id="bufferList"><p class="empty">Nenhuma rota adicionada.</p></div>
-      <button class="btn btn-primary" id="btnSalvar">💾 SALVAR VIAGENS</button>
+      <button class="btn btn-primary" id="btnSalvar">${I("salvar")} SALVAR VIAGENS</button>
     </div>
 
     <div class="card">
-      <h3>📅 Viagens de hoje (${DB.fmtBR(dia)})</h3>
+      <h3>Viagens de hoje (${DB.fmtBR(dia)})</h3>
       <div id="hojeList"></div>
     </div>
   `;
@@ -1668,7 +1684,7 @@ function telaViagens() {
       <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>` : "";
 
     box.innerHTML = linhas.map((l, i) =>
-      `<div class="itemrow"><div class="info">${i === 0 ? "🥇 " : ""}<b>${l.eq}</b> = ${l.sub} viagens${l.peso > 0 ? ` · ${fmtT(l.peso)} t` : ""}
+      `<div class="itemrow"><div class="info">${i === 0 ? "1º " : ""}<b>${l.eq}</b> = ${l.sub} viagens${l.peso > 0 ? ` · ${fmtT(l.peso)} t` : ""}
         ${l.rotas.map(r => `<div class="sub">${r}</div>`).join("")}</div></div>`
     ).join("") + `<div class="spacer"></div><p class="tag-total">Total frota: ${total} viagens${pesoTotalFrota > 0 ? ` · ${fmtT(pesoTotalFrota)} t` : ""}</p>` + barra;
   }
@@ -1681,10 +1697,10 @@ function telaViagens() {
     const el = $("#vPesoTotal");
     if (total > 0 && qtd > 0) {
       el.style.display = "block";
-      el.innerHTML = `⚖️ <b>${fmt(total)} t</b> em ${fmt(qtd)} viagem(ns) = <b>${fmt(total / qtd, 1)} t</b> por viagem`;
+      el.innerHTML = `<b>${fmt(total)} t</b> em ${fmt(qtd)} viagem(ns) = <b>${fmt(total / qtd, 1)} t</b> por viagem`;
     } else if (total > 0) {
       el.style.display = "block";
-      el.innerHTML = `⚖️ Peso total da rota: <b>${fmt(total)} t</b>`;
+      el.innerHTML = `Peso total da rota: <b>${fmt(total)} t</b>`;
     } else el.style.display = "none";
   };
   $("#vQtd").oninput = previewPeso;
@@ -1721,7 +1737,7 @@ function telaViagens() {
     $("#vOrig").value = ""; $("#vDest").value = ""; $("#vQtd").value = ""; $("#vPeso").value = "";
     $("#vPesoTotal").style.display = "none";
     renderBuffer();
-    toast("➕ Rota adicionada");
+    toast("Rota adicionada");
   };
 
   $("#btnSalvar").onclick = () => {
@@ -1743,18 +1759,18 @@ function telaViagens() {
 /* A etiqueta tem a mesma cor da bola: na lista da Frota dá para separar
    Reserva de Manutenção de longe, o que antes não dava (as duas eram azuis). */
 function pillStatus(st) {
-  if (st === "manutencao") return '<span class="pill pill-red">🔴 Manutenção</span>';
-  if (st === "reserva") return '<span class="pill pill-yellow">🟡 Reserva</span>';
-  if (st === "final_expediente") return '<span class="pill pill-gray">🌙 Final de expediente</span>';
-  return '<span class="pill pill-green">🟢 Operando</span>';
+  if (st === "manutencao") return '<span class="pill pill-red">Manutenção</span>';
+  if (st === "reserva") return '<span class="pill pill-yellow">Reserva</span>';
+  if (st === "final_expediente") return '<span class="pill pill-gray">Final de expediente</span>';
+  return '<span class="pill pill-green">Operando</span>';
 }
 
 /* opções de status usadas nos selects (Ficha e Manutenção) */
 const STATUS_OPCOES = [
-  ["operando", "🟢 Operando"],
-  ["reserva", "🟡 Reserva"],
-  ["manutencao", "🔴 Em manutenção"],
-  ["final_expediente", "🌙 Final de expediente"]
+  ["operando", "Operando"],
+  ["reserva", "Reserva"],
+  ["manutencao", "Em manutenção"],
+  ["final_expediente", "Final de expediente"]
 ];
 function optsStatus(sel) {
   return STATUS_OPCOES.map(([v, l]) => `<option value="${v}" ${v === sel ? "selected" : ""}>${l}</option>`).join("");
@@ -1770,10 +1786,10 @@ function listaParadas(lista, comEquip) {
     const almoco = (p.tipo || "manutencao") === "almoco";
     const quem = comEquip ? `<b>${p.equipamento}</b> ` : "";
     if (!p.saidaDia) {
-      return `<div class="itemrow"><div class="info">${quem}<span class="pill pill-red">🔴 em manutenção</span>
+      return `<div class="itemrow"><div class="info">${quem}<span class="pill pill-red">em manutenção</span>
         <div class="sub">desde ${dm(p.entradaDia)} às ${p.entradaHora} · há ${DB.duracaoParada(p)}</div></div></div>`;
     }
-    return `<div class="itemrow"><div class="info">${quem}<span class="mini">${almoco ? "⏸️ almoço" : "🔴 manutenção"}</span>
+    return `<div class="itemrow"><div class="info">${quem}<span class="mini">${almoco ? "almoço" : "manutenção"}</span>
       <div class="sub">${dm(p.entradaDia)} ${p.entradaHora} → ${dm(p.saidaDia)} ${p.saidaHora}
       · <b>${DB.duracaoParada(p)}</b> parado</div></div>
       <button class="del" data-parada="${p.id}">✕</button></div>`;
@@ -1781,7 +1797,7 @@ function listaParadas(lista, comEquip) {
 }
 
 function telaManutencao() {
-  $("#headerTitle").textContent = "🔧 Manutenção";
+  tituloTopo("manutencao", "Manutenção");
   $("#headerSub").textContent = "SERVIÇOS · STATUS · REVISÕES";
   const db = DB.load();
   const dia = DB.garantirDiaAtual();
@@ -1789,7 +1805,7 @@ function telaManutencao() {
 
   app.innerHTML = `
     <div class="card">
-      <h3>🔧 Registrar manutenção</h3>
+      <h3>Registrar manutenção</h3>
       <div class="field">
         <label>Dia da manutenção</label>
         <input type="date" id="mData" value="${dia}">
@@ -1846,21 +1862,21 @@ function telaManutencao() {
         <label>Observações</label>
         <textarea id="mObs"></textarea>
       </div>
-      <button class="btn btn-primary" id="btnSalvar">💾 SALVAR</button>
+      <button class="btn btn-primary" id="btnSalvar">${I("salvar")} SALVAR</button>
     </div>
 
     <div class="card">
-      <h3>🚦 Situação e próximas revisões</h3>
+      <h3>Situação e próximas revisões</h3>
       <div id="mRevisoes"></div>
     </div>
 
     <div class="card">
-      <h3>📅 Manutenções do dia <span class="mini" id="mHojeDia">(${DB.fmtBR(dia)})</span></h3>
+      <h3>Manutenções do dia <span class="mini" id="mHojeDia">(${DB.fmtBR(dia)})</span></h3>
       <div id="mHoje"></div>
     </div>
 
     <div class="card">
-      <h3>⏸️ Parada de almoço</h3>
+      <h3>Parada de almoço</h3>
       <p class="hint">Desconta das <b>horas disponíveis</b> do mês, igual à manutenção.
       Marque todos os equipamentos que pararam — o almoço costuma parar a frota junta.</p>
       <div class="field-row">
@@ -1873,13 +1889,13 @@ function telaManutencao() {
       <div class="spacer"></div>
       <div class="btn-row">
         <button class="btn btn-ghost btn-sm" id="btnAlTodos">Marcar todos</button>
-        <button class="btn btn-primary btn-sm" id="btnAlSalvar">⏸️ Lançar almoço</button>
+        <button class="btn btn-primary btn-sm" id="btnAlSalvar">${I("pausa")} Lançar almoço</button>
       </div>
       <p class="hint" id="alMsg" style="margin-top:8px"></p>
     </div>
 
     <div class="card">
-      <h3>🕓 Histórico de manutenção</h3>
+      <h3>Histórico de manutenção</h3>
       <p class="hint">O relógio começa quando alguém aponta <b>Manutenção</b> e para quando aponta
       <b>Operando</b>. Quando você preenche os horários aqui em cima, o período entra
       exatamente como você digitou.</p>
@@ -1939,7 +1955,7 @@ function telaManutencao() {
     box.innerHTML = ms.map(m => {
       const hr = [m.entradaHora, m.saidaHora].filter(Boolean).join(" às ");
       return `<div class="itemrow"><div class="info"><b>${m.equipamento}</b>
-        <span class="pill pill-red">${m.tipo}</span>${hr ? ` <span class="mini">🕓 ${hr}</span>` : ""}
+        <span class="pill pill-red">${m.tipo}</span>${hr ? ` <span class="mini">${I("relogio")} ${hr}</span>` : ""}
         <div class="sub">${m.servico || "—"} · ${medidorDoRegistro(m)}</div>
       </div></div>`;
     }).join("");
@@ -1977,16 +1993,16 @@ function telaManutencao() {
   };
   $("#btnAlSalvar").onclick = () => {
     const msg = (t, cor) => { const m = $("#alMsg"); m.innerHTML = t; m.style.color = cor || "var(--muted)"; };
-    if (!marcados.size) { msg("❌ Marque pelo menos um equipamento.", "var(--red)"); return; }
+    if (!marcados.size) { msg("Marque pelo menos um equipamento.", "var(--red)"); return; }
     const ini = $("#alIni").value, fim = $("#alFim").value;
-    if (!ini || !fim) { msg("❌ Informe o início e o fim.", "var(--red)"); return; }
+    if (!ini || !fim) { msg("Informe o início e o fim.", "var(--red)"); return; }
     if (DB._minutosEntre(dia, ini, dia, fim) <= 0) {
-      msg("❌ O fim tem que ser depois do início.", "var(--red)"); return;
+      msg("O fim tem que ser depois do início.", "var(--red)"); return;
     }
     const criados = DB.addParadaAlmoco([...marcados], dia, ini, fim);
     Sync.pushParadas();
     Sync.pushHorasMes(dia);
-    msg(`✅ Almoço lançado para ${criados.length} equipamento(s).`, "var(--green)");
+    msg(`Almoço lançado para ${criados.length} equipamento(s).`, "var(--green)");
     toast(`✔ Almoço · ${criados.length} equipamento(s)`);
     marcados.clear(); pintarChips();
     renderParadas();
@@ -2061,7 +2077,7 @@ function gerarRelatorioTexto(iso) {
   if (!d) return "Sem dados para este dia.";
   const emManut = new Set(d.manutencoes.map(m => m.equipamento));
 
-  let txt = `📋 RELATÓRIO DIÁRIO\n\nDATA: ${DB.fmtBR(iso)}\n`;
+  let txt = `RELATÓRIO DIÁRIO\n\nDATA: ${DB.fmtBR(iso)}\n`;
   txt += `━━━━━━━━━━━━━━━━━━━━\n\n`;
 
   // viagens agrupadas por equipamento
@@ -2081,7 +2097,7 @@ function gerarRelatorioTexto(iso) {
     totalKm += num(a.kmRodado);
     totalHoras += num(a.horasTrabalhadas);     // base do L/h da frota
     const und = a.unidadeMedia || "km/L";
-    txt += `🚛 ${a.equipamento}\n`;
+    txt += `${a.equipamento}\n`;
     txt += `Operador: ${a.motorista}\n`;
     if (a.parteDiaria) txt += `Parte diária: ${a.parteDiaria}\n`;
     txt += `Horímetro: ${fmtN1(a.horimetroInicial)} → ${fmtN1(a.horimetroFinal)}\n`;
@@ -2121,7 +2137,7 @@ function gerarRelatorioTexto(iso) {
     if (operando.has(eq)) return;
     operando.add(eq);
     let sub = 0, subP = 0;
-    txt += `🚛 ${eq}\nViagens:\n`;
+    txt += `${eq}\nViagens:\n`;
     vs.forEach(v => { sub += Number(v.quantidade); subP += Number(v.pesoTotal) || 0; txt += vLine(v); });
     txt += `Total: ${sub} viagens${subP > 0 ? ` · ${fmtT(subP)} t` : ""}\n\n━━━━━━━━━━━━━━━━━━━━\n\n`;
     totalViagens += sub; totalPeso += subP;
@@ -2129,7 +2145,7 @@ function gerarRelatorioTexto(iso) {
 
   // manutenções
   if (d.manutencoes.length) {
-    txt += `🔧 MANUTENÇÃO\n`;
+    txt += `MANUTENÇÃO\n`;
     d.manutencoes.forEach(m => {
       const hr = [m.entradaHora, m.saidaHora].filter(Boolean).join(" às ");
       txt += `${m.equipamento} · ${m.tipo}: ${m.servico}${hr ? ` (${hr})` : ""}\n`;
@@ -2140,13 +2156,13 @@ function gerarRelatorioTexto(iso) {
   // medidores de quem apareceu no dia — vai junto no PDF e na mensagem do WhatsApp
   const noDia = [...new Set([...operando, ...emManut])].sort();
   if (noDia.length) {
-    txt += `📍 MEDIDORES ATUAIS\n`;
+    txt += `MEDIDORES ATUAIS\n`;
     noDia.forEach(eq => { txt += `${eq}: ${medidores(eq).linha()}\n`; });
     txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
   }
 
   const mediaFrota = totalDiesel > 0 ? (totalKm / totalDiesel) : 0;
-  txt += `📊 RESUMO GERAL\n\n`;
+  txt += `RESUMO GERAL\n\n`;
   txt += `Diesel S-10: ${fmtL(totalS10)} L\n`;
   txt += `Diesel S-500: ${fmtL(totalS500)} L\n`;
   txt += `Total Diesel: ${fmtL(totalDiesel)} L\n`;
@@ -2188,8 +2204,8 @@ function gerarRelatorioPeriodo(dias, titulo) {
   });
   const diasOperando = res.filter(x => x.r.diesel > 0 || x.r.viagens > 0).length;
 
-  let txt = `📋 ${titulo}\n\nPERÍODO: ${DB.fmtBR(ordem[0])} a ${DB.fmtBR(ordem[ordem.length - 1])}\n`;
-  txt += `━━━━━━━━━━━━━━━━━━━━\n\n📊 RESUMO DO PERÍODO\n\n`;
+  let txt = `${titulo}\n\nPERÍODO: ${DB.fmtBR(ordem[0])} a ${DB.fmtBR(ordem[ordem.length - 1])}\n`;
+  txt += `━━━━━━━━━━━━━━━━━━━━\n\nRESUMO DO PERÍODO\n\n`;
   txt += `Diesel S-10: ${fmt(s10)} L\n`;
   txt += `Diesel S-500: ${fmt(s500)} L\n`;
   txt += `Total Diesel: ${fmtL(diesel)} L\n`;
@@ -2207,7 +2223,7 @@ function gerarRelatorioPeriodo(dias, titulo) {
   txt += `Operadores: ${String(operadores.size).padStart(2, "0")}\n`;
   txt += `Manutenções: ${String(manut.length).padStart(2, "0")}\n`;
 
-  txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n📅 POR DIA\n\n`;
+  txt += `\n━━━━━━━━━━━━━━━━━━━━\n\nPOR DIA\n\n`;
   res.forEach(x => {
     txt += `${DB.fmtBR(x.iso)} · ${fmtL(x.r.diesel)} L · ${fmt(x.r.horas, 1)} h`;
     if (x.r.toneladas > 0) txt += ` · ${fmtT(x.r.toneladas)} t`;
@@ -2215,7 +2231,7 @@ function gerarRelatorioPeriodo(dias, titulo) {
     txt += ` · ${x.r.viagens} viagens\n`;
   });
 
-  txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n🚛 POR EQUIPAMENTO\n\n`;
+  txt += `\n━━━━━━━━━━━━━━━━━━━━\n\nPOR EQUIPAMENTO\n\n`;
   DB.totaisPorEquipamento(ordem)
     .sort((a, b) => b.diesel - a.diesel)
     .forEach(e => {
@@ -2227,7 +2243,7 @@ function gerarRelatorioPeriodo(dias, titulo) {
     });
 
   if (manut.length) {
-    txt += `\n━━━━━━━━━━━━━━━━━━━━\n\n🔧 MANUTENÇÕES\n\n`;
+    txt += `\n━━━━━━━━━━━━━━━━━━━━\n\nMANUTENÇÕES\n\n`;
     manut.forEach(m => { txt += `${DB.fmtBR(m.iso)} · ${m.equipamento} · ${m.tipo}: ${m.servico || "—"}\n`; });
   }
   // o saldo é de agora, não do fim do período — o rótulo do bloco diz isso
@@ -2237,7 +2253,7 @@ function gerarRelatorioPeriodo(dias, titulo) {
 }
 
 function telaRelatorio() {
-  $("#headerTitle").textContent = "📋 Relatório Diário";
+  tituloTopo("arquivo", "Relatório Diário");
   $("#headerSub").textContent = "GERADO AUTOMÁTICO";
   const dias = DB.listaDias();
   const atual = DB.garantirDiaAtual();
@@ -2266,23 +2282,23 @@ function telaRelatorio() {
       <div class="field">
         <label>Tipo de relatório</label>
         <select id="rTipo">
-          <option value="diario" ${relatorioTipo === "diario" ? "selected" : ""}>📅 Diário</option>
-          <option value="semanal" ${relatorioTipo === "semanal" ? "selected" : ""}>🗓️ Semanal</option>
-          <option value="mensal" ${relatorioTipo === "mensal" ? "selected" : ""}>📆 Mensal</option>
+          <option value="diario" ${relatorioTipo === "diario" ? "selected" : ""}>Diário</option>
+          <option value="semanal" ${relatorioTipo === "semanal" ? "selected" : ""}>Semanal</option>
+          <option value="mensal" ${relatorioTipo === "mensal" ? "selected" : ""}>Mensal</option>
         </select>
       </div>
       <div class="field">${seletor}</div>
       <div class="btn-row">
-        <button class="btn btn-green btn-sm" id="btnWhats">📲 WhatsApp</button>
-        <button class="btn btn-blue btn-sm" id="btnCopiar">📋 Copiar</button>
-        <button class="btn btn-primary btn-sm" id="btnPdf">📄 PDF</button>
+        <button class="btn btn-green btn-sm" id="btnWhats">${I("mensagem")} WhatsApp</button>
+        <button class="btn btn-blue btn-sm" id="btnCopiar">${I("copiar")} Copiar</button>
+        <button class="btn btn-primary btn-sm" id="btnPdf">${I("pdf")} PDF</button>
       </div>
       <div class="spacer"></div>
-      <button class="btn btn-primary" id="btnImagem">🖼️ Mandar como imagem</button>
+      <button class="btn btn-primary" id="btnImagem">${I("galeria")} Mandar como imagem</button>
       <p class="hint">Sai uma folha pronta para mandar no WhatsApp — com os totais, cada
       equipamento, as viagens e as manutenções do dia.</p>
       <div class="spacer"></div>
-      <button class="btn btn-green" id="btnExcel">📊 Enviar planilha (Excel)</button>
+      <button class="btn btn-green" id="btnExcel">${I("painel")} Enviar planilha (Excel)</button>
     </div>
     <div class="report"><pre id="rTexto"></pre></div>
   `;
@@ -2325,7 +2341,7 @@ function telaRelatorio() {
     const a = alvo();
     if (!a.dias.length) { toast("Escolha um dia com lançamento", "err"); return; }
     const b = $("#btnImagem"); const antes = b.textContent;
-    b.disabled = true; b.textContent = "🖼️ Montando a folha…";
+    b.disabled = true; b.innerHTML = I("galeria") + " Montando a folha…";
     try { await compartilharFolha(a.dias, a.titulo); }
     finally { b.disabled = false; b.textContent = antes; }
   };
@@ -2385,7 +2401,7 @@ function exportarBackup() {
     const file = new File([blob], nome, { type: "application/json" });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       navigator.share({ files: [file], title: "Backup GP2T " + DB.fmtBR(DB.hojeISO()) })
-        .then(() => toast("💾 Backup enviado"))
+        .then(() => toast("Backup enviado"))
         .catch(() => {/* usuário cancelou */});
       return;
     }
@@ -2394,7 +2410,7 @@ function exportarBackup() {
   const a = document.createElement("a");
   a.href = url; a.download = nome; document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1200);
-  toast("💾 Backup baixado");
+  toast("Backup baixado");
 }
 
 /* Restaura um arquivo de backup por cima dos dados deste celular.
@@ -2406,7 +2422,7 @@ async function restaurarBackup(file, msg) {
     && Array.isArray(dados.equipamentos);
   if (!valido) {
     toast("Arquivo de backup inválido", "err");
-    msg && msg("❌ Esse arquivo não é um backup do GP2T. <b>Nada foi alterado.</b>", "var(--red)");
+    msg && msg("Esse arquivo não é um backup do GP2T. <b>Nada foi alterado.</b>", "var(--red)");
     return;
   }
   const dias = Object.keys(dados.dias);
@@ -2420,7 +2436,7 @@ async function restaurarBackup(file, msg) {
   if (!ok) { msg && msg("Restauração cancelada. Nada foi alterado."); return; }
   DB.restaurar(dados);
   toast("✔ Backup restaurado");
-  msg && msg("✅ Restaurado. Recarregando o app…", "var(--green)");
+  msg && msg("Restaurado. Recarregando o app…", "var(--green)");
   setTimeout(() => location.reload(), 700);
 }
 
@@ -2436,7 +2452,7 @@ function exportarExcel(dias, titulo) {
     const file = new File([blob], nome, { type: "text/csv" });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       navigator.share({ files: [file], title: titulo || "Relatório STRACTA " + DB.fmtBR(lista[0]) })
-        .then(() => toast("📊 Planilha enviada"))
+        .then(() => toast("Planilha enviada"))
         .catch(() => {/* usuário cancelou */});
       return;
     }
@@ -2445,7 +2461,7 @@ function exportarExcel(dias, titulo) {
   const a = document.createElement("a");
   a.href = url; a.download = nome; document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1200);
-  toast("📊 Planilha baixada");
+  toast("Planilha baixada");
 }
 
 /* Gera PDF via impressão do navegador (Imprimir → Salvar como PDF).
@@ -2466,7 +2482,7 @@ function gerarPDF(dias, titulo, texto) {
   if (!area) { area = document.createElement("div"); area.id = "printArea"; document.body.appendChild(area); }
   area.innerHTML = `
     <div class="pdf-head">
-      <div class="pdf-logo">🚛 STRACTA MINERAÇÃO</div>
+      <div class="pdf-logo">STRACTA MINERAÇÃO</div>
       <div class="pdf-sub">Controle de Frota · ${titulo || "Relatório Diário"}</div>
     </div>
     <h2 class="pdf-date">${varios ? `Período: ${DB.fmtBR(lista[0])} a ${DB.fmtBR(lista[lista.length - 1])}` : `Data: ${DB.fmtBR(lista[0])}`}</h2>
@@ -2741,7 +2757,7 @@ function desenharFolha(d, estilo) {
   if (d.tanques) {
     c.fillStyle = "#eef3fb"; c.fillRect(L, y, LARG, 44);
     c.fillStyle = F.navy; c.fillRect(L, y, 5, 44);
-    const ROT = "🛢️ DIESEL DISPONÍVEL";
+    const ROT = "DIESEL DISPONÍVEL";
     txt(ROT, L + 18, y + 28, F.fonte(16, 700), F.navy);
     c.font = F.fonte(16, 700);
     const xT = L + 18 + c.measureText(ROT).width + 22;
@@ -2921,7 +2937,7 @@ async function compartilharFolha(dias, titulo) {
   const a = document.createElement("a");
   a.href = url; a.download = nome; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
-  toast("🖼️ Imagem salva no aparelho");
+  toast("Imagem salva no aparelho");
 }
 
 /* ============================================================
@@ -2991,7 +3007,7 @@ function detalheKpi(chave, iso) {
 
   switch (chave) {
     case "equipamentos":
-      return porEquip("🚛 Equipamentos do dia", eq => {
+      return porEquip("Equipamentos do dia", eq => {
         const l = somaAb(eq, "litros"), h = somaAb(eq, "horasTrabalhadas");
         const vi = viags.filter(v => v.equipamento === eq).reduce((s, v) => s + num(v.quantidade), 0);
         return `${fmt(l)} L · ${fmt(h, 1)} h${vi ? ` · ${vi} viagens` : ""}`;
@@ -3001,12 +3017,12 @@ function detalheKpi(chave, iso) {
       abast.forEach(a => { if (a.motorista) (mapa[a.motorista] ||= new Set()).add(a.equipamento); });
       viags.forEach(v => { if (v.motorista) (mapa[v.motorista] ||= new Set()).add(v.equipamento); });
       return {
-        titulo: "👷 Operadores do dia",
+        titulo: "Operadores do dia",
         linhas: Object.entries(mapa).map(([nome, eqs]) => linha(nome, [...eqs].join(", ")))
       };
     }
     case "diesel":
-      return porEquip("⛽ Consumo de diesel", eq => {
+      return porEquip("Consumo de diesel", eq => {
         const arr = abast.filter(a => a.equipamento === eq);
         if (!arr.length) return "";
         const s10 = arr.filter(a => a.combustivel !== "S-500").reduce((s, a) => s + num(a.litros), 0);
@@ -3016,26 +3032,26 @@ function detalheKpi(chave, iso) {
         return `${fmt(tot)} L${det ? ` (${det})` : ""}`;
       });
     case "horas":
-      return porEquip("⏱️ Horas trabalhadas", eq => { const h = somaAb(eq, "horasTrabalhadas"); return h ? `${fmt(h, 1)} h` : ""; });
+      return porEquip("Horas trabalhadas", eq => { const h = somaAb(eq, "horasTrabalhadas"); return h ? `${fmt(h, 1)} h` : ""; });
     case "lh":
-      return porEquip("📊 L/h por equipamento", eq => {
+      return porEquip("L/h por equipamento", eq => {
         const l = somaAb(eq, "litros"), h = somaAb(eq, "horasTrabalhadas");
         return h > 0 && l > 0 ? `${fmt(l / h, 2)} L/h · ${fmt(l)} L em ${fmt(h, 1)} h` : "";
       });
     case "toneladas":
-      return porEquip("🏭 Produção", eq => { const t = DB.tonEquipDia(eq, iso); return t > 0 ? `${fmtT(t)} t` : ""; });
+      return porEquip("Produção", eq => { const t = DB.tonEquipDia(eq, iso); return t > 0 ? `${fmtT(t)} t` : ""; });
     case "lton":
-      return porEquip("🏭 L/Ton por equipamento", eq => {
+      return porEquip("L/Ton por equipamento", eq => {
         const lt = DB.ltonEquipDia(eq, iso), t = DB.tonEquipDia(eq, iso);
         return lt > 0 ? `${fmt(lt, 2)} L/t · ${fmtL(somaAb(eq, "litros"))} L em ${fmtT(t)} t` : "";
       });
     case "media":
-      return porEquip("📈 Média km/L", eq => {
+      return porEquip("Média km/L", eq => {
         const l = somaAb(eq, "litros"), k = somaAb(eq, "kmRodado");
         return l > 0 && k > 0 ? `${fmt(k / l, 2)} km/L · ${fmt(k)} km` : "";
       });
     case "viagens":
-      return porEquip("🚚 Viagens", eq => {
+      return porEquip("Viagens", eq => {
         const arr = viags.filter(v => v.equipamento === eq);
         if (!arr.length) return "";
         const q = arr.reduce((s, v) => s + num(v.quantidade), 0);
@@ -3043,12 +3059,12 @@ function detalheKpi(chave, iso) {
         return `${q} viagens · ${rotas}`;
       });
     case "km":
-      return porEquip("🛣️ KM rodado", eq => { const k = somaAb(eq, "kmRodado"); return k ? `${fmt(k)} km` : ""; });
+      return porEquip("KM rodado", eq => { const k = somaAb(eq, "kmRodado"); return k ? `${fmt(k)} km` : ""; });
     case "arla":
-      return porEquip("💧 ARLA 32", eq => { const a = somaAb(eq, "litrosArla"); return a ? `${fmt(a)} L` : ""; });
+      return porEquip("ARLA 32", eq => { const a = somaAb(eq, "litrosArla"); return a ? `${fmt(a)} L` : ""; });
     case "manutencao":
       return {
-        titulo: "🔧 Manutenções do dia",
+        titulo: "Manutenções do dia",
         linhas: manut.map(m => linha(`${m.equipamento} · ${m.tipo}`, m.servico || "—"))
       };
     default:
@@ -3057,7 +3073,7 @@ function detalheKpi(chave, iso) {
 }
 
 function telaDashboard() {
-  $("#headerTitle").textContent = "📊 Índice";
+  tituloTopo("painel", "Índice");
   $("#headerSub").textContent = "ALERTAS · GRÁFICOS · METAS";
   const db = DB.load();
   const diaAtual = DB.garantirDiaAtual();
@@ -3085,8 +3101,8 @@ function telaDashboard() {
   // ---- alertas ----
   const alertas = DB.alertas();
   const alertasHtml = alertas.length
-    ? alertas.map(a => `<div class="alert-item alert-${a.nivel}"><span class="ai">${a.icone}</span><span>${a.msg}</span></div>`).join("")
-    : '<p class="empty" style="padding:8px 0">✅ Nenhum alerta. Frota sob controle.</p>';
+    ? alertas.map(a => `<div class="alert-item alert-${a.nivel}"><span class="ai">${ICONES[a.icone] || ""}</span><span>${a.msg}</span></div>`).join("")
+    : '<p class="empty" style="padding:8px 0">Nenhum alerta. Frota sob controle.</p>';
 
   // ---- séries (janela selecionada) ----
   const lab = x => DB.fmtBR(x.iso).slice(0, 5);
@@ -3114,9 +3130,9 @@ function telaDashboard() {
   const atual = totaisPeriodo(s);
   const anterior = totaisPeriodo(diasAnteriores.map(iso => DB.resumoDia(iso)));
   const comparaHtml = [
-    ["⛽ Diesel", "diesel", " L", 0], ["⏱️ Horas", "horas", " h", 1],
-    ["🏭 Produção", "toneladas", " t", 1], ["🚚 Viagens", "viagens", "", 0],
-    ["📊 L/h", "lh", " L/h", 2], ["🏭 L/Ton", "lton", " L/t", 2]
+    ["Diesel", "diesel", " L", 0], ["Horas", "horas", " h", 1],
+    ["Produção", "toneladas", " t", 1], ["Viagens", "viagens", "", 0],
+    ["L/h", "lh", " L/h", 2], ["L/Ton", "lton", " L/t", 2]
   ].map(([lbl, k, un, dec]) => {
     const a = atual[k], b = anterior[k];
     const menorMelhor = (k === "lh" || k === "lton");
@@ -3196,13 +3212,13 @@ function telaDashboard() {
 
   // ---- ranking por equipamento (comparação) ----
   const METRICAS = {
-    diesel:    { lbl: "⛽ Diesel (L)",     un: " L",    dec: 0, cor: "#ff7a1a" },
-    lton:      { lbl: "🏭 L/Ton",          un: " L/t",  dec: 2, cor: "#f59e0b" },
-    lh:        { lbl: "📊 L/h",            un: " L/h",  dec: 2, cor: "#ef4444" },
-    toneladas: { lbl: "🏭 Produção (t)",   un: " t",    dec: 0, cor: "#a855f7" },
-    viagens:   { lbl: "🚚 Viagens",        un: "",      dec: 0, cor: "#3b82f6" },
-    media:     { lbl: "📈 Média km/L",     un: " km/L", dec: 2, cor: "#22c55e" },
-    horas:     { lbl: "⏱️ Horas",          un: " h",    dec: 1, cor: "#eab308" }
+    diesel:    { lbl: "Diesel (L)",   un: " L",    dec: 0, cor: "#ff7a1a" },
+    lton:      { lbl: "L/Ton",        un: " L/t",  dec: 2, cor: "#f59e0b" },
+    lh:        { lbl: "L/h",          un: " L/h",  dec: 2, cor: "#ef4444" },
+    toneladas: { lbl: "Produção (t)", un: " t",    dec: 0, cor: "#a855f7" },
+    viagens:   { lbl: "Viagens",      un: "",      dec: 0, cor: "#3b82f6" },
+    media:     { lbl: "Média km/L",   un: " km/L", dec: 2, cor: "#22c55e" },
+    horas:     { lbl: "Horas",        un: " h",    dec: 1, cor: "#eab308" }
   };
   const met = METRICAS[painelMetrica] || METRICAS.diesel;
   const rank = DB.totaisPorEquipamento(diasTend)
@@ -3213,7 +3229,7 @@ function telaDashboard() {
               { tipo: "barra", cor: met.cor, titulo: met.lbl })
     : '<p class="empty">Sem dados no período.</p>';
   const rankLista = rank.map((x, i) =>
-    `<div class="itemrow"><div class="info">${i === 0 ? "🥇 " : ""}<b>${x.eq}</b>
+    `<div class="itemrow"><div class="info">${i === 0 ? "1º " : ""}<b>${x.eq}</b>
       <div class="sub">${fmt(x[painelMetrica], met.dec)}${met.un}</div></div></div>`).join("");
 
   const hm = DB.horasMes(mesDeHoras());
@@ -3235,34 +3251,34 @@ function telaDashboard() {
       ...(f.viagens || []).filter(v => v.equipamento === eq).map(v => v.motorista)
     ].filter(Boolean))].join(", ");
     return `<div class="itemrow" data-ficha="${eq}"><div class="info"><b>${eq}</b> ${pillStatus(st)}
-      <div class="sub">${mots ? `👷 ${mots}<br>` : ""}📍 ${medidores(eq).linha()}<br>${fmtL(litros)} L · ${md} · ${viag} viagens${lt > 0 ? ` · ${fmt(lt, 2)} L/t` : ""}</div></div><span class="mini">ficha ›</span></div>`;
+      <div class="sub">${mots ? `${mots}<br>` : ""}${medidores(eq).linha()}<br>${fmtL(litros)} L · ${md} · ${viag} viagens${lt > 0 ? ` · ${fmt(lt, 2)} L/t` : ""}</div></div><span class="mini">ficha ›</span></div>`;
   }).join("");
 
   app.innerHTML = `
     <div class="card">
-      <h3>${comparando ? `🔀 Comparação de ${sel.length} dias` : "📅 Geral do dia"}</h3>
+      <h3>${comparando ? `Comparação de ${sel.length} dias` : "Geral do dia"}</h3>
       ${seletorDias("pn", painelMes, sel, "Escolha os dias (toque em mais de um para comparar)")}
       ${comparando ? comparaDiasHtml : `
       <p class="hint hint-forte">Toque num cartão para ver os dados por trás dele.</p>
       <div class="kpi-grid">
-        <div class="kpi k-green ${painelKpi === "equipamentos" ? "kpi-ativo" : ""}" data-kpi="equipamentos"><div class="k-label">🚛 Equipamentos</div><div class="k-value">${String(r.operando.length).padStart(2, "0")}</div></div>
-        <div class="kpi k-blue ${painelKpi === "operadores" ? "kpi-ativo" : ""}" data-kpi="operadores"><div class="k-label">👷 Operadores</div><div class="k-value">${String(r.operadores.length).padStart(2, "0")}</div></div>
-        <div class="kpi ${painelKpi === "diesel" ? "kpi-ativo" : ""}" data-kpi="diesel"><div class="k-label">⛽ Consumo diesel</div><div class="k-value">${fmtL(r.diesel)}<span class="k-unit"> L</span></div></div>
-        <div class="kpi k-yellow ${painelKpi === "horas" ? "kpi-ativo" : ""}" data-kpi="horas"><div class="k-label">⏱️ Horas totais</div><div class="k-value">${fmt(r.horas, 1)}<span class="k-unit"> h</span></div></div>
-        <div class="kpi ${painelKpi === "lh" ? "kpi-ativo" : ""}" data-kpi="lh"><div class="k-label">📊 L/h</div><div class="k-value">${fmt(r.lh, 2)}<span class="k-unit"> L/h</span></div></div>
-        <div class="kpi k-blue ${painelKpi === "toneladas" ? "kpi-ativo" : ""}" data-kpi="toneladas"><div class="k-label">🏭 Produção</div><div class="k-value">${fmtT(r.toneladas)}<span class="k-unit"> t</span></div></div>
-        <div class="kpi k-yellow ${painelKpi === "lton" ? "kpi-ativo" : ""}" data-kpi="lton"><div class="k-label">🏭 L/Ton</div><div class="k-value">${fmt(r.lton, 2)}<span class="k-unit"> L/t</span></div></div>
-        <div class="kpi k-green ${painelKpi === "media" ? "kpi-ativo" : ""}" data-kpi="media"><div class="k-label">📈 Média km/L</div><div class="k-value">${fmt(r.media, 2)}<span class="k-unit"> km/L</span></div></div>
-        <div class="kpi k-blue ${painelKpi === "viagens" ? "kpi-ativo" : ""}" data-kpi="viagens"><div class="k-label">🚚 Viagens</div><div class="k-value">${r.viagens}</div></div>
-        <div class="kpi ${painelKpi === "km" ? "kpi-ativo" : ""}" data-kpi="km"><div class="k-label">🛣️ KM rodado</div><div class="k-value">${fmt(r.km)}<span class="k-unit"> km</span></div></div>
-        <div class="kpi ${painelKpi === "arla" ? "kpi-ativo" : ""}" data-kpi="arla"><div class="k-label">💧 ARLA</div><div class="k-value">${fmtL(r.arla)}<span class="k-unit"> L</span></div></div>
-        <div class="kpi k-red ${painelKpi === "manutencao" ? "kpi-ativo" : ""}" data-kpi="manutencao"><div class="k-label">🔧 Manutenção</div><div class="k-value">${String(r.manutencao.length).padStart(2, "0")}</div></div>
+        <div class="kpi k-green ${painelKpi === "equipamentos" ? "kpi-ativo" : ""}" data-kpi="equipamentos"><div class="k-label">Equipamentos</div><div class="k-value">${String(r.operando.length).padStart(2, "0")}</div></div>
+        <div class="kpi k-blue ${painelKpi === "operadores" ? "kpi-ativo" : ""}" data-kpi="operadores"><div class="k-label">Operadores</div><div class="k-value">${String(r.operadores.length).padStart(2, "0")}</div></div>
+        <div class="kpi ${painelKpi === "diesel" ? "kpi-ativo" : ""}" data-kpi="diesel"><div class="k-label">Consumo diesel</div><div class="k-value">${fmtL(r.diesel)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi k-yellow ${painelKpi === "horas" ? "kpi-ativo" : ""}" data-kpi="horas"><div class="k-label">Horas totais</div><div class="k-value">${fmt(r.horas, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi ${painelKpi === "lh" ? "kpi-ativo" : ""}" data-kpi="lh"><div class="k-label">L/h</div><div class="k-value">${fmt(r.lh, 2)}<span class="k-unit"> L/h</span></div></div>
+        <div class="kpi k-blue ${painelKpi === "toneladas" ? "kpi-ativo" : ""}" data-kpi="toneladas"><div class="k-label">Produção</div><div class="k-value">${fmtT(r.toneladas)}<span class="k-unit"> t</span></div></div>
+        <div class="kpi k-yellow ${painelKpi === "lton" ? "kpi-ativo" : ""}" data-kpi="lton"><div class="k-label">L/Ton</div><div class="k-value">${fmt(r.lton, 2)}<span class="k-unit"> L/t</span></div></div>
+        <div class="kpi k-green ${painelKpi === "media" ? "kpi-ativo" : ""}" data-kpi="media"><div class="k-label">Média km/L</div><div class="k-value">${fmt(r.media, 2)}<span class="k-unit"> km/L</span></div></div>
+        <div class="kpi k-blue ${painelKpi === "viagens" ? "kpi-ativo" : ""}" data-kpi="viagens"><div class="k-label">Viagens</div><div class="k-value">${r.viagens}</div></div>
+        <div class="kpi ${painelKpi === "km" ? "kpi-ativo" : ""}" data-kpi="km"><div class="k-label">KM rodado</div><div class="k-value">${fmt(r.km)}<span class="k-unit"> km</span></div></div>
+        <div class="kpi ${painelKpi === "arla" ? "kpi-ativo" : ""}" data-kpi="arla"><div class="k-label">ARLA</div><div class="k-value">${fmtL(r.arla)}<span class="k-unit"> L</span></div></div>
+        <div class="kpi k-red ${painelKpi === "manutencao" ? "kpi-ativo" : ""}" data-kpi="manutencao"><div class="k-label">Manutenção</div><div class="k-value">${String(r.manutencao.length).padStart(2, "0")}</div></div>
       </div>
       ${detalheHtml}`}
     </div>
 
     <div class="card">
-      <h3>⏱️ Horas do mês</h3>
+      <h3>Horas do mês</h3>
       <div class="field">
         <label>Mês</label>
         ${seletorMesHoras("hmMes")}
@@ -3272,45 +3288,45 @@ function telaDashboard() {
       menos manutenção e almoço.${hm.corrente
         ? " Mês em andamento: conta do dia 1º <b>até agora</b>, e não o mês inteiro." : ""}</p>
       <div class="kpi-grid">
-        <div class="kpi k-green"><div class="k-label">🕐 Horas de horímetro</div><div class="k-value">${fmt(hm.trabalhadas, 1)}<span class="k-unit"> h</span></div></div>
-        <div class="kpi k-yellow"><div class="k-label">⏱️ Horas do dia</div><div class="k-value">${fmt(hm.horasDia, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-green"><div class="k-label">Horas de horímetro</div><div class="k-value">${fmt(hm.trabalhadas, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-yellow"><div class="k-label">Horas do dia</div><div class="k-value">${fmt(hm.horasDia, 1)}<span class="k-unit"> h</span></div></div>
       </div>
       <div class="spacer"></div>
       <div class="kpi-grid">
-        <div class="kpi k-blue"><div class="k-label">🟦 Disponíveis</div><div class="k-value">${fmt(hm.disponiveis, 1)}<span class="k-unit"> h</span></div></div>
-        <div class="kpi k-red"><div class="k-label">🔴 Parado</div><div class="k-value">${fmt(hm.manutencao + hm.almoco, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-blue"><div class="k-label">Disponíveis</div><div class="k-value">${fmt(hm.disponiveis, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-red"><div class="k-label">Parado</div><div class="k-value">${fmt(hm.manutencao + hm.almoco, 1)}<span class="k-unit"> h</span></div></div>
       </div>
       <div class="spacer"></div>
       <div class="kpi-grid">
-        <div class="kpi k-yellow"><div class="k-label">📈 Utilização</div><div class="k-value">${fmt(hm.utilizacao, 1)}<span class="k-unit"> %</span></div></div>
-        <div class="kpi"><div class="k-label">📅 Dias contados</div><div class="k-value">${fmtN1(hm.linhas.length ? hm.linhas[0].dias : 0)}</div></div>
+        <div class="kpi k-yellow"><div class="k-label">Utilização</div><div class="k-value">${fmt(hm.utilizacao, 1)}<span class="k-unit"> %</span></div></div>
+        <div class="kpi"><div class="k-label">Dias contados</div><div class="k-value">${fmtN1(hm.linhas.length ? hm.linhas[0].dias : 0)}</div></div>
       </div>
       <div class="spacer"></div>
       <div class="itemlist">${hm.linhas.map(l =>
         `<div class="itemrow" data-ficha="${l.equip}"><div class="info"><b>${l.equip}</b>
           <span class="pill ${l.utilizacao >= 75 ? "pill-green" : l.utilizacao >= 50 ? "pill-yellow" : "pill-red"}">${fmt(l.utilizacao, 1)}%</span>
-          <div class="sub">🕐 ${fmtH(l.trabalhadas)} · ⏱️ ${fmtH(l.horasDia)} · de ${fmtH(l.disponiveis)}${(l.manutencao + l.almoco) > 0
+          <div class="sub">horímetro ${fmtH(l.trabalhadas)} · dia ${fmtH(l.horasDia)} · de ${fmtH(l.disponiveis)}${(l.manutencao + l.almoco) > 0
             ? ` · parado ${fmtH(l.manutencao + l.almoco)}` : ""}</div></div><span class="mini">ficha ›</span></div>`
       ).join("") || '<p class="empty">Nenhum equipamento na frota.</p>'}</div>
     </div>
 
     <div class="spacer"></div>
     <div class="card">
-      <h3>💰 Horas pagas no mês <span class="mini">(caminhões)</span></h3>
+      <h3>Horas pagas no mês <span class="mini">(caminhões)</span></h3>
       <p class="hint hint-forte">Conta de <b>contrato</b>, com a <b>hora dia</b> — não é o
       horímetro. O mínimo é pago mesmo se o caminhão rodar menos; se rodar mais, paga o que rodou.
       Manutenção abate o mínimo, no máximo <b>${fmt(db.config.horasPagasDia, 2)} h por dia útil</b>.${pg.corrente
         ? ` <b>Mês em andamento:</b> o mínimo aqui é o proporcional aos dias úteis já passados — no
            fechamento ele vira o do contrato inteiro.` : " <b>Mês fechado.</b>"}</p>
-      ${!pg.linhas.length ? '<p class="empty">Nenhum caminhão com mínimo definido. Configure em ⚙️ Configurações.</p>' : `
+      ${!pg.linhas.length ? '<p class="empty">Nenhum caminhão com mínimo definido. Configure em Configurações.</p>' : `
       <div class="kpi-grid">
-        <div class="kpi k-green"><div class="k-label">💰 A pagar</div><div class="k-value">${fmt(pg.pagar, 1)}<span class="k-unit"> h</span></div></div>
-        <div class="kpi k-yellow"><div class="k-label">⏱️ Hora dia</div><div class="k-value">${fmt(pg.trabalhadas, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-green"><div class="k-label">A pagar</div><div class="k-value">${fmt(pg.pagar, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-yellow"><div class="k-label">Hora dia</div><div class="k-value">${fmt(pg.trabalhadas, 1)}<span class="k-unit"> h</span></div></div>
       </div>
       <div class="spacer"></div>
       <div class="kpi-grid">
-        <div class="kpi k-red"><div class="k-label">🔧 Desconto da manutenção</div><div class="k-value">${fmt(pg.desconto, 1)}<span class="k-unit"> h</span></div></div>
-        <div class="kpi k-blue"><div class="k-label">📋 Mínimo ajustado</div><div class="k-value">${fmt(pg.ajustado, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-red"><div class="k-label">Desconto da manutenção</div><div class="k-value">${fmt(pg.desconto, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-blue"><div class="k-label">Mínimo ajustado</div><div class="k-value">${fmt(pg.ajustado, 1)}<span class="k-unit"> h</span></div></div>
       </div>
       <div class="spacer"></div>
       <div class="itemlist">${pg.linhas.map(l => {
@@ -3319,7 +3335,7 @@ function telaDashboard() {
           : l.aMais > 0.05 ? `<span class="pill pill-green">+${fmtH(l.aMais)}</span>`
           : '<span class="pill pill-gray">no mínimo</span>';
         return `<div class="itemrow" data-ficha="${l.equip}"><div class="info"><b>${l.equip}</b> ${etiqueta}
-          <div class="sub">💰 paga <b>${fmtH(l.pagar)}</b> · rodou ${fmtH(l.trabalhadas)} · mínimo ${fmtH(l.ajustado)}${
+          <div class="sub">paga <b>${fmtH(l.pagar)}</b> · rodou ${fmtH(l.trabalhadas)} · mínimo ${fmtH(l.ajustado)}${
             l.desconto > 0.05 ? ` (−${fmtH(l.desconto)} de ${l.diasComParada} dia(s) parado)` : ""}</div>
           </div><span class="mini">ficha ›</span></div>`;
       }).join("")}</div>
@@ -3331,36 +3347,36 @@ function telaDashboard() {
 
     <p class="section-title" style="margin-top:16px">Estoques dos tanques</p>
     <div class="kpi-grid">
-      <div class="kpi k-yellow"><div class="k-label">🛢️ Diesel S-10</div><div class="k-value">${fmtL(db.estoque.s10)}<span class="k-unit"> L</span></div></div>
-      <div class="kpi k-yellow"><div class="k-label">🛢️ Diesel S-500</div><div class="k-value">${fmtL(db.estoque.s500)}<span class="k-unit"> L</span></div></div>
-      <div class="kpi k-blue"><div class="k-label">💧 ARLA 32</div><div class="k-value">${fmtL(db.estoque.arla)}<span class="k-unit"> L</span></div></div>
+      <div class="kpi k-yellow"><div class="k-label">Diesel S-10</div><div class="k-value">${fmtL(db.estoque.s10)}<span class="k-unit"> L</span></div></div>
+      <div class="kpi k-yellow"><div class="k-label">Diesel S-500</div><div class="k-value">${fmtL(db.estoque.s500)}<span class="k-unit"> L</span></div></div>
+      <div class="kpi k-blue"><div class="k-label">ARLA 32</div><div class="k-value">${fmtL(db.estoque.arla)}<span class="k-unit"> L</span></div></div>
     </div>
 
     <div class="spacer"></div>
     <div class="card">
-      <h3>🔔 Alertas <span class="mini">${alertas.length ? "(" + alertas.length + ")" : ""}</span></h3>
+      <h3>Alertas <span class="mini">${alertas.length ? "(" + alertas.length + ")" : ""}</span></h3>
       ${alertasHtml}
     </div>
 
     <div class="card">
-      <h3>📈 Tendências</h3>
+      <h3>Tendências</h3>
       ${seletorDias("tr", trendMes, diasTend, "Dias do gráfico (toque para incluir ou tirar)")}
-      <p class="chart-title">⛽ Diesel (L)</p>${gDiesel}
-      <p class="chart-title">🏭 Produção (t)</p>${gProd}
-      <p class="chart-title">🏭 L/Ton (litros por tonelada)</p>${gLton}
-      <p class="chart-title">📊 L/h (litros por hora)</p>${gLh}
-      <p class="chart-title">📈 Média da frota (km/L)</p>${gMedia}
-      <p class="chart-title">🚚 Viagens</p>${gViagens}
+      <p class="chart-title">Diesel (L)</p>${gDiesel}
+      <p class="chart-title">Produção (t)</p>${gProd}
+      <p class="chart-title">L/Ton (litros por tonelada)</p>${gLton}
+      <p class="chart-title">L/h (litros por hora)</p>${gLh}
+      <p class="chart-title">Média da frota (km/L)</p>${gMedia}
+      <p class="chart-title">Viagens</p>${gViagens}
     </div>
 
     <div class="card">
-      <h3>🔀 Comparativo <span class="mini">janela atual × anterior</span></h3>
+      <h3>Comparativo <span class="mini">janela atual × anterior</span></h3>
       <p class="hint">${N} dia(s) selecionado(s) nas Tendências, comparados com os ${N} dias anteriores.</p>
       <div class="kpi-grid">${comparaHtml}</div>
     </div>
 
     <div class="card">
-      <h3>🏆 Comparação por equipamento</h3>
+      <h3>Comparação por equipamento</h3>
       <div class="field">
         <label>Indicador</label>
         <select id="pnMetrica">
@@ -3373,12 +3389,12 @@ function telaDashboard() {
     </div>
 
     <div class="card">
-      <h3>🚛 Status da frota <span class="mini">${DB.fmtBR(dia)}</span></h3>
+      <h3>Status da frota <span class="mini">${DB.fmtBR(dia)}</span></h3>
       <div class="itemlist">${statusHtml}</div>
     </div>
 
     <div class="card">
-      <h3>🎯 Metas de gestão</h3>
+      <h3>Metas de gestão</h3>
       <div class="metas-grid">
         <div class="field"><label>Média mínima km/L</label><input id="cfgMedia" inputmode="decimal" value="${db.config.metaMedia}"></div>
         <div class="field"><label>Consumo máx. L/h</label><input id="cfgLh" inputmode="decimal" value="${db.config.metaLh}"></div>
@@ -3390,7 +3406,7 @@ function telaDashboard() {
     </div>
 
     <div class="card">
-      <h3>💰 Horas pagas dos caminhões</h3>
+      <h3>Horas pagas dos caminhões</h3>
       <p class="hint">O <b>mínimo pago</b> de cada regime, e o <b>teto de desconto</b> da
       manutenção por dia útil. No ADM, 200 h ÷ 22 dias úteis = 9,09 h por dia. Regime deixado em
       <b>0</b> não entra no controle — nenhum caminhão dele aparece com garantia falsa.</p>
@@ -3420,7 +3436,7 @@ function telaDashboard() {
     if (teto <= 0) { toast("O teto por dia tem de ser maior que zero", "err"); return; }
     DB.setConfig({ regimes, horasPagasDia: teto });
     const m = $("#cfgPagasMsg");
-    if (m) { m.textContent = "✅ Salvo. O Índice e as fichas já usam estes números."; m.style.color = "var(--green)"; }
+    if (m) { m.textContent = "Salvo. O Índice e as fichas já usam estes números."; m.style.color = "var(--green)"; }
     toast("✔ Horas pagas salvas");
   };
 
@@ -3462,29 +3478,29 @@ function telaDashboard() {
    FROTA · lista de equipamentos com status
    ============================================================ */
 function telaFrota() {
-  $("#headerTitle").textContent = "🚛 Frota";
+  tituloTopo("caminhao", "Frota");
   $("#headerSub").textContent = "STATUS DE CADA EQUIPAMENTO";
   const db = DB.load();
 
   app.innerHTML = `
     <div class="card">
-      <h3>🚛 Equipamentos <span class="mini">(${db.equipamentos.length})</span></h3>
+      <h3>Equipamentos <span class="mini">(${db.equipamentos.length})</span></h3>
       <p class="hint">Toque num equipamento para ver a ficha completa.</p>
       <div class="itemlist">${db.equipamentos.map(eq => {
         const f = DB.fichaEquipamento(eq);
         const rev = f.proximaRevisao;
         const hor = f.ultimo.horimetroFinal;
         let revInfo = "sem revisão definida";
-        if (rev != null) revInfo = (hor != null && hor >= rev) ? "⚠️ revisão vencida"
+        if (rev != null) revInfo = (hor != null && hor >= rev) ? "revisão vencida"
           : `próxima revisão: ${fmt(rev)}`;
         const und = f.unidadeMedia;
         return `<div class="itemrow" data-ficha="${eq}"><div class="info"><b>${eq}</b> ${pillStatus(f.status)}
-          <div class="sub">📍 ${medidores(eq).linha()}<br>${fmt(f.media, 2)} ${und} · ${revInfo}</div></div><span class="mini">ver ›</span></div>`;
+          <div class="sub">${medidores(eq).linha()}<br>${fmt(f.media, 2)} ${und} · ${revInfo}</div></div><span class="mini">ver ›</span></div>`;
       }).join("")}</div>
     </div>
 
     <div class="card">
-      <h3>➕ Adicionar equipamento</h3>
+      <h3>Adicionar equipamento</h3>
       <div class="field">
         <label>Código</label>
         <input id="novoEq" placeholder="ex: CB-30, PC-03">
@@ -3492,8 +3508,8 @@ function telaFrota() {
       <div class="field">
         <label>Medição do equipamento</label>
         <select id="novoTipo">
-          <option value="km_horimetro">🚚 KM + Horímetro (mede em km/L)</option>
-          <option value="horimetro">🚜 Somente Horímetro (mede em L/h)</option>
+          <option value="km_horimetro">KM + Horímetro (mede em km/L)</option>
+          <option value="horimetro">Somente Horímetro (mede em L/h)</option>
         </select>
       </div>
       <div class="field-row">
@@ -3536,7 +3552,7 @@ function telaFrota() {
    ============================================================ */
 function telaFicha() {
   const eq = fichaEquip || DB.load().equipamentos[0];
-  $("#headerTitle").textContent = "🚛 " + eq;
+  tituloTopo("caminhao", eq);
   $("#headerSub").textContent = "FICHA DO EQUIPAMENTO";
   const f = DB.fichaEquipamento(eq);
 
@@ -3548,7 +3564,7 @@ function telaFicha() {
 
   app.innerHTML = `
     <div class="card">
-      <h3>🚦 Situação</h3>
+      <h3>Situação</h3>
       <div class="field">
         <label>Status atual</label>
         <select id="fkStatus">${optsStatus(f.status)}</select>
@@ -3556,8 +3572,8 @@ function telaFicha() {
       <div class="field">
         <label>Medição do equipamento</label>
         <select id="fkTipo">
-          <option value="km_horimetro" ${f.tipo === "km_horimetro" ? "selected" : ""}>🚚 KM + Horímetro (km/L)</option>
-          <option value="horimetro" ${f.tipo === "horimetro" ? "selected" : ""}>🚜 Somente Horímetro (L/h)</option>
+          <option value="km_horimetro" ${f.tipo === "km_horimetro" ? "selected" : ""}>KM + Horímetro (km/L)</option>
+          <option value="horimetro" ${f.tipo === "horimetro" ? "selected" : ""}>Somente Horímetro (L/h)</option>
         </select>
       </div>
       <div class="field-row">
@@ -3610,121 +3626,121 @@ function telaFicha() {
       </div>
       <p class="hint">São <b>${fmtH(hf.turnoDia)}</b> por dia — é o que entra na conta de horas
       disponíveis. Turno que vira a noite (19:00 às 07:00) também conta certo.</p>
-      <button class="btn btn-primary btn-sm" id="btnFkSalvar">💾 Salvar situação</button>
+      <button class="btn btn-primary btn-sm" id="btnFkSalvar">${I("salvar")} Salvar situação</button>
     </div>
 
     <div class="kpi-grid">
-      <div class="kpi k-blue"><div class="k-label">📍 Horímetro atual</div><div class="k-value">${medidores(eq).horTxt.replace(" h", "")}<span class="k-unit"> h</span></div></div>
+      <div class="kpi k-blue"><div class="k-label">Horímetro atual</div><div class="k-value">${medidores(eq).horTxt.replace(" h", "")}<span class="k-unit"> h</span></div></div>
       ${medidores(eq).temKm
-        ? `<div class="kpi k-blue"><div class="k-label">📍 KM atual</div><div class="k-value">${medidores(eq).kmTxt.replace(" km", "")}<span class="k-unit"> km</span></div></div>`
-        : `<div class="kpi"><div class="k-label">📍 KM atual</div><div class="k-value">—<span class="k-unit"> sem odômetro</span></div></div>`}
+        ? `<div class="kpi k-blue"><div class="k-label">KM atual</div><div class="k-value">${medidores(eq).kmTxt.replace(" km", "")}<span class="k-unit"> km</span></div></div>`
+        : `<div class="kpi"><div class="k-label">KM atual</div><div class="k-value">—<span class="k-unit"> sem odômetro</span></div></div>`}
     </div>
 
     <div class="spacer"></div>
 
     <div class="kpi-grid">
-      <div class="kpi"><div class="k-label">⛽ Diesel total</div><div class="k-value">${fmt(f.totDiesel)}<span class="k-unit"> L</span></div></div>
-      <div class="kpi k-green"><div class="k-label">📈 Média geral</div><div class="k-value">${fmt(f.media, 2)}<span class="k-unit"> ${f.unidadeMedia}</span></div></div>
+      <div class="kpi"><div class="k-label">Diesel total</div><div class="k-value">${fmt(f.totDiesel)}<span class="k-unit"> L</span></div></div>
+      <div class="kpi k-green"><div class="k-label">Média geral</div><div class="k-value">${fmt(f.media, 2)}<span class="k-unit"> ${f.unidadeMedia}</span></div></div>
       ${f.tipo === "horimetro" ? "" :
-        `<div class="kpi k-yellow"><div class="k-label">📊 Consumo L/h</div><div class="k-value">${fmt(f.lh, 2)}<span class="k-unit"> L/h</span></div></div>`}
-      <div class="kpi k-blue"><div class="k-label">🚚 Viagens</div><div class="k-value">${fmt(f.totViag)}</div></div>
-      <div class="kpi"><div class="k-label">🛣️ KM total</div><div class="k-value">${fmt(f.totKm)}<span class="k-unit"> km</span></div></div>
-      <div class="kpi k-yellow"><div class="k-label">⏱️ Horas do dia</div><div class="k-value">${fmt(f.totHoras, 1)}<span class="k-unit"> h</span></div></div>
-      <div class="kpi k-yellow"><div class="k-label">🕐 Horas de horímetro</div><div class="k-value">${fmt(f.totHorimetro, 1)}<span class="k-unit"> h</span></div></div>
-      <div class="kpi k-blue"><div class="k-label">🏭 Produção</div><div class="k-value">${fmtT(f.totToneladas)}<span class="k-unit"> t</span></div></div>
-      <div class="kpi k-yellow"><div class="k-label">🏭 L/Ton</div><div class="k-value">${fmt(f.lton, 2)}<span class="k-unit"> L/t</span></div></div>
+        `<div class="kpi k-yellow"><div class="k-label">Consumo L/h</div><div class="k-value">${fmt(f.lh, 2)}<span class="k-unit"> L/h</span></div></div>`}
+      <div class="kpi k-blue"><div class="k-label">Viagens</div><div class="k-value">${fmt(f.totViag)}</div></div>
+      <div class="kpi"><div class="k-label">KM total</div><div class="k-value">${fmt(f.totKm)}<span class="k-unit"> km</span></div></div>
+      <div class="kpi k-yellow"><div class="k-label">Horas do dia</div><div class="k-value">${fmt(f.totHoras, 1)}<span class="k-unit"> h</span></div></div>
+      <div class="kpi k-yellow"><div class="k-label">Horas de horímetro</div><div class="k-value">${fmt(f.totHorimetro, 1)}<span class="k-unit"> h</span></div></div>
+      <div class="kpi k-blue"><div class="k-label">Produção</div><div class="k-value">${fmtT(f.totToneladas)}<span class="k-unit"> t</span></div></div>
+      <div class="kpi k-yellow"><div class="k-label">L/Ton</div><div class="k-value">${fmt(f.lton, 2)}<span class="k-unit"> L/t</span></div></div>
     </div>
 
     <div class="spacer"></div>
     <div class="card">
-      <h3>⏱️ Horas do mês</h3>
+      <h3>Horas do mês</h3>
       <div class="field">
         <label>Mês</label>
         ${seletorMesHoras("fkMes")}
       </div>
       <div class="kpi-grid">
-        <div class="kpi k-green"><div class="k-label">🕐 Horas de horímetro</div><div class="k-value">${fmt(hf.trabalhadas, 1)}<span class="k-unit"> h</span></div></div>
-        <div class="kpi k-yellow"><div class="k-label">⏱️ Horas do dia</div><div class="k-value">${fmt(hf.horasDia, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-green"><div class="k-label">Horas de horímetro</div><div class="k-value">${fmt(hf.trabalhadas, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-yellow"><div class="k-label">Horas do dia</div><div class="k-value">${fmt(hf.horasDia, 1)}<span class="k-unit"> h</span></div></div>
       </div>
       <div class="spacer"></div>
       <div class="kpi-grid">
-        <div class="kpi k-blue"><div class="k-label">🟦 Disponíveis</div><div class="k-value">${fmt(hf.disponiveis, 1)}<span class="k-unit"> h</span></div></div>
-        <div class="kpi k-yellow"><div class="k-label">📈 Utilização</div><div class="k-value">${fmt(hf.utilizacao, 1)}<span class="k-unit"> %</span></div></div>
+        <div class="kpi k-blue"><div class="k-label">Disponíveis</div><div class="k-value">${fmt(hf.disponiveis, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-yellow"><div class="k-label">Utilização</div><div class="k-value">${fmt(hf.utilizacao, 1)}<span class="k-unit"> %</span></div></div>
       </div>
-      <p class="hint">🕐 <b>Horímetro</b>: o que o relógio da máquina andou no mês (último menos o
-      primeiro). ⏱️ <b>Dia</b>: a soma das horas apontadas em cada lançamento. Quando as duas
+      <p class="hint"><b>Horímetro</b>: o que o relógio da máquina andou no mês (último menos o
+      primeiro). <b>Dia</b>: a soma das horas apontadas em cada lançamento. Quando as duas
       separam, é sinal de horímetro corrigido à mão ou de máquina que rodou sem abastecer.</p>
       <div class="spacer"></div>
       <div class="kpi-grid">
-        <div class="kpi"><div class="k-label">📅 Dias contados</div><div class="k-value">${fmtN1(hf.dias)}</div></div>
-        <div class="kpi k-red"><div class="k-label">🔴 Parado</div><div class="k-value">${fmt(hf.manutencao + hf.almoco, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi"><div class="k-label">Dias contados</div><div class="k-value">${fmtN1(hf.dias)}</div></div>
+        <div class="kpi k-red"><div class="k-label">Parado</div><div class="k-value">${fmt(hf.manutencao + hf.almoco, 1)}<span class="k-unit"> h</span></div></div>
       </div>
       <div class="spacer"></div>
       <div class="itemlist">
         <div class="itemrow"><div class="info">Turno · ${hf.turno.inicio} às ${hf.turno.fim}
           <div class="sub">${fmtH(hf.turnoDia)} por dia × ${fmtN1(hf.dias)} dia(s) = ${fmtH(hf.bruto)}${
             hf.corrente ? " · mês em andamento, conta até agora" : ""}</div></div></div>
-        <div class="itemrow"><div class="info">🔴 Manutenção no mês
+        <div class="itemrow"><div class="info">Manutenção no mês
           <div class="sub">− ${fmtH(hf.manutencao)}</div></div></div>
-        <div class="itemrow"><div class="info">⏸️ Almoço no mês
+        <div class="itemrow"><div class="info">Almoço no mês
           <div class="sub">− ${fmtH(hf.almoco)}</div></div></div>
       </div>
     </div>
 
     ${!(medidores(eq).temKm && pf.ativo) ? "" : `
     <div class="card">
-      <h3>💰 Horas pagas no mês</h3>
+      <h3>Horas pagas no mês</h3>
       <p class="hint">A conta do <b>contrato</b>, aberta linha por linha para você conferir de
       cabeça. A base é a <b>hora dia</b>, e não o horímetro.${pf.corrente
         ? ` <b>Mês em andamento:</b> o mínimo está proporcional a ${fmtN1(pf.uteisAteHoje)} de
            ${fmtN1(pf.uteisMes)} dias úteis.` : ""}</p>
       <div class="kpi-grid">
-        <div class="kpi k-green"><div class="k-label">💰 A pagar</div><div class="k-value">${fmt(pf.pagar, 1)}<span class="k-unit"> h</span></div></div>
+        <div class="kpi k-green"><div class="k-label">A pagar</div><div class="k-value">${fmt(pf.pagar, 1)}<span class="k-unit"> h</span></div></div>
         <div class="kpi ${pf.garantia > 0.05 ? "k-yellow" : "k-blue"}"><div class="k-label">${
-          pf.garantia > 0.05 ? "🟡 Garantia (pago sem rodar)" : "🟢 Rodou a mais"}</div><div class="k-value">${
+          pf.garantia > 0.05 ? "Garantia (pago sem rodar)" : "Rodou a mais"}</div><div class="k-value">${
           fmt(pf.garantia > 0.05 ? pf.garantia : pf.aMais, 1)}<span class="k-unit"> h</span></div></div>
       </div>
       <div class="spacer"></div>
       <div class="itemlist">
-        <div class="itemrow"><div class="info">📋 Mínimo do contrato · ${DB.load().config.regimes[pf.regime]
+        <div class="itemrow"><div class="info">Mínimo do contrato · ${DB.load().config.regimes[pf.regime]
           ? DB.load().config.regimes[pf.regime].nome : pf.regime}${DB.load().minimoEquip[eq]
           ? ' <span class="pill pill-blue">próprio</span>' : ""}
           <div class="sub">${fmtH(pf.minimo)}${pf.corrente
             ? ` · contrato cheio ${fmtH(pf.minimoCheio)}` : ""}</div></div></div>
-        <div class="itemrow"><div class="info">🔧 Desconto da manutenção
+        <div class="itemrow"><div class="info">Desconto da manutenção
           <div class="sub">− ${fmtH(pf.desconto)}${pf.diasComParada
             ? ` · ${pf.diasComParada} dia(s) útil(eis) com parada, no máximo ${fmt(DB.load().config.horasPagasDia, 2)} h cada` : ""}${
             pf.manutencao > pf.desconto + 0.05
               ? `<br><span class="mini">parou ${fmtH(pf.manutencao)} de relógio; o teto por dia e o fim de semana aparam o resto</span>` : ""}</div></div></div>
-        <div class="itemrow"><div class="info">📐 Mínimo ajustado
+        <div class="itemrow"><div class="info">Mínimo ajustado
           <div class="sub">${fmtH(pf.minimo)} − ${fmtH(pf.desconto)} = <b>${fmtH(pf.ajustado)}</b></div></div></div>
-        <div class="itemrow"><div class="info">⏱️ Hora dia trabalhada
+        <div class="itemrow"><div class="info">Hora dia trabalhada
           <div class="sub">${fmtH(pf.trabalhadas)}</div></div></div>
-        <div class="itemrow"><div class="info"><b>💰 A pagar</b>
+        <div class="itemrow"><div class="info"><b>A pagar</b>
           <div class="sub">o maior entre ${fmtH(pf.trabalhadas)} e ${fmtH(pf.ajustado)} = <b>${fmtH(pf.pagar)}</b></div></div></div>
       </div>
     </div>`}
 
     <div class="card">
-      <h3>📈 Evolução da média (${f.unidadeMedia})</h3>
+      <h3>Evolução da média (${f.unidadeMedia})</h3>
       ${serieMedia.length ? grafico(serieMedia, { tipo: "linha", cor: "#22c55e" }) : '<p class="empty">Sem abastecimentos registrados.</p>'}
     </div>
 
     <div class="card">
-      <h3>⛽ Abastecimentos</h3>
+      <h3>Abastecimentos</h3>
       <div class="itemlist">${f.abast.slice().reverse().slice(0, 15).map(a =>
-        `<div class="itemrow"><div class="info"><b>${DB.fmtBR(a.iso)}${a.hora ? " · " + a.hora : ""}</b>${a.motorista ? ` <span class="mini">👷 ${a.motorista}</span>` : ""}
+        `<div class="itemrow"><div class="info"><b>${DB.fmtBR(a.iso)}${a.hora ? " · " + a.hora : ""}</b>${a.motorista ? ` <span class="mini">${a.motorista}</span>` : ""}
           <div class="sub">${resumoLancamento(a)}</div></div></div>`
       ).join("") || '<p class="empty">Nenhum.</p>'}</div>
     </div>
 
     <div class="card">
-      <h3>🕓 Paradas para manutenção</h3>
+      <h3>Paradas para manutenção</h3>
       ${listaParadas(DB.paradasDe(eq, 15), false)}
     </div>
 
     <div class="card">
-      <h3>🔧 Manutenções</h3>
+      <h3>Manutenções</h3>
       <div class="itemlist">${f.manut.slice().reverse().map(m =>
         `<div class="itemrow"><div class="info"><b>${DB.fmtBR(m.iso)}</b> <span class="pill pill-red">${m.tipo}</span>
           <div class="sub">${m.servico || "—"} · ${m.horKm || "—"}</div></div></div>`
@@ -3732,12 +3748,12 @@ function telaFicha() {
     </div>
 
     <div class="card">
-      <h3>⚠️ Excluir equipamento</h3>
+      <h3>Excluir equipamento</h3>
       <p class="hint">Remove <b>${eq}</b> da frota. O histórico dos dias anteriores é mantido. Para confirmar, digite <b>CONFIRMAR</b> abaixo.</p>
       <div class="field">
         <input id="fkExcluirConf" placeholder="Digite CONFIRMAR" autocomplete="off">
       </div>
-      <button class="btn btn-danger" id="btnExcluirEq">🗑️ Excluir ${eq}</button>
+      <button class="btn btn-danger" id="btnExcluirEq">${I("lixo")} Excluir ${eq}</button>
     </div>
   `;
 
@@ -3788,7 +3804,7 @@ function telaCorrigir() {
   // O operador só mexe no que ELE lançou hoje; o gestor mexe em tudo.
   const gestor = (typeof Auth === "undefined") || Auth.ehGestor();
   const meuEmail = (typeof Auth !== "undefined" && Auth.usuario) ? Auth.usuario.email : "";
-  $("#headerTitle").textContent = gestor ? "✏️ Corrigir Dados" : "✏️ Meus lançamentos";
+  tituloTopo("lapis", gestor ? "Corrigir Dados" : "Meus lançamentos");
   $("#headerSub").textContent = gestor ? "EDITAR · EXCLUIR" : "SÓ OS SEUS, DE HOJE";
   const dias = DB.listaDias();
   const atual = DB.garantirDiaAtual();
@@ -3801,7 +3817,7 @@ function telaCorrigir() {
         <select id="cDia">${dias.map(d => `<option value="${d}" ${d === sel ? "selected" : ""}>${DB.fmtBR(d)}</option>`).join("")}</select>
       </div>
     </div>` : `<div class="card">
-      <h3>📅 Hoje · ${DB.fmtBR(sel)}</h3>
+      <h3>Hoje · ${DB.fmtBR(sel)}</h3>
       <p class="hint">Aqui aparecem só os lançamentos feitos por você hoje. Para corrigir um dia anterior,
       fale com o gestor.</p>
       <input type="hidden" id="cDia" value="${sel}">
@@ -3820,31 +3836,31 @@ function telaCorrigir() {
     };
     let html = "";
 
-    html += `<div class="card"><h3>⛽ Abastecimentos</h3>`;
+    html += `<div class="card"><h3>Abastecimentos</h3>`;
     html += d.abastecimentos.length ? d.abastecimentos.map(a => `
       <div class="itemrow"><div class="info"><b>${a.equipamento}</b>${a.hora ? ` <span class="mini">${a.hora}</span>` : ""} · ${fmtL(a.litros)} L · ${a.media} ${a.unidadeMedia || "km/L"}
-        <div class="sub">${resumoLancamento(a)}${a.motorista ? " · 👷 " + a.motorista : ""}</div></div>
+        <div class="sub">${resumoLancamento(a)}${a.motorista ? " · " + a.motorista : ""}</div></div>
         <div>
-          <button class="btn-sm btn btn-blue" data-edit="${a.id}">✏️</button>
-          <button class="del" data-del-ab="${a.id}">🗑️</button>
+          <button class="btn-sm btn btn-blue" data-edit="${a.id}" aria-label="Editar lançamento">${ICONES.lapis}</button>
+          <button class="del" data-del-ab="${a.id}" aria-label="Excluir abastecimento">${ICONES.lixo}</button>
         </div>
       </div>`).join("") : '<p class="empty">Nenhum abastecimento.</p>';
     html += `</div>`;
 
-    html += `<div class="card"><h3>🚚 Viagens</h3>`;
+    html += `<div class="card"><h3>Viagens</h3>`;
     html += d.viagens.length ? d.viagens.map(v => `
       <div class="itemrow"><div class="info"><b>${v.equipamento}</b> · Origem ${v.origem} → Destino ${v.destino} = ${v.quantidade}
         <div class="sub">${v.motorista}</div></div>
-        <button class="del" data-del-vi="${v.id}">🗑️</button>
+        <button class="del" data-del-vi="${v.id}" aria-label="Excluir viagem">${ICONES.lixo}</button>
       </div>`).join("") : '<p class="empty">Nenhuma viagem.</p>';
     html += `</div>`;
 
     if (gestor) {
-    html += `<div class="card"><h3>🔧 Manutenções</h3>`;
+    html += `<div class="card"><h3>Manutenções</h3>`;
     html += d.manutencoes.length ? d.manutencoes.map(m => `
       <div class="itemrow"><div class="info"><b>${m.equipamento}</b> · ${m.tipo}
         <div class="sub">${m.servico || "—"}</div></div>
-        <button class="del" data-del-ma="${m.id}">🗑️</button>
+        <button class="del" data-del-ma="${m.id}" aria-label="Excluir manutenção">${ICONES.lixo}</button>
       </div>`).join("") : '<p class="empty">Nenhuma manutenção.</p>';
     html += `</div>`;
     }
@@ -3884,7 +3900,7 @@ function mostrarLogin(aviso) {
   document.body.classList.add("sem-login");
   app.innerHTML = `
     <div class="login-box">
-      <div class="login-logo">🚛</div>
+      <div class="login-logo">${ICONES.caminhao}</div>
       <h2>GP2T · Gestão de Frota</h2>
       <p class="hint">Entre com seu usuário e senha para continuar.</p>
       ${aviso ? `<p class="hint" style="color:var(--red)">${aviso}</p>` : ""}
@@ -3892,7 +3908,7 @@ function mostrarLogin(aviso) {
       <div class="field"><label>Senha</label><input id="loginSenha" type="password" autocomplete="current-password" placeholder="••••••"></div>
       <button class="btn btn-primary" id="btnEntrar">Entrar</button>
       <p class="hint" id="loginMsg" style="margin-top:10px"></p>
-      ${!navigator.onLine ? `<p class="hint" style="color:var(--blue,#93c5fd)">📴 Sem internet — dá para entrar
+      ${!navigator.onLine ? `<p class="hint" style="color:var(--blue,#93c5fd)">Sem internet — dá para entrar
       com um usuário que já usou este celular. Os lançamentos sobem sozinhos quando a rede voltar.</p>` : ""}
       <p class="hint">Esqueceu a senha? Peça ao gestor para redefinir.</p>
       ${Legal.links()}
@@ -3905,9 +3921,9 @@ function mostrarLogin(aviso) {
     if (!email || !senha) { msg("Preencha usuário e senha.", "var(--red)"); return; }
     msg("Entrando…");
     const r = await Auth.entrar(email, senha);
-    if (!r.ok) { msg("❌ " + r.erro, "var(--red)"); return; }
+    if (!r.ok) { msg(r.erro, "var(--red)"); return; }
     iniciarApp();
-    if (r.offline) toast("📴 Entrou sem internet — sincroniza quando a rede voltar");
+    if (r.offline) toast("Entrou sem internet — sincroniza quando a rede voltar");
   };
   $("#loginSenha").onkeydown = e => { if (e.key === "Enter") $("#btnEntrar").click(); };
 }
@@ -3939,7 +3955,7 @@ function avisarDieselBaixo() {
   const baixos = DB.dieselNoMinimo();      // mesma conta dos Alertas do Índice
   if (!baixos.length) return;
   dieselAvisado = true;
-  avisar(`<b>🛢️ Diesel no nível mínimo</b><br><br>` +
+  avisar(`<b>Diesel no nível mínimo</b><br><br>` +
     `<ul style="margin:0;padding-left:18px;text-align:left">${baixos.map(t =>
       `<li><b>${t.nome}</b>: ${fmtL(t.litros)} L</li>`).join("")}</ul>` +
     `<br>Mínimo definido: <b>${fmt(baixos[0].minimo)} L</b>.<br>` +
@@ -3953,7 +3969,7 @@ function avisarDieselBaixo() {
   else if (r.modo === "sem-conexao") mostrarLogin("Conecte-se à internet para entrar pela primeira vez.");
   else {
     iniciarApp();
-    if (r.modo === "offline") toast("📴 Sem internet — usando seu último acesso");
+    if (r.modo === "offline") toast("Sem internet — usando seu último acesso");
   }
 })();
 

@@ -35,7 +35,7 @@ const CONTRASTE = `(() => {
     if (el.ownerSVGElement) return cs.fill === 'none' ? null : rgb(cs.fill);
     return rgb(cs.color);
   };
-  const ruins = [], conhecidos = [];
+  const ruins = [], botoes = [];
   document.querySelectorAll('body *').forEach(el => {
     const txt = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent.trim()).join('');
     if (!txt) return;
@@ -49,19 +49,30 @@ const CONTRASTE = `(() => {
     const razao = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
     if (razao >= 3) return;
     const achado = { txt: txt.slice(0, 34), cor: 'rgb(' + c.join(',') + ')', razao: +razao.toFixed(2) };
-    /* Botão colorido da marca (laranja, verde, azul, vermelho) com texto branco:
-       é escolha de identidade, vem do primeiro dia e o Jean usa assim todo dia.
-       Fica separado — visível em toda rodada, sem afogar uma regressão de verdade. */
-    if (el.classList.contains('btn') && getComputedStyle(el).color === 'rgb(255, 255, 255)') {
-      conhecidos.push(achado);
-    } else ruins.push(achado);
+    ruins.push(achado);
   });
-  return { ruins, conhecidos };
+  /* Botão colorido com texto branco: até o r63 isso era tolerado como "escolha de
+     identidade" e nem aparecia como falha. No r64 passou a ser cobrado de verdade.
+     .btn tem 16px/700 e .btn-sm 14px — nenhum dos dois é "texto grande" pela WCAG
+     (que começa em 18,66px negrito), então o mínimo é 4,5:1 e não 3:1. */
+  document.querySelectorAll('.btn').forEach(el => {
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return;
+    if (cs.color !== 'rgb(255, 255, 255)') return;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return;
+    const f = fundoDe(el); if (!f) return;
+    const l1 = lum([255, 255, 255]), l2 = lum(f);
+    const razao = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    if (razao < 4.5) botoes.push({ txt: (el.textContent || '').trim().slice(0, 30),
+      cor: 'rgb(' + f.join(',') + ')', razao: +razao.toFixed(2) });
+  });
+  return { ruins, botoes };
 })()`;
 
 (async () => {
   const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
-  const errors = [], log = [], sabidos = new Map();
+  const errors = [], log = [];
   const ok = (n, c, extra) => { const l = (c ? '  OK  ' : ' FALHA ') + n + (extra !== undefined ? ' → ' + extra : ''); log.push(l); console.log(l); };
   api.limpar(); api.liberar();
   api.set('usuarios/jean@gp2t.local', JSON.stringify({ nome: 'Jean', perfil: 'gestor', ativo: true }));
@@ -103,25 +114,22 @@ const CONTRASTE = `(() => {
     for (const tela of TELAS) {
       await p.evaluate(t => navegar(t), tela);
       await p.waitForTimeout(450);
-      const { ruins, conhecidos } = await p.evaluate(CONTRASTE);
-      conhecidos.forEach(x => sabidos.set(x.txt + x.razao, x));
+      const { ruins, botoes } = await p.evaluate(CONTRASTE);
       ok(`tema ${tema} · ${tela}`, ruins.length === 0,
          ruins.slice(0, 2).map(r => `"${r.txt}" ${r.cor} (${r.razao})`).join(' | ') || 'legível');
+      ok(`tema ${tema} · ${tela} · botões 4,5:1`, botoes.length === 0,
+         botoes.slice(0, 3).map(r => `"${r.txt}" ${r.cor} = ${r.razao}:1`).join(' | ') || `${botoes.length === 0 ? 'todos' : ''} ok`);
     }
     // a ficha do equipamento não tem rota direta no menu
     await p.evaluate(() => abrirFicha('CB-17')); await p.waitForTimeout(500);
     const rf = await p.evaluate(CONTRASTE);
-    rf.conhecidos.forEach(x => sabidos.set(x.txt + x.razao, x));
     ok(`tema ${tema} · ficha`, rf.ruins.length === 0, rf.ruins.slice(0, 2).map(r => `"${r.txt}" (${r.razao})`).join(' | ') || 'legível');
+    ok(`tema ${tema} · ficha · botões 4,5:1`, rf.botoes.length === 0,
+       rf.botoes.slice(0, 3).map(r => `"${r.txt}" = ${r.razao}:1`).join(' | ') || 'ok');
     const nSvg = await p.evaluate(() => document.querySelectorAll('#app svg text').length);
     ok(`tema ${tema} · a ficha tem gráfico para conferir`, nSvg > 0, nSvg + ' <text>');
   }
 
-  if (sabidos.size) {
-    console.log('\n--- contraste baixo CONHECIDO (botão colorido com texto branco, desde o r1):');
-    [...sabidos.values()].slice(0, 6).forEach(x => console.log(`    "${x.txt}" ${x.razao}:1 (mínimo 4,5)`));
-    console.log(`    ${sabidos.size} no total — decisão de identidade, não regressão.`);
-  }
   console.log('=== FALHAS: ' + log.filter(l => l.startsWith(' FALHA')).length + ' ===');
   const reais = errors.filter(e => !/net::ERR|gstatic|Failed to load resource|favicon/.test(e));
   console.log('=== ERROS JS REAIS: ' + reais.length + ' ==='); reais.slice(0, 8).forEach(e => console.log(' ! ' + e));
