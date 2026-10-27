@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck34";
+const VERSAO = "ck37";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -181,13 +181,12 @@ const ICONES = {
 };
 /* ícone dentro do texto (tamanho da letra) */
 const I = n => ICONES[n].replace("<svg ", '<svg class="i" ');
-/* logo: o mesmo desenho do ícone do app (prancheta com visto) */
-const LOGO = `<svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="96" fill="#0f172a"/>
-  <rect x="120" y="84" width="272" height="352" rx="36" fill="#16223b" stroke="#ff7a1a" stroke-width="16"/>
-  <rect x="196" y="60" width="120" height="56" rx="20" fill="#ff7a1a"/>
-  <g stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="22">
-  <path d="M168 196l26 26 46-50" stroke="#22c55e"/><path d="M168 300l26 26 46-50" stroke="#22c55e"/>
-  <path d="M276 200h76M276 304h76" stroke="#93a2c4"/></g></svg>`;
+/* logo: o mesmo desenho do ícone do app (prancheta laranja com dois vistos, sem moldura) */
+const logoSvg = clip => `<svg viewBox="0 0 512 512" aria-hidden="true"><rect x="104" y="72" width="304" height="400" rx="44" fill="#ff7a1a"/>
+  <rect x="186" y="40" width="140" height="72" rx="24" fill="${clip}"/>
+  <g fill="none" stroke="#fff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"><path d="M172 222l40 40 84-90"/><path d="M172 360l40 40 84-90"/></g></svg>`;
+const LOGO = logoSvg("#0f172a");
+const LOGO_FUNDO_ESCURO = logoSvg("#ffffff");   // na faixa escura do login a presilha fica branca
 
 /* ---------- utilidades ---------- */
 const $ = s => document.querySelector(s);
@@ -245,15 +244,26 @@ const Instalar = {
     return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
   },
   ios() { return /iphone|ipad|ipod/i.test(navigator.userAgent); },
+  android() { return /android/i.test(navigator.userAgent); },
+  /* aberto por link dentro do WhatsApp, Instagram, Facebook...: esses navegadores internos não instalam app */
+  interno() { return /; wv\)|FBAN|FBAV|Instagram|WhatsApp|Line\//i.test(navigator.userAgent); },
+  samsung() { return /SamsungBrowser/i.test(navigator.userAgent); },
   cartao(sempre) {
     if (this.instalado()) return sempre ? `<div class="card instalar ok-borda"><b>${I("ok")} App instalado</b><p class="mini">Abra pelo ícone "Checklist" na tela do celular.</p></div>` : "";
+    if (this.android() && this.interno()) return `<div class="card instalar"><b>${I("baixar")} Abra no Chrome para instalar</b>
+      <p class="mini">Este link abriu dentro de outro aplicativo (ex.: WhatsApp), que não deixa instalar. Abra no Chrome e instale de lá.</p>
+      <a class="btn" href="intent://${location.host}${location.pathname}#Intent;scheme=https;package=com.android.chrome;end">Abrir no Chrome</a></div>`;
     if (this.evento) return `<div class="card instalar"><b>${I("baixar")} Baixe o aplicativo</b>
       <p class="mini">Fica com ícone na tela do celular, abre em tela cheia e funciona sem sinal.</p>
       <button class="btn" id="btnInstalar">${I("baixar")} Instalar o app</button></div>`;
     if (this.ios()) return `<div class="card instalar"><b>${I("baixar")} Instalar no iPhone</b>
       <p class="mini">No Safari, toque em <b>Compartilhar</b> (quadrado com seta para cima) e depois em <b>"Adicionar à Tela de Início"</b>.</p></div>`;
-    return sempre ? `<div class="card instalar"><b>${I("baixar")} Instalar o app</b>
-      <p class="mini">No Chrome, toque no menu <b>⋮</b> e depois em <b>"Instalar app"</b> ou <b>"Adicionar à tela inicial"</b>.</p></div>` : "";
+    if (this.samsung()) return `<div class="card instalar"><b>${I("baixar")} Instalar o app</b>
+      <p class="mini">No navegador Samsung, toque no menu <b>(três linhas)</b>, depois em <b>"Adicionar página a"</b> e em <b>"Tela inicial"</b>.</p></div>`;
+    // Android sem o convite do Chrome: mostra o caminho pelo menu (no Início e na Conta)
+    return sempre || this.android() ? `<div class="card instalar"><b>${I("baixar")} Instalar o app</b>
+      <p class="mini">No Chrome, toque no menu <b>(três pontos, no canto de cima)</b> e depois em <b>"Instalar app"</b> ou <b>"Adicionar à tela inicial"</b>.
+      Se aparecer <b>"Abrir no app"</b>, ele já está instalado: procure o ícone "Checklist" na lista de aplicativos.</p></div>` : "";
   },
   preencher() { document.querySelectorAll("[data-slot-instalar]").forEach(el => { el.innerHTML = this.cartao(el.dataset.slotInstalar === "sempre"); }); },
   async instalar() {
@@ -443,7 +453,7 @@ const Telas = {
   pilha: [],
   ir(nome, arg, semPilha) {
     const soGestao = ["painel"], soResolve = ["servicos"], soAdmin = ["cadastros", "cad-equip", "cad-modelos", "cad-modelo", "cad-usuarios"];
-    if ((soGestao.includes(nome) && !Dados.veTodos()) || (soResolve.includes(nome) && !Dados.ehGestao()) || (soAdmin.includes(nome) && !Dados.ehAdmin())) nome = "inicio";
+    if ((soGestao.includes(nome) && !Dados.veTodos()) || (soResolve.includes(nome) && !Dados.ehGestao()) || (soAdmin.includes(nome) && !Dados.ehGestao())) nome = "inicio";
     if (!semPilha && this.atual && this.atual.nome !== nome) this.pilha.push(this.atual);
     if (["inicio", "painel", "cadastros", "conta"].includes(nome)) this.pilha = [];
     this.atual = { nome, arg };
@@ -496,7 +506,7 @@ Render.login = function (erro) {
   $("#btnVoltar").style.visibility = "hidden";
   app().innerHTML = `
     <div class="marca">
-      <div class="marca-logo">${LOGO}</div>
+      <div class="marca-logo">${LOGO_FUNDO_ESCURO}</div>
       <h1>Checklist de Frota</h1>
       <p>Máquinas e caminhões</p>
     </div>
@@ -629,7 +639,7 @@ Render.novo = function (busca) {
       </button>`; }).join("")}
     </div>
     ${!lista.length ? `<p class="vazio">${Estado.equipamentos.length ? "Nada encontrado." : "Nenhum equipamento cadastrado ainda."}</p>` : ""}
-    ${!Dados.ehAdmin() ? (Estado.equipamentos.length ? "" : `<p class="vazio">Peça ao administrador para cadastrar os equipamentos.</p>`) : `
+    ${!Dados.ehGestao() ? (Estado.equipamentos.length ? "" : `<p class="vazio">Peça ao gestor para cadastrar os equipamentos.</p>`) : `
     <details class="card" id="avulso" ${Estado.equipamentos.length ? "" : "open"}>
       <summary>Equipamento não está na lista?</summary>
       <label>Prefixo ou placa<input id="avPlaca" placeholder="ex.: CB-12 ou ABC1D23" /></label>
@@ -1833,10 +1843,10 @@ Render["cad-usuarios"] = async function () {
       </div>
       <div class="linha2">
         <label>Senha inicial<input name="senha" type="text" placeholder="mín. 6 caracteres" autocomplete="new-password" /></label>
-        <label>Função<select name="perfil">${Object.entries(PERFIS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
+        <label>Função<select name="perfil">${Object.entries(PERFIS).filter(([k]) => k !== "admin" || Dados.ehAdmin()).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
       </div>
       <p class="muted mini"><b>Motorista</b> e <b>Operador</b> fazem checklist. <b>Técnico de Segurança</b> também vê o Painel e todos os checklists, marca como visualizado e gera o PDF, mas não resolve.
-        <b>Gestor</b> também resolve os defeitos.
+        <b>Gestor</b> também resolve os defeitos, agenda lubrificação e mexe em Cadastros (não nomeia administrador).
         <b>Administrador</b> também apaga checklists e mexe em Cadastros.</p>
       <p class="muted mini">A pessoa entra com <b>usuário</b> e senha — não precisa ter e-mail. Cada um troca a própria senha em Conta; esqueceu, redefina no console do Firebase (Authentication).</p>
       <button class="btn" id="usCriar">Criar e liberar</button>
@@ -1858,11 +1868,11 @@ Render["cad-usuarios"] = async function () {
     $("#usLista").innerHTML = `<h3 class="secao">${l.length} usuário(s)</h3>` + l.map(u => `<div class="item usuario ${u.ativo === false ? "apagado" : ""}">
       <div class="us-topo"><div><b>${h(u.nome || u.usuario)}</b><small>${h(u.usuario)}</small></div>
         ${u.ativo === false ? `<span class="tag perigo">Bloqueado</span>` : ""}</div>
-      <div class="us-acoes">
-        <select class="mini-sel" data-perfil="${h(u.email)}" aria-label="Função de ${h(u.nome || u.usuario)}">${Object.entries(PERFIS).map(([k, v]) =>
+      ${u.perfil === "admin" && !Dados.ehAdmin() ? `<p class="mini muted">Administrador: só outro administrador muda a função ou bloqueia.</p>` : `<div class="us-acoes">
+        <select class="mini-sel" data-perfil="${h(u.email)}" aria-label="Função de ${h(u.nome || u.usuario)}">${Object.entries(PERFIS).filter(([k]) => k !== "admin" || Dados.ehAdmin()).map(([k, v]) =>
           `<option value="${k}" ${(PERFIS[u.perfil] ? u.perfil : "motorista") === k ? "selected" : ""}>${v}</option>`).join("")}</select>
         <button class="mini-bt ${u.ativo === false ? "liberar" : "bloq"}" data-ativo="${h(u.email)}" data-v="${u.ativo === false ? "1" : "0"}">${u.ativo === false ? "Desbloquear" : "Bloquear"}</button>
-      </div></div>`).join("");
+      </div>`}</div>`).join("");
     $("#usLista").onchange = async ev => {
       const s = ev.target.closest("[data-perfil]"); if (!s) return;
       const r = await Dados.salvarUsuario(s.dataset.perfil, { perfil: s.value });
@@ -1968,7 +1978,7 @@ const Atualizacao = {
 
 function entrouNoApp() {
   document.body.classList.remove("tela-login");
-  document.body.classList.toggle("admin", Dados.ehAdmin());
+  document.body.classList.toggle("admin", Dados.ehGestao());   // aba Cadastros: gestor e administrador
   document.body.classList.toggle("gestao", Dados.veTodos());
   $("#abas").hidden = false;
   Historico.migrar();

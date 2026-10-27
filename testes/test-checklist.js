@@ -318,7 +318,7 @@ async function sair(page) {
     b['checklist_equipamentos/semck'].pendencias = { antigo: 'bloqueado' };
     localStorage.setItem('__ck_banco__', JSON.stringify(b)); });
   await entrar(page, 'ana');
-  ok(await page.isVisible('[data-ir="painel"]') && !(await page.isVisible('[data-ir="cadastros"]')), 'gestor vê Painel, não vê Cadastros');
+  ok(await page.isVisible('[data-ir="painel"]') && await page.isVisible('[data-ir="cadastros"]'), 'gestor vê Painel e Cadastros');
   await page.click('[data-ir="painel"]');
   await page.waitForSelector('[data-abrir]');
   ok(await page.$$eval('#pLista .item', l => l.length) === 2, 'painel mostra os 2 checklists de hoje');
@@ -465,8 +465,18 @@ async function sair(page) {
   await page.click('[data-f="todos"]');
   ok(!(await page.$('[data-apagar]')), 'gestor não tem lixeira na lista');
   ok((await page.textContent('#pLista')).includes('(motorista)'), 'lista mostra a função de quem fez');
-  await page.evaluate(() => Telas.ir('cad-usuarios'));
-  ok(!(await page.$('#fUs')), 'gestor não abre Cadastros nem forçando');
+  await page.evaluate(() => { const b = JSON.parse(localStorage.getItem('__ck_banco__'));
+    b['checklist_usuarios/chefe@gp2t.local'] = { nome: 'Chefe', perfil: 'admin' }; localStorage.setItem('__ck_banco__', JSON.stringify(b)); Telas.ir('cad-usuarios'); });
+  await page.waitForSelector('#fUs');
+  ok(!(await page.$$eval('#fUs [name=perfil] option', o => o.map(x => x.value))).includes('admin'), 'gestor cadastra usuário, mas sem a opção Administrador');
+  await page.waitForSelector('.item.usuario');
+  const linhaAdm = await page.$$eval('.item.usuario', l => l.filter(c => c.textContent.includes('Administrador: só outro')).length);
+  ok(linhaAdm >= 1 && await page.$$eval('.item.usuario [data-perfil]', l => l.every(sel => ![...sel.options].some(o => o.value === 'admin'))),
+    'gestor não muda nem bloqueia administrador, e não promove ninguém a administrador');
+  ok((await page.evaluate(() => Dados.salvarUsuario('beto', { perfil: 'admin' }))).erro.includes('Só o administrador'), 'nem forçando: "Só o administrador pode dar a função Administrador"');
+  await page.evaluate(() => Telas.ir('novo'));
+  await page.waitForSelector('#avulso');
+  ok(true, 'gestor tem "Equipamento não está na lista?"');
   await sair(page);
 
   console.log('6. admin: apagar e modelos');

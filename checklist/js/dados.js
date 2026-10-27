@@ -284,9 +284,11 @@ const Dados = {
   },
   async salvarUsuario(email, dados) {
     const id = emailDe(email);
-    if (this.usuario && id === this.usuario.email && (dados.ativo === false || (dados.perfil && dados.perfil !== "admin"))) {
-      return { ok: false, erro: "Você não pode tirar o seu próprio acesso." };
+    if (this.usuario && id === this.usuario.email && (dados.ativo === false || (dados.perfil && dados.perfil !== this.usuario.perfil))) {
+      return { ok: false, erro: "Você não pode mudar o seu próprio acesso." };
     }
+    // o gestor cadastra e muda funções, mas administrador só o administrador nomeia
+    if (dados.perfil === "admin" && !this.ehAdmin()) return { ok: false, erro: "Só o administrador pode dar a função Administrador." };
     if (dados.perfil && !PERFIS[dados.perfil]) return { ok: false, erro: "Função inválida." };
     try {
       await this.col("usuarios").doc(id).set(dados, { merge: true });
