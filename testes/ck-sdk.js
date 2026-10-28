@@ -97,6 +97,7 @@
   function Doc(path) { this.path = path; this.id = path.split("/").pop(); }
   Doc.prototype.set = function (d, o) { return escrever(() => aplicar(this.path, d, o && o.merge)); };
   Doc.prototype.update = function (d) { return escrever(() => aplicar(this.path, d, "update")); };
+  Doc.prototype.collection = function (n) { return new Col(this.path + "/" + n); };
   Doc.prototype.delete = function () { return escrever(() => { const b = ler(); delete b[this.path]; gravar(b); avisar(); }); };
   Doc.prototype.get = async function (o) {
     if (o && o.source === "server" && window.__SEM_REDE__) throw erro("unavailable");

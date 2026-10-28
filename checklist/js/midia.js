@@ -26,7 +26,12 @@ const Midia = {
   _db: null,
   video() { return USAR_STORAGE; },
   limiteFotos: FOTOS_POR_CHECKLIST,
-  caminho(inspId, mid, ext) { return USAR_STORAGE ? "checklist/" + inspId + "/" + mid + "." + ext : "checklist_fotos/" + mid; },
+  /* cada empresa guarda as suas (a STRACTA nos caminhos de sempre) */
+  caminho(inspId, mid, ext) {
+    if (!USAR_STORAGE) return Dados.caminhoCol("fotos") + "/" + mid;
+    const base = Dados.empresa === EMPRESA_PADRAO ? "" : "empresas/" + Dados.empresa + "/";
+    return base + "checklist/" + inspId + "/" + mid + "." + ext;
+  },
 
   /* ---- IndexedDB: uma "gaveta" com os arquivos do aparelho ---- */
   _abrir() {

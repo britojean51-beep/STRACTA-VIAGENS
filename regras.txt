@@ -73,52 +73,67 @@ service cloud.firestore {
     }
 
     // ---- Checklist de máquinas e caminhões (gp2t-checklist.web.app) ----
-    // Quem entra: documento ativo em checklist_usuarios. Funções:
+    // Quem entra: documento ativo em <base>usuarios. Funções:
     //   motorista, operador -> fazem checklist e veem só os seus
     //   tecnico (segurança) -> + veem todos e marcam "visualizado"; não resolvem
     //   gestor              -> + veem todos, resolvem (tratativa) e mexem em usuários,
     //                          equipamentos e modelos (não nomeiam administrador)
     //   admin               -> + apagam checklists e nomeiam administradores
-    // O gestor do app de frota também entra, como admin — é quem libera os primeiros.
-    function ckDoc() {
-      return get(/databases/$(database)/documents/checklist_usuarios/$(meuEmail())).data;
+    //
+    // VÁRIAS EMPRESAS: as mesmas regras valem para cada empresa, com os dados dela.
+    //   e == 'stracta'  -> coleções checklist_* (a primeira empresa, onde sempre esteve)
+    //   outra empresa e -> empresas/{e}/<coleção>
+    // Cada empresa só enxerga a própria: o cadastro da pessoa é conferido DENTRO da
+    // empresa (empresas/{e}/usuarios). Só o dono cria e suspende empresas.
+    // O gestor do app de frota entra só na STRACTA, como admin — é quem libera os primeiros.
+    function ckRef(e, col, id) {
+      return path('/databases/' + database + '/documents/'
+        + (e == 'stracta' ? 'checklist_' + col : 'empresas/' + e + '/' + col) + '/' + id);
     }
-    function ckCadastrado() {
-      return request.auth != null
-        && exists(/databases/$(database)/documents/checklist_usuarios/$(meuEmail()))
-        && ckDoc().get('ativo', true) != false;
+    // empresa suspensa pelo dono: ninguém dela entra (os dados ficam guardados)
+    function ckEmpresaAtiva(e) {
+      return e == 'stracta' || get(/databases/$(database)/documents/empresas/$(e)).data.get('ativo', true) != false;
     }
-    function ckLiberado() { return ckCadastrado() || ehGestor(); }
-    function ckAdmin() {
-      return (ckCadastrado() && ckDoc().get('perfil', '') == 'admin') || ehGestor();
+    // A função da pessoa na empresa e ('' = não entra). Lida uma vez só por regra:
+    // ler o cadastro em cada teste estoura o limite de expressões do Firestore.
+    function ckPerfil(e) {
+      let ref = ckRef(e, 'usuarios', meuEmail());
+      let cad = request.auth != null && exists(ref)
+        && get(ref).data.get('ativo', true) != false && ckEmpresaAtiva(e);
+      let p = cad ? get(ref).data.get('perfil', 'motorista') : '';
+      return ckFrota(e) ? 'admin' : (cad && p == '' ? 'motorista' : p);
     }
-    function ckGestao() {
-      return ckAdmin() || (ckCadastrado() && ckDoc().get('perfil', '') == 'gestor');
-    }
-    function ckVeTodos() {
-      return ckGestao() || (ckCadastrado() && ckDoc().get('perfil', '') == 'tecnico');
-    }
+    function ckFrota(e) { return e == 'stracta' && ehGestor(); }
+    function ckCadastrado(e) { return ckPerfil(e) != ''; }
+    function ckLiberado(e) { return ckPerfil(e) != ''; }
+    function ckAdmin(e) { return ckPerfil(e) == 'admin'; }
+    function ckGestao(e) { return ckPerfil(e) in ['admin', 'gestor']; }
+    function ckVeTodos(e) { return ckPerfil(e) in ['admin', 'gestor', 'tecnico']; }
 
     // Usuários: admin e gestor cadastram, mudam função e bloqueiam; administrador
-    // só o administrador nomeia, muda ou bloqueia.
-    match /checklist_usuarios/{email} {
-      allow get: if request.auth != null && (meuEmail() == email || ckGestao());
-      allow list: if ckGestao();
-      allow create: if ckAdmin() || (ckGestao() && request.resource.data.get('perfil', 'motorista') != 'admin');
-      allow update: if ckAdmin() || (ckGestao() && resource.data.get('perfil', '') != 'admin'
+    // só o administrador nomeia, muda ou bloqueia. Em outra empresa, o login tem que
+    // ser dela (usuario@<e>.gp2t.local) e o dono cria o primeiro administrador.
+    function ckUsGet(e, email) {
+      return request.auth != null && ((meuEmail() == email && ckEmpresaAtiva(e)) || ckGestao(e));
+    }
+    function ckUsDaEmpresa(e, email) { return e == 'stracta' || email.matches('[^@]+@' + e + '[.]gp2t[.]local'); }
+    function ckUsCreate(e, email) {
+      let p = ckPerfil(e);
+      return ckUsDaEmpresa(e, email) && (p == 'admin' || (p == 'gestor' && request.resource.data.get('perfil', 'motorista') != 'admin'));
+    }
+    function ckUsUpdate(e) {
+      let p = ckPerfil(e);
+      return p == 'admin' || (p == 'gestor' && resource.data.get('perfil', '') != 'admin'
         && request.resource.data.get('perfil', 'motorista') != 'admin');
-      allow delete: if ckAdmin();
     }
     // Equipamento: o cadastro é do gestor e do admin. O campo "pendencias" (defeitos em
     // aberto, de onde sai a situação Operacional/Restrição/Manutenção):
     // quem faz checklist só ACRESCENTA; tirar (resolvido -> volta a operar)
     // é do gestor e do admin.
-    match /checklist_equipamentos/{id} {
-      allow read: if ckLiberado();
-      allow create, delete: if ckGestao();
-      allow update: if ckGestao()
-        || (ckGestao() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendencias', 'ultLubrificacao', 'ultInspecao', 'proxLubrificacao']))
-        || (ckLiberado()
+    function ckEqUpdate(e) {
+      let p = ckPerfil(e);
+      return p in ['admin', 'gestor']
+        || (p != ''
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendencias'])
             && pendenciaSoSobe(resource.data.get('pendencias', {}), request.resource.data.get('pendencias', {})));
     }
@@ -131,18 +146,6 @@ service cloud.firestore {
         && depois.diff(antes).changedKeys().size() <= 1
         && depois.values().removeAll(['restricao']).size() >= antes.values().removeAll(['restricao']).size();
     }
-    // Lubrificação e inspeção: a gestão lança o que foi feito em cada equipamento.
-    // O resumo (última lubrificação/inspeção e a próxima marcada) fica no equipamento,
-    // que todos leem; o histórico, só quem vê todos os checklists.
-    match /checklist_servicos/{id} {
-      allow read: if ckVeTodos();
-      allow create: if ckGestao() && request.resource.data.porEmail == meuEmail();
-      allow update, delete: if ckGestao();
-    }
-    match /checklist_modelos/{id} {
-      allow read: if ckLiberado();
-      allow write: if ckGestao();
-    }
     // O checklist feito: quem fez lê o seu; gestor e admin leem todos.
     // Depois de enviado, quem fez só mexe em "midias" e "pendentes" (marcar a
     // foto como enviada) e acrescenta "apontamentos" (problema que apareceu
@@ -151,21 +154,25 @@ service cloud.firestore {
     // resource == null: checklist que não existe (foi apagado) responde "não
     // existe" em vez de "sem permissão" — é assim que o celular de quem fez
     // tira da lista "Meus últimos checklists". Não revela nada.
-    match /checklist_inspecoes/{id} {
-      allow read: if ckVeTodos() || (ckLiberado() && (resource == null || resource.data.criadoPor == meuEmail()));
-      // criar: em nome próprio e sem já vir "resolvido", "visto" ou com apontamento
-      allow create: if ckLiberado() && request.resource.data.criadoPor == meuEmail()
+    function ckInspRead(e) {
+      let p = ckPerfil(e);
+      return p in ['admin', 'gestor', 'tecnico'] || (p != '' && (resource == null || resource.data.criadoPor == meuEmail()));
+    }
+    // criar: em nome próprio e sem já vir "resolvido", "visto" ou com apontamento
+    function ckInspCreate(e) {
+      return ckLiberado(e) && request.resource.data.criadoPor == meuEmail()
         && !request.resource.data.keys().hasAny(['resolucoes', 'solicitacoes', 'vistos', 'apontamentos']);
-      allow update: if ckAdmin()
-        || (ckGestao() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tratativa', 'resolucoes', 'solicitacoes', 'midias', 'pendentes', 'vistos']))
-        || (ckLiberado() && resource.data.criadoPor == meuEmail()
+    }
+    function ckInspUpdate(e) {
+      let p = ckPerfil(e);
+      return p == 'admin'
+        || (p == 'gestor' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tratativa', 'resolucoes', 'solicitacoes', 'midias', 'pendentes', 'vistos']))
+        || (p != '' && resource.data.criadoPor == meuEmail()
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['midias', 'pendentes', 'apontamentos'])
             // problema apontado durante o serviço: só acrescenta, nunca tira um apontamento
             && request.resource.data.get('apontamentos', {}).keys().hasAll(resource.data.get('apontamentos', {}).keys()))
-        || (ckVeTodos() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['vistos']));
-      allow delete: if ckAdmin();
+        || (p == 'tecnico' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['vistos']));
     }
-
     // Fotos do checklist (enquanto o Storage não estiver ligado): um documento
     // por foto. Mesma regra de quem vê o checklist; só imagem JPEG, até ~950 KB.
     // Quem fez o checklist também vê as fotos da correção (tiradas pelo gestor):
@@ -176,13 +183,94 @@ service cloud.firestore {
         && request.resource.data.dados.size() < 950000
         && request.resource.data.dados.matches('data:image/jpeg;base64,.*');
     }
+    function ckFotoRead(e) {
+      let p = ckPerfil(e);
+      return p in ['admin', 'gestor', 'tecnico'] || (p != '' && (resource.data.criadoPor == meuEmail()
+        || get(ckRef(e, 'inspecoes', resource.data.inspecao)).data.get('criadoPor', '') == meuEmail()));
+    }
+    // a foto é a prova: ninguém troca a foto de outra pessoa (update só de quem enviou)
+    function ckFotoUpdate(e) { return ckLiberado(e) && resource.data.criadoPor == meuEmail() && fotoValida(); }
+
+    // -- STRACTA: coleções checklist_* --
+    match /checklist_usuarios/{email} {
+      allow get: if ckUsGet('stracta', email);
+      allow list: if ckGestao('stracta');
+      allow create: if ckUsCreate('stracta', email);
+      allow update: if ckUsUpdate('stracta');
+      allow delete: if ckAdmin('stracta');
+    }
+    match /checklist_equipamentos/{id} {
+      allow read: if ckLiberado('stracta');
+      allow create, delete: if ckGestao('stracta');
+      allow update: if ckEqUpdate('stracta');
+    }
+    // Lubrificação e inspeção: a gestão lança o que foi feito em cada equipamento.
+    // O resumo (última lubrificação/inspeção e a próxima marcada) fica no equipamento,
+    // que todos leem; o histórico, só quem vê todos os checklists.
+    match /checklist_servicos/{id} {
+      allow read: if ckVeTodos('stracta');
+      allow create: if ckGestao('stracta') && request.resource.data.porEmail == meuEmail();
+      allow update, delete: if ckGestao('stracta');
+    }
+    match /checklist_modelos/{id} {
+      allow read: if ckLiberado('stracta');
+      allow write: if ckGestao('stracta');
+    }
+    match /checklist_inspecoes/{id} {
+      allow read: if ckInspRead('stracta');
+      allow create: if ckInspCreate('stracta');
+      allow update: if ckInspUpdate('stracta');
+      allow delete: if ckAdmin('stracta');
+    }
     match /checklist_fotos/{id} {
-      allow read: if ckVeTodos() || (ckLiberado() && (resource.data.criadoPor == meuEmail()
-        || get(/databases/$(database)/documents/checklist_inspecoes/$(resource.data.inspecao)).data.get('criadoPor', '') == meuEmail()));
-      // a foto é a prova: ninguém troca a foto de outra pessoa (update só de quem enviou)
-      allow create: if ckLiberado() && fotoValida();
-      allow update: if ckLiberado() && resource.data.criadoPor == meuEmail() && fotoValida();
-      allow delete: if ckAdmin();
+      allow read: if ckFotoRead('stracta');
+      allow create: if ckLiberado('stracta') && fotoValida();
+      allow update: if ckFotoUpdate('stracta');
+      allow delete: if ckAdmin('stracta');
+    }
+
+    // -- outras empresas: empresas/{e}/... (mesmas regras, cada uma na sua) --
+    // A ficha da empresa: quem é dela lê; só o dono cria, muda ou suspende.
+    // 'stracta' é reservado (é a primeira empresa, nas coleções checklist_*).
+    match /empresas/{e} {
+      allow read: if ehDono() || ckCadastrado(e);
+      allow create: if ehDono() && e != 'stracta' && e.matches('[a-z0-9][a-z0-9-]{1,19}');
+      allow update: if ehDono();
+      allow delete: if false;
+
+      match /usuarios/{email} {
+        allow get: if ehDono() || ckUsGet(e, email);
+        allow list: if ehDono() || ckGestao(e);
+        allow create: if (ehDono() && ckUsDaEmpresa(e, email)) || ckUsCreate(e, email);
+        allow update: if ehDono() || ckUsUpdate(e);
+        allow delete: if ckAdmin(e);
+      }
+      match /equipamentos/{id} {
+        allow read: if ckLiberado(e);
+        allow create, delete: if ckGestao(e);
+        allow update: if ckEqUpdate(e);
+      }
+      match /servicos/{id} {
+        allow read: if ckVeTodos(e);
+        allow create: if ckGestao(e) && request.resource.data.porEmail == meuEmail();
+        allow update, delete: if ckGestao(e);
+      }
+      match /modelos/{id} {
+        allow read: if ckLiberado(e);
+        allow write: if ckGestao(e);
+      }
+      match /inspecoes/{id} {
+        allow read: if ckInspRead(e);
+        allow create: if ckInspCreate(e);
+        allow update: if ckInspUpdate(e);
+        allow delete: if ckAdmin(e);
+      }
+      match /fotos/{id} {
+        allow read: if ckFotoRead(e);
+        allow create: if ckLiberado(e) && fotoValida();
+        allow update: if ckFotoUpdate(e);
+        allow delete: if ckAdmin(e);
+      }
     }
 
     // Nada além disso.
