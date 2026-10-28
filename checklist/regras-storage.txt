@@ -22,7 +22,7 @@ service firebase.storage {
     // Ninguém apaga pelo app: a foto é a prova do checklist.
     match /checklist/{inspecao}/{arquivo} {
       allow read: if liberado();
-      allow create, update: if liberado()
+      allow create: if liberado()
         && request.resource.size < 60 * 1024 * 1024
         && request.resource.contentType.matches('image/.*|video/.*');
     }
