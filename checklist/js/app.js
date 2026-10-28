@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck38";
+const VERSAO = "ck39";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -238,6 +238,8 @@ function gravarJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } 
 /* ---------- instalar como aplicativo ----------
    Android/Chrome: o navegador avisa (beforeinstallprompt) e o botão abre a janela de instalar.
    iPhone: não existe esse aviso, então mostra o passo a passo do Safari. */
+/* o APK fica nas versões do GitHub (o plano gratuito do Firebase não hospeda .apk) */
+const APK_URL = "https://github.com/britojean51-beep/STRACTA-VIAGENS/releases/latest/download/Checklist.apk";
 const Instalar = {
   evento: null,
   instalado() {
@@ -251,7 +253,7 @@ const Instalar = {
   /* plano B do Android: o aplicativo de verdade (APK), para quando o Chrome só cria atalho que abre numa aba */
   apk() {
     return this.android() ? `<p class="mini apk-txt">Se o ícone não aparecer ou o app abrir dentro do navegador, instale o aplicativo Android:</p>
-      <a class="btn btn-ghost" href="download/checklist.apk" download>${I("baixar")} Baixar o aplicativo Android</a>` : "";
+      <a class="btn btn-ghost" href="${APK_URL}" rel="noopener">${I("baixar")} Baixar o aplicativo Android</a>` : "";
   },
   cartao(sempre) {
     if (this.instalado()) return sempre ? `<div class="card instalar ok-borda"><b>${I("ok")} App instalado</b><p class="mini">Abra pelo ícone "Checklist" na tela do celular.</p></div>` : "";

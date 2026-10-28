@@ -66,22 +66,33 @@ jobs:
           CK_VERSAO: ${{ github.run_number }}
         run: gradle assembleRelease --no-daemon --stacktrace
 
-      - name: Ligar o app ao site (assetlinks) e pôr o APK para baixar
+      - name: Ligar o app ao site (assetlinks)
         run: |
           set -e
           FP=$(keytool -list -v -keystore "$CK_KEYSTORE" -storepass "$CK_SENHA" -alias checklist | grep -m1 'SHA256:' | sed 's/.*SHA256: *//')
           test -n "$FP"
-          mkdir -p checklist/.well-known checklist/download
+          mkdir -p checklist/.well-known
           printf '[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"android_app","package_name":"app.gp2t.checklist","sha256_cert_fingerprints":["%s"]}}]\n' "$FP" > checklist/.well-known/assetlinks.json
-          cp android/app/build/outputs/apk/release/app-release.apk checklist/download/checklist.apk
-          ls -la checklist/download checklist/.well-known
+          cp android/app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/Checklist.apk"
+
+      # O plano gratuito do Firebase (Spark) não hospeda .apk: o arquivo fica nas
+      # versões (Releases) do GitHub, num endereço fixo:
+      # https://github.com/britojean51-beep/STRACTA-VIAGENS/releases/latest/download/Checklist.apk
+      - name: Publicar o APK nas versões do GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "apk-v${{ github.run_number }}" "$RUNNER_TEMP/Checklist.apk" \
+            --title "Checklist para Android (versão ${{ github.run_number }})" \
+            --notes "Aplicativo Android do Checklist. Abre gp2t-checklist.web.app em tela cheia; o conteúdo atualiza sozinho pelo site." \
+            --target "$GITHUB_SHA" --latest
 
       - name: Guardar no repositório
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
-          git add android/assinatura.jks.enc checklist/.well-known/assetlinks.json checklist/download/checklist.apk
-          git commit -m "APK do Checklist (versão ${{ github.run_number }})" || exit 0
+          git add android/assinatura.jks.enc checklist/.well-known/assetlinks.json
+          git commit -m "APK do Checklist (versão ${{ github.run_number }}): chave e assetlinks" || exit 0
           git pull --rebase origin "$GITHUB_REF_NAME"
           git push origin "HEAD:$GITHUB_REF_NAME"
 
@@ -96,4 +107,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: checklist-apk
-          path: checklist/download/checklist.apk
+          path: ${{ runner.temp }}/Checklist.apk
