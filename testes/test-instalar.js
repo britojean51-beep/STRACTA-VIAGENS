@@ -23,6 +23,7 @@ const UA = {
     if (nome === 'whatsapp') ok(t.includes('Abra no Chrome') && (await p.getAttribute('.instalar a.btn', 'href')).startsWith('intent://'), 'aberto pelo WhatsApp: "Abrir no Chrome"');
     if (nome === 'samsung') ok(t.includes('Adicionar página a') && t.includes('Tela inicial'), 'navegador Samsung: o caminho pelo menu dele');
     if (nome === 'chrome') ok(t.includes('Instalar app') && t.includes('Abrir no app'), 'Chrome sem convite: o caminho pelo menu, e o aviso de "já instalado"');
+    if (nome === 'chrome') ok((await p.getAttribute('[data-slot-instalar] a[download]', 'href')) === 'download/checklist.apk', 'Android: plano B "Baixar o aplicativo Android" (APK)');
     await ctx.close();
   }
   await browser.close();
