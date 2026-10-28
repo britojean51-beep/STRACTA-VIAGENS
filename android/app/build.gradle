@@ -1,0 +1,38 @@
+/* App Android do Checklist: abre o site gp2t-checklist.web.app em tela cheia
+   (Trusted Web Activity), sem depender da instalação pelo Chrome. Gerado pelo
+   fluxo .github/workflows/gerar-apk.yml, que assina com a chave guardada criptografada. */
+plugins { id "com.android.application" }
+
+android {
+  namespace "app.gp2t.checklist"
+  compileSdk 34
+  defaultConfig {
+    applicationId "app.gp2t.checklist"
+    minSdk 21
+    targetSdk 34
+    versionCode((System.getenv("CK_VERSAO") ?: "1") as int)
+    versionName "1." + (System.getenv("CK_VERSAO") ?: "1")
+  }
+  signingConfigs {
+    release {
+      storeFile file(System.getenv("CK_KEYSTORE") ?: "assinatura.jks")
+      storePassword System.getenv("CK_SENHA")
+      keyAlias "checklist"
+      keyPassword System.getenv("CK_SENHA")
+    }
+  }
+  buildTypes {
+    release {
+      minifyEnabled false
+      signingConfig signingConfigs.release
+    }
+  }
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+}
+
+dependencies {
+  implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.5.0"
+}

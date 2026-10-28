@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck37";
+const VERSAO = "ck38";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -248,6 +248,11 @@ const Instalar = {
   /* aberto por link dentro do WhatsApp, Instagram, Facebook...: esses navegadores internos não instalam app */
   interno() { return /; wv\)|FBAN|FBAV|Instagram|WhatsApp|Line\//i.test(navigator.userAgent); },
   samsung() { return /SamsungBrowser/i.test(navigator.userAgent); },
+  /* plano B do Android: o aplicativo de verdade (APK), para quando o Chrome só cria atalho que abre numa aba */
+  apk() {
+    return this.android() ? `<p class="mini apk-txt">Se o ícone não aparecer ou o app abrir dentro do navegador, instale o aplicativo Android:</p>
+      <a class="btn btn-ghost" href="download/checklist.apk" download>${I("baixar")} Baixar o aplicativo Android</a>` : "";
+  },
   cartao(sempre) {
     if (this.instalado()) return sempre ? `<div class="card instalar ok-borda"><b>${I("ok")} App instalado</b><p class="mini">Abra pelo ícone "Checklist" na tela do celular.</p></div>` : "";
     if (this.android() && this.interno()) return `<div class="card instalar"><b>${I("baixar")} Abra no Chrome para instalar</b>
@@ -255,7 +260,7 @@ const Instalar = {
       <a class="btn" href="intent://${location.host}${location.pathname}#Intent;scheme=https;package=com.android.chrome;end">Abrir no Chrome</a></div>`;
     if (this.evento) return `<div class="card instalar"><b>${I("baixar")} Baixe o aplicativo</b>
       <p class="mini">Fica com ícone na tela do celular, abre em tela cheia e funciona sem sinal.</p>
-      <button class="btn" id="btnInstalar">${I("baixar")} Instalar o app</button></div>`;
+      <button class="btn" id="btnInstalar">${I("baixar")} Instalar o app</button>${this.apk()}</div>`;
     if (this.ios()) return `<div class="card instalar"><b>${I("baixar")} Instalar no iPhone</b>
       <p class="mini">No Safari, toque em <b>Compartilhar</b> (quadrado com seta para cima) e depois em <b>"Adicionar à Tela de Início"</b>.</p></div>`;
     if (this.samsung()) return `<div class="card instalar"><b>${I("baixar")} Instalar o app</b>
@@ -263,7 +268,8 @@ const Instalar = {
     // Android sem o convite do Chrome: mostra o caminho pelo menu (no Início e na Conta)
     return sempre || this.android() ? `<div class="card instalar"><b>${I("baixar")} Instalar o app</b>
       <p class="mini">No Chrome, toque no menu <b>(três pontos, no canto de cima)</b> e depois em <b>"Instalar app"</b> ou <b>"Adicionar à tela inicial"</b>.
-      Se aparecer <b>"Abrir no app"</b>, ele já está instalado: procure o ícone "Checklist" na lista de aplicativos.</p></div>` : "";
+      Se aparecer <b>"Abrir no app"</b>, ele já está instalado: procure o ícone "Checklist" na lista de aplicativos.</p>
+      ${this.apk()}</div>` : "";
   },
   preencher() { document.querySelectorAll("[data-slot-instalar]").forEach(el => { el.innerHTML = this.cartao(el.dataset.slotInstalar === "sempre"); }); },
   async instalar() {

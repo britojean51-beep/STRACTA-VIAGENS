@@ -1,0 +1,99 @@
+# Gera o aplicativo Android do Checklist (APK) — para celulares em que o Chrome
+# não consegue instalar o app pelo site. É o mesmo site aberto em tela cheia
+# (Trusted Web Activity): o conteúdo continua atualizando sozinho pelo site.
+#
+# Assinatura: a chave é criada na primeira vez e fica no repositório só
+# CRIPTOGRAFADA (android/assinatura.jks.enc), com a senha derivada do segredo
+# FIREBASE_SERVICE_ACCOUNT_GP2T. Trocar esse segredo = chave nova = desinstalar
+# e instalar o APK de novo nos celulares.
+name: Gerar APK
+
+on:
+  push:
+    branches:
+      - claude/stracta-fleet-mobile-v1-nj63nl
+    paths:
+      - "android/app/**"
+      - "android/*.gradle"
+      - ".github/workflows/gerar-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gerar-apk
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    name: APK Android (checklist)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Chave de assinatura
+        env:
+          SEGREDO: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_GP2T }}
+        run: |
+          set -e
+          SENHA=$(printf '%s' "$SEGREDO" | sha256sum | cut -c1-40)
+          echo "::add-mask::$SENHA"
+          export SENHA
+          KS="$RUNNER_TEMP/assinatura.jks"
+          echo "CK_SENHA=$SENHA" >> "$GITHUB_ENV"
+          echo "CK_KEYSTORE=$KS" >> "$GITHUB_ENV"
+          if [ -f android/assinatura.jks.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in android/assinatura.jks.enc -out "$KS" -pass env:SENHA
+          else
+            keytool -genkeypair -keystore "$KS" -storetype PKCS12 -alias checklist -keyalg RSA -keysize 2048 \
+              -validity 10000 -storepass "$SENHA" -keypass "$SENHA" -dname "CN=Checklist, O=GP2T, C=BR"
+            openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -in "$KS" -out android/assinatura.jks.enc -pass env:SENHA
+          fi
+
+      - name: Compilar o APK
+        working-directory: android
+        env:
+          CK_VERSAO: ${{ github.run_number }}
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Ligar o app ao site (assetlinks) e pôr o APK para baixar
+        run: |
+          set -e
+          FP=$(keytool -list -v -keystore "$CK_KEYSTORE" -storepass "$CK_SENHA" -alias checklist | grep -m1 'SHA256:' | sed 's/.*SHA256: *//')
+          test -n "$FP"
+          mkdir -p checklist/.well-known checklist/download
+          printf '[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"android_app","package_name":"app.gp2t.checklist","sha256_cert_fingerprints":["%s"]}}]\n' "$FP" > checklist/.well-known/assetlinks.json
+          cp android/app/build/outputs/apk/release/app-release.apk checklist/download/checklist.apk
+          ls -la checklist/download checklist/.well-known
+
+      - name: Guardar no repositório
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add android/assinatura.jks.enc checklist/.well-known/assetlinks.json checklist/download/checklist.apk
+          git commit -m "APK do Checklist (versão ${{ github.run_number }})" || exit 0
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"
+
+      - name: Publicar no site do checklist
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_GP2T }}
+          projectId: gp2t-gestaodefrota
+          channelId: live
+          entryPoint: checklist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: checklist-apk
+          path: checklist/download/checklist.apk
