@@ -1,7 +1,7 @@
 /* Checklist · Service Worker
    "Rede primeiro": com internet sempre baixa a versão nova; sem sinal usa a
    última cópia. O escopo é só /checklist/ — o app de frota tem o dele. */
-const CACHE = "ck-v38";
+const CACHE = "ck-v39";
 const ASSETS = [
   "./",
   "./index.html",
