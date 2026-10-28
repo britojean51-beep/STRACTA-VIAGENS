@@ -404,3 +404,6 @@ svg.i { width: 1.15em; height: 1.15em; vertical-align: -0.22em; flex: none; }
 .mini-bt.liberar { color: #fff; border-color: var(--ok); background: var(--ok); }
 .item.usuario.apagado { opacity: 1; background: var(--card-2); }
 .instalar .apk-txt { margin: 12px 0 6px; }
+
+/* empresas (dono) */
+.card b.sub { display: block; margin-top: 14px; }

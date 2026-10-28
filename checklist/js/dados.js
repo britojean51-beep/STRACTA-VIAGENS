@@ -13,6 +13,12 @@
      checklist_inspecoes/{id}     o checklist feito, com respostas e mídias
    Gestor do app de frota entra aqui como admin (é quem libera os primeiros).
 
+   VÁRIAS EMPRESAS: a empresa sai do e-mail de login.
+     usuario@gp2t.local         -> STRACTA (a primeira): coleções checklist_* de sempre
+     usuario@<codigo>.gp2t.local -> outra empresa: empresas/<codigo>/<coleção>
+   Uma empresa nunca enxerga a outra (as regras conferem o cadastro em
+   empresas/<codigo>/usuarios). Empresas novas, só o dono cria.
+
    Sem sinal: o login fica salvo no aparelho (persistência LOCAL do Firebase)
    e o Firestore guarda as gravações numa fila própria, enviada sozinha
    quando a rede volta.
@@ -20,6 +26,9 @@
 const DOMINIO = "gp2t.local";
 const PERFIL_KEY = "ck_perfil";
 const ULTIMO_USUARIO_KEY = "ck_ultimo_usuario";
+const EMPRESA_KEY = "ck_empresa";
+const EMPRESA_PADRAO = "stracta";
+const DONO = "jean@" + DOMINIO;
 const PERFIS = { motorista: "Motorista", operador: "Operador", tecnico: "Técnico de Segurança", gestor: "Gestor", admin: "Administrador" };
 // "inspetor" era o nome da primeira versão: quem ficou com ele vira motorista
 const perfilValido = p => PERFIS[p] ? p : "motorista";
@@ -30,19 +39,36 @@ function normalizarUsuario(v) {
     .replace(/\s+/g, ".")
     .replace(/[^a-z0-9._-]/g, "");
 }
-function emailDe(v) {
+/* código da empresa: letras, números e hífen (vira parte do e-mail de login) */
+function normalizarEmpresa(v) {
+  const t = String(v || "").trim().toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/^-+|-+$/g, "");
+  return t || EMPRESA_PADRAO;
+}
+const dominioDe = emp => emp === EMPRESA_PADRAO ? DOMINIO : emp + "." + DOMINIO;
+/* de qual empresa é o e-mail: "@gp2t.local" é a STRACTA; "@acme.gp2t.local", a acme */
+function empresaDe(email) {
+  const d = String(email || "").toLowerCase().split("@")[1] || "";
+  return d.endsWith("." + DOMINIO) ? d.slice(0, -DOMINIO.length - 1) : EMPRESA_PADRAO;
+}
+/* usuário digitado -> e-mail de login, na empresa de quem está logado
+   (ou na escolhida na tela de entrada) */
+function emailDe(v, emp) {
   const t = String(v || "").trim().toLowerCase();
   if (t.includes("@")) return t;
   const u = normalizarUsuario(t);
-  return u ? u + "@" + DOMINIO : "";
+  return u ? u + "@" + dominioDe(emp || Dados.empresa) : "";
 }
 function usuarioDe(email) {
   const t = String(email || "");
-  return t.endsWith("@" + DOMINIO) ? t.split("@")[0] : t;
+  const d = t.split("@")[1] || "";
+  return d === DOMINIO || d.endsWith("." + DOMINIO) ? t.split("@")[0] : t;
 }
 
 const Dados = {
   usuario: null,          // { email, usuario, nome, perfil }
+  empresa: EMPRESA_PADRAO, // de quem está logado (antes de entrar: a última usada no aparelho)
   _ok: false,
 
   configurado() { return typeof FIREBASE_CONFIG !== "undefined" && !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey); },
@@ -53,13 +79,26 @@ const Dados = {
   ehGestao() { return !!(this.usuario && (this.usuario.perfil === "admin" || this.usuario.perfil === "gestor")); },
   /* vê os checklists de todos (Painel): a gestão e o técnico de segurança, que acompanha mas não resolve */
   veTodos() { return this.ehGestao() || !!(this.usuario && this.usuario.perfil === "tecnico"); },
+  /* o dono do app: cria as outras empresas */
+  ehDono() { return !!(this.usuario && this.usuario.email === DONO); },
   fs() { return firebase.firestore(); },
-  col(nome) { return this.fs().collection("checklist_" + nome); },
+  /* caminho da coleção na empresa atual (a STRACTA fica onde sempre esteve) */
+  caminhoCol(nome, emp) {
+    emp = emp || this.empresa;
+    return emp === EMPRESA_PADRAO ? "checklist_" + nome : "empresas/" + emp + "/" + nome;
+  },
+  col(nome, emp) { return this.fs().collection(this.caminhoCol(nome, emp)); },
+  _usarEmpresa(emp) {
+    this.empresa = emp || EMPRESA_PADRAO;
+    try { localStorage.setItem(EMPRESA_KEY, this.empresa); } catch (e) {}
+  },
 
   ultimoUsuario() { try { return localStorage.getItem(ULTIMO_USUARIO_KEY) || ""; } catch (e) { return ""; } },
+  ultimaEmpresa() { try { return localStorage.getItem(EMPRESA_KEY) || EMPRESA_PADRAO; } catch (e) { return EMPRESA_PADRAO; } },
 
   /* ---- abre o Firebase e descobre se já tem alguém logado ---- */
   async iniciar() {
+    this.empresa = this.ultimaEmpresa();
     if (!this.configurado() || !this.sdk()) return { modo: "sem-sdk" };
     try {
       if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
@@ -87,6 +126,7 @@ const Dados = {
   async _perfil(email) {
     const id = String(email || "").toLowerCase();
     const salvo = this._perfilSalvo(id);
+    this.empresa = empresaDe(id);
     try {
       const doc = await this.col("usuarios").doc(id).get();
       if (doc.exists) {
@@ -96,8 +136,8 @@ const Dados = {
           email: id, usuario: usuarioDe(id), nome: d.nome || usuarioDe(id),
           perfil: perfilValido(d.perfil) }) };
       }
-      // gestor do app de frota administra o checklist (é quem libera os primeiros)
-      const frota = await this.fs().collection("usuarios").doc(id).get().catch(() => null);
+      // gestor do app de frota administra o checklist da STRACTA (é quem libera os primeiros)
+      const frota = this.empresa !== EMPRESA_PADRAO ? null : await this.fs().collection("usuarios").doc(id).get().catch(() => null);
       if (frota && frota.exists && (frota.data() || {}).perfil === "gestor" && (frota.data() || {}).ativo !== false) {
         const d = frota.data();
         return { ok: true, dados: this._guardarPerfil({
@@ -117,8 +157,9 @@ const Dados = {
   },
   _guardarPerfil(p) { try { localStorage.setItem(PERFIL_KEY, JSON.stringify(p)); } catch (e) {} return p; },
 
-  async entrar(usuario, senha) {
-    const id = emailDe(usuario);
+  async entrar(usuario, senha, empresa) {
+    const emp = normalizarEmpresa(empresa);
+    const id = emailDe(usuario, emp);
     if (!id) return { ok: false, erro: "Digite o seu usuário." };
     if (!senha) return { ok: false, erro: "Digite a senha." };
     if (!this._ok) return { ok: false, erro: "Sem internet. O primeiro acesso precisa de sinal." };
@@ -127,6 +168,7 @@ const Dados = {
       const r = await this._perfil(cred.user.email);
       if (!r.ok) { await firebase.auth().signOut().catch(() => {}); return r; }
       this.usuario = r.dados;
+      this._usarEmpresa(empresaDe(cred.user.email));
       try { localStorage.setItem(ULTIMO_USUARIO_KEY, usuarioDe(id)); } catch (e) {}
       return { ok: true };
     } catch (e) {
@@ -266,21 +308,63 @@ const Dados = {
     const id = emailDe(usuario);
     if (!id) return { ok: false, erro: "Informe o usuário." };
     if (!navigator.onLine) return { ok: false, erro: "Para cadastrar é preciso internet." };
-    let jaExistia = false, sec = null;
+    let jaExistia = false;
     if (senha) {
-      if (senha.length < 6) return { ok: false, erro: "A senha precisa de 6 caracteres ou mais." };
-      try {
-        sec = firebase.apps.find(a => a.name === "ck-adm") || firebase.initializeApp(FIREBASE_CONFIG, "ck-adm");
-        await sec.auth().createUserWithEmailAndPassword(id, senha);
-      } catch (e) {
-        if (String((e && e.code) || "").includes("email-already-in-use")) jaExistia = true;
-        else { try { if (sec) await sec.delete(); } catch (x) {} return { ok: false, erro: "Não foi possível criar o acesso." }; }
-      }
-      try { await sec.auth().signOut(); } catch (e) {}
-      try { await sec.delete(); } catch (e) {}
+      const a = await this._criarAcesso(id, senha);
+      if (!a.ok) return a;
+      jaExistia = a.jaExistia;
     }
     const r = await this.salvarUsuario(id, dados);
     return r.ok ? { ok: true, jaExistia } : r;
+  },
+  async _criarAcesso(id, senha) {
+    if (senha.length < 6) return { ok: false, erro: "A senha precisa de 6 caracteres ou mais." };
+    let jaExistia = false, sec = null;
+    try {
+      sec = firebase.apps.find(a => a.name === "ck-adm") || firebase.initializeApp(FIREBASE_CONFIG, "ck-adm");
+      await sec.auth().createUserWithEmailAndPassword(id, senha);
+    } catch (e) {
+      if (String((e && e.code) || "").includes("email-already-in-use")) jaExistia = true;
+      else { try { if (sec) await sec.delete(); } catch (x) {} return { ok: false, erro: "Não foi possível criar o acesso." }; }
+    }
+    try { await sec.auth().signOut(); } catch (e) {}
+    try { await sec.delete(); } catch (e) {}
+    return { ok: true, jaExistia };
+  },
+
+  /* ---- empresas (só o dono) ---- */
+  async empresas() {
+    const snap = await this.fs().collection("empresas").get();
+    return snap.docs.map(d => Object.assign({ codigo: d.id }, d.data()))
+      .sort((a, b) => String(a.nome || a.codigo).localeCompare(String(b.nome || b.codigo)));
+  },
+  /* nova empresa com o primeiro administrador dela */
+  async criarEmpresa(e) {
+    const cod = normalizarEmpresa(e.codigo);
+    if (!e.codigo || cod === EMPRESA_PADRAO || !/^[a-z0-9][a-z0-9-]{1,19}$/.test(cod)) {
+      return { ok: false, erro: "Código inválido: de 2 a 20 letras, números ou hífen." };
+    }
+    if (!String(e.nome || "").trim()) return { ok: false, erro: "Informe o nome da empresa." };
+    const adm = normalizarUsuario(e.admUsuario);
+    if (!adm) return { ok: false, erro: "Informe o usuário do administrador." };
+    if (!navigator.onLine) return { ok: false, erro: "Para cadastrar é preciso internet." };
+    const ref = this.fs().collection("empresas").doc(cod);
+    try {
+      if ((await ref.get()).exists) return { ok: false, erro: "Já existe uma empresa com esse código." };
+    } catch (x) { /* sem permissão para ler o que não existe: segue e o set confirma */ }
+    const id = adm + "@" + dominioDe(cod);
+    const a = await this._criarAcesso(id, String(e.admSenha || ""));
+    if (!a.ok) return a;
+    try {
+      await ref.set({ nome: String(e.nome).trim(), cnpj: String(e.cnpj || "").trim(), ativo: true,
+        criadoEm: Date.now(), criadoPor: this.usuario.email });
+      await this.col("usuarios", cod).doc(id).set({ nome: String(e.admNome || adm).trim(), perfil: "admin", ativo: true });
+      return { ok: true, codigo: cod, email: id, jaExistia: a.jaExistia };
+    } catch (x) { return { ok: false, erro: "Não foi possível salvar a empresa (confira as regras do Firestore)." }; }
+  },
+  async ativarEmpresa(cod, ativo) {
+    try { await this.fs().collection("empresas").doc(cod).set({ ativo: !!ativo }, { merge: true }); return { ok: true }; }
+    catch (x) { return { ok: false, erro: "Não foi possível mudar a empresa." }; }
   },
   async salvarUsuario(email, dados) {
     const id = emailDe(email);
@@ -301,5 +385,7 @@ if (typeof window !== "undefined") {
   window.Dados = Dados;
   window.PERFIS = PERFIS;
   window.emailDe = emailDe;
+  window.empresaDe = empresaDe;
+  window.normalizarEmpresa = normalizarEmpresa;
   window.usuarioDe = usuarioDe;
 }

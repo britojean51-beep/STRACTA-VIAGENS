@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck40";
+const VERSAO = "ck41";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -147,6 +147,7 @@ const ICONES = {
   painel: ic('<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>'),
   cadastros: ic('<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/>'),
   conta: ic('<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>'),
+  empresa: ic('<path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 9h4a1 1 0 0 1 1 1v11M2.5 21h19"/><path d="M8 8h3M8 12h3M8 16h3"/>'),
   usuario: ic('<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>'),
   cadeado: ic('<rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>'),
   olho: ic('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
@@ -461,7 +462,8 @@ const Telas = {
   pilha: [],
   ir(nome, arg, semPilha) {
     const soGestao = ["painel"], soResolve = ["servicos"], soAdmin = ["cadastros", "cad-equip", "cad-modelos", "cad-modelo", "cad-usuarios"];
-    if ((soGestao.includes(nome) && !Dados.veTodos()) || (soResolve.includes(nome) && !Dados.ehGestao()) || (soAdmin.includes(nome) && !Dados.ehGestao())) nome = "inicio";
+    if ((soGestao.includes(nome) && !Dados.veTodos()) || (soResolve.includes(nome) && !Dados.ehGestao()) || (soAdmin.includes(nome) && !Dados.ehGestao())
+      || (nome === "empresas" && !Dados.ehDono())) nome = "inicio";
     if (!semPilha && this.atual && this.atual.nome !== nome) this.pilha.push(this.atual);
     if (["inicio", "painel", "cadastros", "conta"].includes(nome)) this.pilha = [];
     this.atual = { nome, arg };
@@ -478,7 +480,7 @@ const Telas = {
     $("#btnVoltar").style.visibility = this.pilha.length ? "visible" : "hidden";
     document.querySelectorAll(".aba").forEach(b => {
       const raiz = { "novo": "novo", "checklist": "novo", "detalhe": "painel", "cad-equip": "cadastros",
-        "cad-modelos": "cadastros", "cad-modelo": "cadastros", "cad-usuarios": "cadastros", "servicos": "painel" }[nome] || nome;
+        "cad-modelos": "cadastros", "cad-modelo": "cadastros", "cad-usuarios": "cadastros", "empresas": "cadastros", "servicos": "painel" }[nome] || nome;
       b.classList.toggle("ativa", b.dataset.ir === raiz);
     });
     if (fn) fn(arg);
@@ -512,6 +514,8 @@ Render.login = function (erro) {
   document.body.classList.add("tela-login");
   $("#abas").hidden = true;
   $("#btnVoltar").style.visibility = "hidden";
+  // empresa: a STRACTA (padrão) entra como sempre; outra empresa digita o código uma vez
+  const empAtual = Dados.ultimaEmpresa(), empOutra = empAtual !== EMPRESA_PADRAO;
   app().innerHTML = `
     <div class="marca">
       <div class="marca-logo">${LOGO_FUNDO_ESCURO}</div>
@@ -520,6 +524,13 @@ Render.login = function (erro) {
     </div>
     <form class="card login" id="fLogin" autocomplete="on">
       <h2>Acesse sua conta</h2>
+      <div id="lgEmpresaBloco" ${empOutra ? "" : "hidden"}>
+        <label for="lgEmpresa">Empresa</label>
+        <div class="campo-ico">${ICONES.empresa}
+          <input name="empresa" id="lgEmpresa" autocomplete="organization" autocapitalize="none" spellcheck="false"
+            value="${empOutra ? h(empAtual) : ""}" placeholder="código da empresa" />
+        </div>
+      </div>
       <label for="lgUsuario">Usuário</label>
       <div class="campo-ico">${ICONES.usuario}
         <input name="usuario" id="lgUsuario" autocomplete="username" autocapitalize="none" spellcheck="false"
@@ -535,6 +546,7 @@ Render.login = function (erro) {
       <p class="erro" id="lgErro" role="alert">${h(erro || "")}</p>
       <button class="btn btn-grande btn-entrar" id="lgEntrar">Entrar</button>
       <p class="muted mini centro">Esqueceu a senha? Fale com o administrador.</p>
+      <p class="mini centro" ${empOutra ? "hidden" : ""}><button type="button" class="link" id="lgOutraEmpresa">Entrar em outra empresa</button></p>
     </form>
     <p class="mini centro legal">Ao entrar, você concorda com os <a href="#" data-doc="termos">Termos de uso</a>
       e a <a href="#" data-doc="privacidade">Política de privacidade</a>.</p>
@@ -543,6 +555,9 @@ Render.login = function (erro) {
   Instalar.preencher();
   const u = $("#lgUsuario"), s = $("#lgSenha"), olho = $("#lgOlho");
   (u.value ? s : u).focus();
+  $("#lgOutraEmpresa").onclick = ev => {
+    $("#lgEmpresaBloco").hidden = false; ev.currentTarget.parentNode.hidden = true; $("#lgEmpresa").focus();
+  };
   olho.onclick = () => {
     const mostrar = s.type === "password";
     s.type = mostrar ? "text" : "password";
@@ -554,7 +569,7 @@ Render.login = function (erro) {
     ev.preventDefault();
     const b = $("#lgEntrar");
     b.disabled = true; b.innerHTML = `<span class="girando" aria-hidden="true"></span> Entrando…`;
-    const r = await Dados.entrar(u.value, s.value);
+    const r = await Dados.entrar(u.value, s.value, $("#lgEmpresa").value);
     if (r.ok) return entrouNoApp();
     b.disabled = false; b.textContent = "Entrar";
     $("#lgErro").textContent = r.erro;
@@ -1675,7 +1690,8 @@ Render.cadastros = function () {
     <button class="menu" data-ir="cad-equip"><span>${ICONES.caminhao}</span><div><b>Equipamentos</b><small>${Estado.equipamentos.length} cadastrado(s)</small></div></button>
     <button class="menu" data-ir="cad-modelos"><span>${ICONES.lista}</span><div><b>Modelos de checklist</b><small>${Estado.modelosEfetivos().length} modelo(s) · itens e nível de cada um</small></div></button>
     <button class="menu" data-ir="servicos"><span>${ICONES.gota}</span><div><b>Lubrificação e inspeção</b><small>agendar e lançar o que foi feito em cada equipamento</small></div></button>
-    <button class="menu" data-ir="cad-usuarios"><span>${ICONES.equipe}</span><div><b>Usuários</b><small>quem pode entrar e fazer checklist</small></div></button>`;
+    <button class="menu" data-ir="cad-usuarios"><span>${ICONES.equipe}</span><div><b>Usuários</b><small>quem pode entrar e fazer checklist</small></div></button>
+    ${Dados.ehDono() ? `<button class="menu" data-ir="empresas"><span>${ICONES.empresa}</span><div><b>Empresas</b><small>outras empresas usando o app, cada uma com os seus dados</small></div></button>` : ""}`;
   app().onclick = ev => { const b = ev.target.closest("[data-ir]"); if (b) Telas.ir(b.dataset.ir); };
 };
 
@@ -1856,6 +1872,7 @@ Render["cad-usuarios"] = async function () {
       <p class="muted mini"><b>Motorista</b> e <b>Operador</b> fazem checklist. <b>Técnico de Segurança</b> também vê o Painel e todos os checklists, marca como visualizado e gera o PDF, mas não resolve.
         <b>Gestor</b> também resolve os defeitos, agenda lubrificação e mexe em Cadastros (não nomeia administrador).
         <b>Administrador</b> também apaga checklists e mexe em Cadastros.</p>
+      ${Dados.empresa !== EMPRESA_PADRAO ? `<p class="muted mini">Na tela de entrada, a pessoa toca em <b>Entrar em outra empresa</b> e digita o código <b>${h(Dados.empresa)}</b> (só na primeira vez neste celular).</p>` : ""}
       <p class="muted mini">A pessoa entra com <b>usuário</b> e senha — não precisa ter e-mail. Cada um troca a própria senha em Conta; esqueceu, redefina no console do Firebase (Authentication).</p>
       <button class="btn" id="usCriar">Criar e liberar</button>
     </form>
@@ -1898,12 +1915,67 @@ Render["cad-usuarios"] = async function () {
   }
 };
 
+/* ---------- empresas (só o dono) ----------
+   Cada empresa tem os seus equipamentos, checklists e usuários, separados das
+   outras. Quem entra digita o código da empresa na tela de entrada. */
+Render.empresas = async function () {
+  titulo("EMPRESAS", "Cada uma com os seus dados");
+  app().innerHTML = `
+    <form class="card" id="fEmp" autocomplete="off">
+      <b>Nova empresa</b>
+      <div class="linha2">
+        <label>Código<input name="codigo" placeholder="ex.: transvale" autocapitalize="none" spellcheck="false" maxlength="20" required /></label>
+        <label>Nome<input name="nome" placeholder="Transvale Ltda." required /></label>
+      </div>
+      <label>CNPJ<input name="cnpj" inputmode="numeric" placeholder="00.000.000/0000-00" /></label>
+      <b class="sub">Primeiro administrador</b>
+      <div class="linha2">
+        <label>Usuário<input name="admUsuario" placeholder="ex.: maria" autocapitalize="none" spellcheck="false" required /></label>
+        <label>Nome<input name="admNome" placeholder="Maria Souza" required /></label>
+      </div>
+      <label>Senha inicial<input name="admSenha" type="text" placeholder="mín. 6 caracteres" autocomplete="new-password" minlength="6" required /></label>
+      <p class="muted mini">O código entra no login: o administrador toca em <b>Entrar em outra empresa</b>, digita o código, o usuário e a senha. Depois ele mesmo cadastra os equipamentos e as pessoas da empresa dele.</p>
+      <button class="btn" id="empCriar">Criar empresa</button>
+    </form>
+    <div id="empLista"><p class="carregando">Carregando…</p></div>`;
+  $("#fEmp").onsubmit = async ev => {
+    ev.preventDefault();
+    const f = Object.fromEntries(new FormData(ev.target));
+    const b = $("#empCriar"); b.disabled = true;
+    const r = await Dados.criarEmpresa(f);
+    b.disabled = false;
+    if (!r.ok) return toast(r.erro, "erro");
+    toast("Empresa criada. Login: código " + r.codigo + ", usuário " + usuarioDe(r.email) + ".", "ok");
+    Telas.render();
+  };
+  try {
+    const l = await Dados.empresas();
+    if (Telas.atual.nome !== "empresas") return;
+    $("#empLista").innerHTML = `<h3 class="secao">${l.length} empresa(s)</h3>` + (l.length ? "" : `<p class="muted">Nenhuma empresa além da sua por enquanto.</p>`)
+      + l.map(e => `<div class="item usuario ${e.ativo === false ? "apagado" : ""}">
+      <div class="us-topo"><div><b>${h(e.nome || e.codigo)}</b><small>código ${h(e.codigo)}${e.cnpj ? " · CNPJ " + h(e.cnpj) : ""}</small></div>
+        ${e.ativo === false ? `<span class="tag perigo">Suspensa</span>` : ""}</div>
+      <div class="us-acoes"><button class="mini-bt ${e.ativo === false ? "liberar" : "bloq"}" data-emp="${h(e.codigo)}" data-v="${e.ativo === false ? "1" : "0"}">${e.ativo === false ? "Reativar" : "Suspender"}</button></div>
+      </div>`).join("");
+    $("#empLista").onclick = async ev => {
+      const b = ev.target.closest("[data-emp]"); if (!b) return;
+      const suspender = b.dataset.v === "0";
+      if (suspender && !(await confirmar("Ninguém dessa empresa consegue entrar até você reativar. Os dados ficam guardados.", { titulo: "Suspender a empresa?", ok: "Suspender" }))) return;
+      const r = await Dados.ativarEmpresa(b.dataset.emp, !suspender);
+      if (!r.ok) return toast(r.erro, "erro");
+      Telas.render();
+    };
+  } catch (e) {
+    $("#empLista").innerHTML = `<p class="erro">Não deu para carregar (${h((e && e.code) || "sem sinal")}).</p>`;
+  }
+};
+
 /* ---------- conta ---------- */
 Render.conta = function () {
   const u = Dados.usuario;
   titulo("MINHA CONTA", "");
   app().innerHTML = `
-    <div class="card"><b>${h(u.nome)}</b><p class="muted">${h(u.usuario)} · ${PERFIS[u.perfil] || ""}</p>
+    <div class="card"><b>${h(u.nome)}</b><p class="muted">${h(u.usuario)} · ${PERFIS[u.perfil] || ""}${Dados.empresa !== EMPRESA_PADRAO ? " · empresa " + h(Dados.empresa) : ""}</p>
       <p class="muted mini" data-pendentes></p>
       <button class="btn btn-ghost" id="ctEnviar">${I("enviar")} Enviar pendentes agora</button></div>
     <form class="card" id="fSenha">
