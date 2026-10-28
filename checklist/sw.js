@@ -1,7 +1,7 @@
 /* Checklist · Service Worker
    "Rede primeiro": com internet sempre baixa a versão nova; sem sinal usa a
    última cópia. O escopo é só /checklist/ — o app de frota tem o dele. */
-const CACHE = "ck-v39";
+const CACHE = "ck-v40";
 const ASSETS = [
   "./",
   "./index.html",
@@ -11,7 +11,7 @@ const ASSETS = [
   "./js/dados.js",
   "./js/app.js",
   "./js/pdf.js",
-  "./js/vendor/jspdf-2.5.2.umd.min.js",
+  "./js/vendor/jspdf-4.2.1.umd.min.js",
   "./manifest.json",
   "./icons/icon.svg",
   "./icons/icon-192.png",

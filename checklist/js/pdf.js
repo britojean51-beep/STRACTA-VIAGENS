@@ -3,7 +3,7 @@
    itens com observação, resolução e solicitação, e as fotos.
    O jsPDF só é baixado na primeira vez que alguém gera um PDF.
    ============================================================ */
-const PDF_LIB = "js/vendor/jspdf-2.5.2.umd.min.js";
+const PDF_LIB = "js/vendor/jspdf-4.2.1.umd.min.js";
 
 const PDF = {
   _lib: null,

@@ -120,7 +120,16 @@ service cloud.firestore {
         || (ckGestao() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendencias', 'ultLubrificacao', 'ultInspecao', 'proxLubrificacao']))
         || (ckLiberado()
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pendencias'])
-            && request.resource.data.get('pendencias', {}).keys().hasAll(resource.data.get('pendencias', {}).keys()));
+            && pendenciaSoSobe(resource.data.get('pendencias', {}), request.resource.data.get('pendencias', {})));
+    }
+    // Quem faz checklist só pode PIORAR a situação: acrescentar pendência nova ou
+    // subir uma de "restricao" para "bloqueado" (problema apontado depois que obriga
+    // parada). Tirar ou rebaixar (bloqueado -> restricao) é só da gestão.
+    function pendenciaSoSobe(antes, depois) {
+      return depois.keys().hasAll(antes.keys())
+        && depois.values().hasOnly(['bloqueado', 'restricao'])
+        && depois.diff(antes).changedKeys().size() <= 1
+        && depois.values().removeAll(['restricao']).size() >= antes.values().removeAll(['restricao']).size();
     }
     // Lubrificação e inspeção: a gestão lança o que foi feito em cada equipamento.
     // O resumo (última lubrificação/inspeção e a próxima marcada) fica no equipamento,
@@ -144,7 +153,9 @@ service cloud.firestore {
     // tira da lista "Meus últimos checklists". Não revela nada.
     match /checklist_inspecoes/{id} {
       allow read: if ckVeTodos() || (ckLiberado() && (resource == null || resource.data.criadoPor == meuEmail()));
-      allow create: if ckLiberado() && request.resource.data.criadoPor == meuEmail();
+      // criar: em nome próprio e sem já vir "resolvido", "visto" ou com apontamento
+      allow create: if ckLiberado() && request.resource.data.criadoPor == meuEmail()
+        && !request.resource.data.keys().hasAny(['resolucoes', 'solicitacoes', 'vistos', 'apontamentos']);
       allow update: if ckAdmin()
         || (ckGestao() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tratativa', 'resolucoes', 'solicitacoes', 'midias', 'pendentes', 'vistos']))
         || (ckLiberado() && resource.data.criadoPor == meuEmail()
@@ -159,14 +170,18 @@ service cloud.firestore {
     // por foto. Mesma regra de quem vê o checklist; só imagem JPEG, até ~950 KB.
     // Quem fez o checklist também vê as fotos da correção (tiradas pelo gestor):
     // é como o motorista acompanha a manutenção do caminhão dele.
-    match /checklist_fotos/{id} {
-      allow read: if ckVeTodos() || (ckLiberado() && (resource.data.criadoPor == meuEmail()
-        || get(/databases/$(database)/documents/checklist_inspecoes/$(resource.data.inspecao)).data.get('criadoPor', '') == meuEmail()));
-      allow create, update: if ckLiberado()
-        && request.resource.data.criadoPor == meuEmail()
+    function fotoValida() {
+      return request.resource.data.criadoPor == meuEmail()
         && request.resource.data.dados is string
         && request.resource.data.dados.size() < 950000
         && request.resource.data.dados.matches('data:image/jpeg;base64,.*');
+    }
+    match /checklist_fotos/{id} {
+      allow read: if ckVeTodos() || (ckLiberado() && (resource.data.criadoPor == meuEmail()
+        || get(/databases/$(database)/documents/checklist_inspecoes/$(resource.data.inspecao)).data.get('criadoPor', '') == meuEmail()));
+      // a foto é a prova: ninguém troca a foto de outra pessoa (update só de quem enviou)
+      allow create: if ckLiberado() && fotoValida();
+      allow update: if ckLiberado() && resource.data.criadoPor == meuEmail() && fotoValida();
       allow delete: if ckAdmin();
     }
 
