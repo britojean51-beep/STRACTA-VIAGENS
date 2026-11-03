@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck45";
+const VERSAO = "ck46";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -507,8 +507,8 @@ function titulo(t, sub, o = {}) {
   if (o.progresso != null) barra.firstElementChild.style.width = Math.round(Math.min(1, Math.max(0, o.progresso)) * 100) + "%";
   const quem = $("#quem");
   quem.hidden = !o.quem;
-  // a bolinha da conexão fica no nome: verde piscando online, amarela parada sem sinal
-  if (o.quem) quem.innerHTML = `<i class="quem-sinal" aria-hidden="true"></i><span>${h(o.quem)}</span>`;
+  // o nome inteiro mostra a conexão: verde piscando online, amarelo parado sem sinal
+  if (o.quem) quem.innerHTML = `${I("usuario")}<span>${h(o.quem)}</span>`;
   quem.classList.toggle("off", !navigator.onLine);
 }
 /* etiqueta da situação do equipamento para o topo */
