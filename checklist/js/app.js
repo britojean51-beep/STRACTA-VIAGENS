@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck43";
+const VERSAO = "ck46";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -483,7 +483,8 @@ const Telas = {
     const { nome, arg } = this.atual;
     const fn = Render[nome];
     window.scrollTo(0, 0);
-    $("#btnVoltar").style.visibility = this.pilha.length ? "visible" : "hidden";
+    $("#btnVoltar").hidden = !this.pilha.length;
+    document.body.dataset.tela = nome;   // o logo só aparece no Início
     document.querySelectorAll(".aba").forEach(b => {
       const raiz = { "novo": "novo", "checklist": "novo", "detalhe": "painel", "cad-equip": "cadastros",
         "cad-modelos": "cadastros", "cad-modelo": "cadastros", "cad-usuarios": "cadastros", "empresas": "cadastros", "servicos": "painel" }[nome] || nome;
@@ -496,14 +497,40 @@ const Telas = {
   atualizarSeVisivel(nomes) { if (this.atual && nomes.includes(this.atual.nome)) this.render(); }
 };
 
-function titulo(t, sub) { $("#titulo").textContent = t; $("#subtitulo").textContent = sub || ""; }
+/* topo: título, subtítulo e, quando a tela pede,
+   o: { tag: etiqueta ao lado do título (situação do equipamento), progresso: 0 a 1 (barra no pé do topo) } */
+function titulo(t, sub, o = {}) {
+  $("#titulo").textContent = t; $("#subtitulo").textContent = sub || "";
+  $("#tituloTag").innerHTML = o.tag || "";
+  const barra = $("#topoBarra");
+  barra.hidden = o.progresso == null;
+  if (o.progresso != null) barra.firstElementChild.style.width = Math.round(Math.min(1, Math.max(0, o.progresso)) * 100) + "%";
+  const quem = $("#quem");
+  quem.hidden = !o.quem;
+  // o nome inteiro mostra a conexão: verde piscando online, amarelo parado sem sinal
+  if (o.quem) quem.innerHTML = `${I("usuario")}<span>${h(o.quem)}</span>`;
+  quem.classList.toggle("off", !navigator.onLine);
+}
+/* etiqueta da situação do equipamento para o topo */
+function tagSituacao(e) {
+  if (!e) return "";
+  const s = SITUACOES[situacaoDe(e)];
+  return `<span class="tag ${s.cls} tag-topo">${I(s.icone)} ${s.txt}</span>`;
+}
+const saudacao = () => { const hr = new Date().getHours(); return hr < 12 ? "Bom dia" : hr < 18 ? "Boa tarde" : "Boa noite"; };
+const dataLonga = () => { const t = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }); return t.charAt(0).toUpperCase() + t.slice(1); };
 
 /* ---------- rede ---------- */
 async function atualizarRede() {
   const el = $("#rede");
   const n = await Midia.pendentes();
-  el.className = "rede " + (navigator.onLine ? "on" : "off");
-  el.textContent = navigator.onLine ? (n ? n + " na fila" : "online") : "sem sinal" + (n ? " · " + n : "");
+  // conectado e tudo enviado: só a bolinha verde; texto só quando importa
+  el.className = "rede " + (navigator.onLine ? (n ? "fila" : "on") : "off");
+  el.textContent = navigator.onLine ? (n ? n + " na fila" : "") : "sem sinal" + (n ? " · " + n : "");
+  el.setAttribute("aria-label", navigator.onLine ? (n ? n + " arquivo(s) enviando" : "Conectado") : "Sem sinal");
+  const quem = $("#quem");
+  quem.classList.toggle("off", !navigator.onLine);
+  quem.setAttribute("aria-label", "Minha conta · " + (navigator.onLine ? "conectado" : "sem sinal"));
   el.title = navigator.onLine ? (n ? n + " arquivo(s) enviando" : "Conectado") : "Sem sinal — tudo fica guardado";
   const c = document.querySelector("[data-pendentes]");
   if (c) c.textContent = n ? n + " foto(s)/vídeo(s) aguardando envio" : "Tudo enviado.";
@@ -519,7 +546,7 @@ Render.login = function (erro) {
   titulo("Checklist de Frota", "Máquinas e caminhões");
   document.body.classList.add("tela-login");
   $("#abas").hidden = true;
-  $("#btnVoltar").style.visibility = "hidden";
+  $("#btnVoltar").hidden = true;
   // empresa: a STRACTA (padrão) entra como sempre; outra empresa digita o código uma vez
   const empAtual = Dados.ultimaEmpresa(), empOutra = empAtual !== EMPRESA_PADRAO;
   app().innerHTML = `
@@ -586,7 +613,7 @@ Render.login = function (erro) {
 
 /* ---------- início ---------- */
 Render.inicio = function () {
-  titulo("Checklist de Frota", "Olá, " + (Dados.usuario.nome || Dados.usuario.usuario));
+  titulo(saudacao(), dataLonga(), { quem: Dados.usuario.nome || Dados.usuario.usuario });
   const r = Estado.rascunho;
   const hist = Historico.lista();
   const hoje = diaDe(Date.now());
@@ -652,7 +679,7 @@ Render.inicio = function () {
 
 /* ---------- novo: escolher o equipamento ---------- */
 Render.novo = function (busca) {
-  titulo("NOVO CHECKLIST", "Escolha o equipamento");
+  titulo("Novo checklist", "Escolha o equipamento");
   if (Estado.rascunho) return Telas.ir("checklist", null, true);
   const q = String(busca || "").toLowerCase();
   const lista = Estado.equipamentos.filter(e => e.ativo !== false &&
@@ -862,7 +889,7 @@ async function refazerResumo(equipId) {
 Render.servicos = function (equipId) {
   const e = Estado.equipamentos.find(x => x.id === equipId);
   if (!e) {
-    titulo("LUBRIFICAÇÃO E INSPEÇÃO", "Escolha o equipamento");
+    titulo("Lubrificação e inspeção", "Escolha o equipamento");
     app().innerHTML = `${Estado.equipamentos.filter(x => x.ativo !== false).map(x => { const a = avisoLub(x); return `<div class="item srv-item" data-sv="${h(x.id)}">
       <div><b>${h(nomeEquip(x))}</b><small>Lubrificação: ${x.ultLubrificacao ? diaBR(x.ultLubrificacao) : "sem registro"} · Inspeção: ${x.ultInspecao ? diaBR(x.ultInspecao) : "sem registro"}</small></div>
       <div class="dir">${x.proxLubrificacao ? `<span class="tag ${a ? a.cls : "sem"}">${I("calendario")} ${diaBR(x.proxLubrificacao).slice(0, 5)}</span>` : ""}<small>abrir ›</small></div></div>`; }).join("")
@@ -870,7 +897,7 @@ Render.servicos = function (equipId) {
     app().onclick = ev => { const it = ev.target.closest("[data-sv]"); if (it) Telas.ir("servicos", it.dataset.sv); };
     return;
   }
-  titulo(nomeEquip(e), "Lubrificação e inspeção");
+  titulo(nomeEquip(e), "Lubrificação e inspeção", { tag: tagSituacao(e) });
   const hoje = diaDe(Date.now());
   app().innerHTML = `
     ${cartaoServicos(e)}
@@ -944,10 +971,11 @@ Render.servicos = function (equipId) {
 Render.checklist = function () {
   const r = Estado.rascunho;
   if (!r) return Telas.ir("novo", null, true);
-  titulo(nomeEquip(r.equip) || "CHECKLIST", r.modelo.nome);
   const feitos = Object.keys(r.respostas).length, total = r.modelo.itens.length;
+  // o pé do topo vira a barra de progresso
+  titulo(nomeEquip(r.equip) || "Checklist", feitos + " de " + total + " · " + r.modelo.nome,
+    { progresso: total ? feitos / total : 0, tag: tagSituacao(Estado.equipamentos.find(e => e.id === r.equip.id)) });
   app().innerHTML = `
-    <div class="progresso"><div style="width:${Math.round(feitos / total * 100)}%"></div></div>
     <p class="muted mini">${feitos} de ${total} itens · toque em OK, Não conforme ou N/A</p>
     ${cartaoServicos(Estado.equipamentos.find(e => e.id === r.equip.id))}
     <p class="muted mini">${I("local")} A localização é registrada uma vez, ao começar, se o celular permitir. <a href="#" data-doc="privacidade">Privacidade</a></p>
@@ -1146,7 +1174,7 @@ async function finalizar() {
 
 Render.resultado = function (a) {
   const R = RESULTADOS[a.resultado];
-  titulo("CHECKLIST ENVIADO", a.equip);
+  titulo("Checklist enviado", a.equip);
   app().innerHTML = `
     <div class="card resultado ${R.cls}">
       <div class="grande">${ICONES[R.icone]}</div>
@@ -1170,7 +1198,7 @@ Render.resultado = function (a) {
 const Painel = { dia: "", filtro: "todos", busca: "", lista: null, carregando: false };
 
 Render.painel = async function () {
-  titulo("PAINEL", "Checklists recebidos");
+  titulo("Painel", "Checklists recebidos");
   const p = Painel;
   const desenhar = () => {
     const l = (p.lista || []).filter(i =>
@@ -1319,7 +1347,7 @@ async function marcarVisto(i) {
 }
 
 Render.detalhe = async function (id) {
-  titulo("CHECKLIST", "");
+  titulo("Checklist", "");
   app().innerHTML = `<p class="carregando">Carregando…</p>`;
   let i = (Painel.lista || []).find(x => x.id === id);
   try { i = (await Dados.inspecao(id)) || i; } catch (e) {}
@@ -1691,7 +1719,7 @@ async function apagarInspecao(i) {
 
 /* ---------- cadastros (admin) ---------- */
 Render.cadastros = function () {
-  titulo("CADASTROS", "");
+  titulo("Cadastros", "");
   app().innerHTML = `
     <button class="menu" data-ir="cad-equip"><span>${ICONES.caminhao}</span><div><b>Equipamentos</b><small>${Estado.equipamentos.length} cadastrado(s)</small></div></button>
     <button class="menu" data-ir="cad-modelos"><span>${ICONES.lista}</span><div><b>Modelos de checklist</b><small>${Estado.modelosEfetivos().length} modelo(s) · itens e nível de cada um</small></div></button>
@@ -1702,7 +1730,7 @@ Render.cadastros = function () {
 };
 
 Render["cad-equip"] = function (editId) {
-  titulo("EQUIPAMENTOS", "");
+  titulo("Equipamentos", "");
   const e = Estado.equipamentos.find(x => x.id === editId) || {};
   const ms = Estado.modelosEfetivos();
   app().innerHTML = `
@@ -1777,7 +1805,7 @@ Render["cad-equip"] = function (editId) {
 };
 
 Render["cad-modelos"] = function () {
-  titulo("MODELOS", "Itens de cada checklist");
+  titulo("Modelos", "Itens de cada checklist");
   app().innerHTML = `
     <p class="muted mini">Toque num modelo para mudar os itens ou o nível de cada um. Os marcados "padrão" já vêm prontos no app.</p>
     ${Estado.modelosEfetivos().map(m => `<div class="item" data-md="${h(m.id)}">
@@ -1796,7 +1824,7 @@ Render["cad-modelo"] = function (id) {
     Render["cad-modelo"]._ed = base ? JSON.parse(JSON.stringify(base)) : { nome: "", tipo: "caminhao", itens: [] };
   }
   const m = Render["cad-modelo"]._ed;
-  titulo(base ? "EDITAR MODELO" : "NOVO MODELO", "");
+  titulo(base ? "Editar modelo" : "Novo modelo", "");
   app().innerHTML = `
     <div class="card">
       <label>Nome<input id="mdNome" value="${h(m.nome)}" placeholder="ex.: Caminhão basculante — diário" /></label>
@@ -1863,7 +1891,7 @@ Render["cad-modelo"] = function (id) {
 };
 
 Render["cad-usuarios"] = async function () {
-  titulo("USUÁRIOS", "Quem pode entrar");
+  titulo("Usuários", "Quem pode entrar");
   app().innerHTML = `
     <form class="card" id="fUs" autocomplete="off">
       <b>Liberar acesso</b>
@@ -1925,7 +1953,7 @@ Render["cad-usuarios"] = async function () {
    Cada empresa tem os seus equipamentos, checklists e usuários, separados das
    outras. Quem entra digita o código da empresa na tela de entrada. */
 Render.empresas = async function () {
-  titulo("EMPRESAS", "Cada uma com os seus dados");
+  titulo("Empresas", "Cada uma com os seus dados");
   app().innerHTML = `
     <form class="card" id="fEmp" autocomplete="off">
       <b>Nova empresa</b>
@@ -1979,7 +2007,7 @@ Render.empresas = async function () {
 /* ---------- conta ---------- */
 Render.conta = function () {
   const u = Dados.usuario;
-  titulo("MINHA CONTA", "");
+  titulo("Minha conta", "");
   app().innerHTML = `
     <div class="card"><b>${h(u.nome)}</b><p class="muted">${h(u.usuario)} · ${PERFIS[u.perfil] || ""}${Dados.empresa !== EMPRESA_PADRAO ? " · empresa " + h(Dados.empresa) : ""}</p>
       <p class="muted mini" data-pendentes></p>
@@ -2104,6 +2132,7 @@ function entrouNoApp() {
 }
 
 async function iniciar() {
+  $("#quem").onclick = () => Telas.ir("conta");
   $("#btnVoltar").onclick = () => { if (history.state && history.state.ck) history.back(); else Telas.voltar(); };
   window.addEventListener("popstate", () => {
     if (!Dados.usuario || !Telas.atual) return;

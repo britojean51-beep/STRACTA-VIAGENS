@@ -45,14 +45,38 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @media (prefers-reduced-transparency: reduce) {
   .topo, .abas { background: #ffffff; -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
-.voltar { background: none; border: 0; color: var(--text); font-size: 34px; line-height: 1; width: 36px; visibility: hidden; cursor: pointer; }
+.voltar { background: none; border: 0; color: var(--text); font-size: 34px; line-height: 1; width: 32px; margin-left: -4px; padding: 0; cursor: pointer; }
 .titulos { flex: 1; min-width: 0; }
-.topo .logo { display: flex; width: 32px; height: 32px; flex: 0 0 32px; }
+.topo .logo { display: none; width: 32px; height: 32px; flex: 0 0 32px; }
+/* o logo só no Início; nas outras telas o lugar é do título (e da seta ‹) */
+body[data-tela="inicio"] .topo .logo { display: flex; }
 .topo .logo svg { width: 32px; height: 32px; }
-.titulos h1 { margin: 0; font-size: 17px; letter-spacing: .3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.titulo-linha { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.titulos h1 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#tituloTag:empty { display: none; }
+.tag-topo { flex: 0 0 auto; font-size: 11px; padding: 3px 8px; white-space: nowrap; }
+/* Início: quem está usando (toque abre a Conta) */
+.quem { display: flex; align-items: center; gap: 6px; max-width: 46%; flex: 0 1 auto; padding: 6px 12px 6px 8px;
+  background: var(--card-2); color: var(--text); border: 1px solid var(--line); border-radius: 99px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.quem svg { width: 20px; height: 20px; flex: 0 0 20px; }
+/* conectado: o botão do nome fica verde e "respira" (brilho que pulsa em volta) */
+.quem { background: #dcfce7; border-color: #16a34a; color: #052e16; animation: sinal 1.8s ease-in-out infinite; }
+@keyframes sinal { 0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, .55); } 60% { box-shadow: 0 0 0 7px rgba(22, 163, 74, 0); } }
+/* sem sinal: amarelo, parado */
+.quem.off { background: #fef3c7; border-color: #ca8a04; color: #422006; animation: none; }
+@media (prefers-reduced-motion: reduce) { .quem { animation: none; } }
+/* no Início a conexão aparece no nome; o aviso de fila continua ao lado */
+body[data-tela="inicio"] .rede.on, body[data-tela="inicio"] .rede.off { display: none; }
+.quem span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* checklist: o pé do topo vira a barra de progresso */
+.topo-barra { position: absolute; left: 0; right: 0; bottom: -3px; height: 4px; background: #e2e8f0; }
+.topo-barra > div { height: 100%; background: var(--brand); transition: width .25s; }
+body[data-tela="checklist"] .topo { border-bottom-color: #e2e8f0; }
 .titulos p { margin: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rede { font-size: 12px; font-weight: 700; padding: 4px 8px; border-radius: 99px; white-space: nowrap; }
-.rede.on { color: var(--ok); }
+/* conectado e tudo enviado: só uma bolinha verde */
+.rede.on { width: 10px; height: 10px; padding: 0; background: #16a34a; box-shadow: 0 0 0 3px #dcfce7; flex: 0 0 10px; margin: 0 4px; }
+.rede.fila { color: #1e3a8a; background: #dbeafe; }
 .rede.off { color: #1a0d02; background: #fbbf24; }
 
 main { padding: 14px; max-width: 760px; margin: 0 auto; }
