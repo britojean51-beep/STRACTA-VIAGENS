@@ -1,7 +1,9 @@
 /* Checklist · Service Worker
    "Rede primeiro": com internet sempre baixa a versão nova; sem sinal usa a
    última cópia. O escopo é só /checklist/ — o app de frota tem o dele. */
-const CACHE = "ck-v46";
+const CACHE = "ck-v47";
+// envio em segundo plano: checklist feito sem sinal sai sozinho quando a internet volta
+importScripts("./js/firebase-config.js", "./js/envio.js");
 const ASSETS = [
   "./",
   "./index.html",
@@ -11,6 +13,7 @@ const ASSETS = [
   "./js/dados.js",
   "./js/app.js",
   "./js/pdf.js",
+  "./js/envio.js",
   "./js/vendor/jspdf-4.2.1.umd.min.js",
   "./manifest.json",
   "./icons/icon.svg",
@@ -77,4 +80,26 @@ self.addEventListener("notificationclick", e => {
     if (c) { c.postMessage({ abrir: id }); return c.focus(); }
     return self.clients.openWindow("./" + (id ? "?abrir=" + encodeURIComponent(id) : ""));
   }));
+});
+
+/* A internet voltou (o Android avisa mesmo com o app fechado): envia o que ficou
+   na saída do aparelho. Com o app aberto na tela, quem envia é o próprio app. */
+async function enviarFila(forcar) {
+  if (!forcar) {
+    const abertos = await self.clients.matchAll({ type: "window" });
+    if (abertos.some(c => c.visibilityState === "visible")) return;
+  }
+  const r = await enviarEmSegundoPlano();
+  if (r.checklists.length && self.registration.showNotification && self.Notification && Notification.permission === "granted") {
+    const nomes = r.checklists.map(x => (x.dados && x.dados.equipamento && x.dados.equipamento.prefixo) || "equipamento").join(", ");
+    await self.registration.showNotification(r.checklists.length > 1 ? "Checklists enviados" : "Checklist enviado", {
+      body: nomes + (r.fotos ? " · " + r.fotos + " foto(s)" : "") + " — a gestão já recebeu.",
+      icon: "./icons/icon-192.png", badge: "./icons/icon-192.png", tag: "ck-enviado"
+    }).catch(() => {});
+  }
+  if (r.falhou) throw new Error("tentar de novo");   // o Android tenta outra vez mais tarde
+}
+self.addEventListener("sync", e => { if (e.tag === "ck-enviar") e.waitUntil(enviarFila(false)); });
+self.addEventListener("message", e => {
+  if (e.data && e.data.tipo === "ck-enviar") e.waitUntil(enviarFila(!!e.data.forcar).catch(() => {}));
 });

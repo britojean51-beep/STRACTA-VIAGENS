@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck46";
+const VERSAO = "ck47";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -1156,13 +1156,17 @@ async function finalizar() {
   // as mídias passam de "rascunho" para "fila": o envio começa assim que houver sinal
   for (const [mid, m] of Object.entries(midias)) {
     const reg = await Midia.ler(mid);
-    if (reg) { reg.estado = "fila"; reg.inspId = r.id; reg.path = m.path; await Midia.guardar(reg); }
+    if (reg) { reg.estado = "fila"; reg.inspId = r.id; reg.path = m.path; reg.inspPath = Dados.caminhoCol("inspecoes") + "/" + r.id; await Midia.guardar(reg); }
   }
   Historico.adicionar({ id: r.id, equip: nomeEquip(r.equip), resultado, defeitos: defeitos.length, criadoEm: agora, enviado: false });
-  Dados.abrirPendencia(r.equip.id, r.id, resultado);
-  Dados.gravarInspecao(insp)
-    .then(() => { Historico.marcar(r.id, { enviado: true }); Telas.atualizarSeVisivel(["inicio"]); })
-    .catch(e => toast("Erro ao enviar: " + ((e && e.code) || "tente de novo"), "erro"));
+  if (!navigator.onLine) {
+    // sem sinal: fica na saída do aparelho e sai sozinho quando a internet voltar,
+    // mesmo com o app fechado (envio em segundo plano do Android)
+    await Saida.guardar({ id: r.id, email: Dados.usuario.email, docPath: Dados.caminhoCol("inspecoes") + "/" + r.id,
+      equipPath: r.equip.id ? Dados.caminhoCol("equipamentos") + "/" + r.equip.id : "", resultado, dados: insp, criadoEm: agora })
+      .catch(() => gravarNoServidor(insp, r.equip.id, resultado));   // sem IndexedDB: fila do Firestore, como antes
+    pedirEnvioEmSegundoPlano();
+  } else gravarNoServidor(insp, r.equip.id, resultado);
   Object.keys(r.midias).forEach(liberarURL);
   Estado.rascunho = null;
   try { localStorage.removeItem(chaveDe(RASCUNHO_KEY)); } catch (e) {}
@@ -1171,6 +1175,29 @@ async function finalizar() {
   Telas.ir("resultado", { resultado, defeitos: defeitos.map(d => d.texto), equip: nomeEquip(insp.equipamento),
     online: navigator.onLine }, true);
 }
+
+function gravarNoServidor(insp, equipId, resultado) {
+  Dados.abrirPendencia(equipId, insp.id, resultado);
+  return Dados.gravarInspecao(insp)
+    .then(() => { Historico.marcar(insp.id, { enviado: true }); Telas.atualizarSeVisivel(["inicio"]); })
+    .catch(e => toast("Erro ao enviar: " + ((e && e.code) || "tente de novo"), "erro"));
+}
+/* com sinal e o app aberto: o que ficou na saída sobe por aqui (com o app fechado, pelo service worker) */
+async function enviarSaida() {
+  if (enviarSaida.indo || !navigator.onLine || !Dados.online() || !Dados.usuario) return;
+  enviarSaida.indo = true;
+  try {
+    for (const it of await Saida.todos()) {
+      if (it.email !== Dados.usuario.email) continue;
+      const st = await Dados.estado(it.id);
+      if (!st) break;                                   // não deu para falar com o servidor: tenta depois
+      if (!st.existe) await gravarNoServidor(it.dados, it.equipPath ? it.equipPath.split("/").pop() : "", it.resultado);
+      else Historico.marcar(it.id, { enviado: true });
+      await Saida.apagar(it.id);
+    }
+  } finally { enviarSaida.indo = false; }
+}
+async function enviarTudo() { await enviarSaida().catch(() => {}); Midia.processar(); }
 
 Render.resultado = function (a) {
   const R = RESULTADOS[a.resultado];
@@ -2025,7 +2052,7 @@ Render.conta = function () {
     <button class="btn btn-ghost perigo" id="ctSair">Sair deste aparelho</button>
     <p class="mini centro legal"><a href="#" data-doc="privacidade">Política de privacidade</a> · <a href="#" data-doc="termos">Termos de uso</a></p>
     <p class="muted mini centro">Versão ${VERSAO}</p>`;
-  $("#ctEnviar").onclick = () => { if (!navigator.onLine) return toast("Sem sinal agora.", "erro"); Midia.processar(); toast("Enviando…"); };
+  $("#ctEnviar").onclick = () => { if (!navigator.onLine) return toast("Sem sinal agora.", "erro"); enviarTudo(); toast("Enviando…"); };
   $("#fSenha").onsubmit = async ev => {
     ev.preventDefault();
     const f = Object.fromEntries(new FormData(ev.target));
@@ -2035,7 +2062,10 @@ Render.conta = function () {
   };
   $("#ctSair").onclick = async () => {
     const n = await Midia.pendentes();
-    if (!(await confirmar(n ? "Ainda há " + n + " foto(s) para enviar. Elas ficam guardadas e sobem quando você entrar de novo." : "Para entrar de novo será preciso o usuário e a senha.",
+    const c = (await Saida.todos()).filter(x => x.email === Dados.usuario.email).length;
+    const msg = c ? "Ainda há " + c + " checklist(s) feito(s) sem sinal para enviar. Eles ficam guardados e sobem quando você entrar de novo."
+      : n ? "Ainda há " + n + " foto(s) para enviar. Elas ficam guardadas e sobem quando você entrar de novo." : "Para entrar de novo será preciso o usuário e a senha.";
+    if (!(await confirmar(msg,
       { titulo: "Sair deste aparelho?", ok: "Sair" }))) return;
     try { localStorage.removeItem(chaveDe(HISTORICO_KEY)); } catch (e) {}   // a lista volta do servidor no próximo login
     Estado.parar(); await Dados.sair(); Render.login();
@@ -2125,7 +2155,7 @@ function entrouNoApp() {
   const abrir = new URLSearchParams(location.search).get("abrir");
   if (abrir) { history.replaceState(null, "", location.pathname); Telas.ir("detalhe", abrir); }
   Midia.aoMudar = atualizarRede;
-  Midia.processar();
+  enviarTudo();
   Historico.conferirPendentes()
     .then(() => Historico.sincronizar())
     .then(() => Telas.atualizarSeVisivel(["inicio"]));
@@ -2151,7 +2181,8 @@ async function iniciar() {
   };
   window.addEventListener("online", atualizarRede);
   window.addEventListener("offline", atualizarRede);
-  setInterval(() => { if (Dados.usuario) Midia.processar(); }, 60000);
+  window.addEventListener("online", () => { if (Dados.usuario) enviarTudo(); });
+  setInterval(() => { if (Dados.usuario) enviarTudo(); }, 60000);
   Atualizacao.iniciar();
 
   const r = await Dados.iniciar();

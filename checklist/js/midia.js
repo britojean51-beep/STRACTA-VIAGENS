@@ -153,7 +153,9 @@ const Midia = {
     if (this._enviando || !navigator.onLine || !Dados.online()) return;
     this._enviando = true;
     try {
-      const fila = await this.porEstado("fila");
+      // foto de checklist que ainda está na saída do aparelho espera o checklist subir primeiro
+      const naSaida = new Set((await Saida.todos()).map(x => x.id));
+      const fila = (await this.porEstado("fila")).filter(r => !naSaida.has(r.inspId));
       for (const reg of fila) {
         if (!navigator.onLine) break;
         try {
@@ -175,7 +177,7 @@ const Midia = {
   },
 
   async _enviarUm(reg) {
-    if (!reg.path.startsWith("checklist/")) return this._enviarFirestore(reg);
+    if (!/(^|\/)checklist\//.test(reg.path)) return this._enviarFirestore(reg);
     const ref = firebase.storage().ref(reg.path);
     // já subiu numa tentativa anterior (caiu antes de marcar)? não manda de novo
     let existe = false;
