@@ -20,7 +20,7 @@ html, body { margin: 0; background: var(--bg); color: var(--text); }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
   font-size: 16px; line-height: 1.4;
-  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  padding-bottom: calc(96px + env(safe-area-inset-bottom));
 }
 button, input, select, textarea { font: inherit; color: inherit; }
 
@@ -29,6 +29,21 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 8px;
   padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
   background: #ffffff; color: var(--text); border-bottom: 3px solid var(--brand);
+}
+/* ---- barras de vidro (efeito "liquid glass"): o conteúdo passa desfocado por trás.
+   Vidro bem claro para o texto continuar escuro e legível ao sol. Sem suporte ao
+   desfoque, ou com "reduzir transparência" ligado, as barras ficam brancas sólidas. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .topo, .abas {
+    background: rgba(255, 255, 255, .8);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    backdrop-filter: blur(22px) saturate(180%);
+  }
+  .topo { background: rgba(255, 255, 255, .92); -webkit-backdrop-filter: blur(28px) saturate(180%); backdrop-filter: blur(28px) saturate(180%);
+    box-shadow: inset 0 -1px 0 rgba(255, 255, 255, .7), 0 6px 18px rgba(15, 23, 42, .06); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .topo, .abas { background: #ffffff; -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 .voltar { background: none; border: 0; color: var(--text); font-size: 34px; line-height: 1; width: 36px; visibility: hidden; cursor: pointer; }
 .titulos { flex: 1; min-width: 0; }
@@ -44,12 +59,17 @@ main { padding: 14px; max-width: 760px; margin: 0 auto; }
 .carregando, .vazio { text-align: center; color: var(--muted); padding: 24px 0; }
 
 /* ---- abas ---- */
+/* barra flutuante, em cápsula de vidro, acima da borda do celular */
 .abas {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 10; display: flex;
-  background: var(--card); border-top: 1px solid var(--line);
-  padding-bottom: env(safe-area-inset-bottom);
+  position: fixed; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 10; display: flex;
+  max-width: 560px; margin: 0 auto; padding: 5px; gap: 2px;
+  background: var(--card); border: 1px solid rgba(148, 163, 184, .55); border-radius: 28px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 10px 30px rgba(15, 23, 42, .16), 0 2px 6px rgba(15, 23, 42, .08);
 }
-.aba { flex: 1; background: none; border: 0; padding: 8px 2px 10px; font-size: 11px; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; }
+.aba { flex: 1; background: none; border: 0; border-radius: 22px; padding: 6px 2px 7px; font-size: 11px; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; transition: background .2s, box-shadow .2s; }
+/* aba ativa: uma "gota" de vidro mais clara por cima da barra */
+.aba.ativa { background: rgba(255, 255, 255, .95); box-shadow: inset 0 1px 0 #fff, 0 1px 4px rgba(15, 23, 42, .14), 0 0 0 1px rgba(194, 65, 12, .18); }
+.aba:active { transform: scale(.96); }
 .aba span { display: flex; height: 26px; align-items: center; }
 .aba svg { width: 24px; height: 24px; }
 .aba.ativa { color: var(--brand-forte); font-weight: 800; }
@@ -254,7 +274,7 @@ body.tela-login main { padding: 0 0 24px; }
 .visor img, .visor video { max-width: 100%; max-height: 100%; }
 .visor .fechar { position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 12px; width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(255,255,255,.2); color: #fff; font-size: 20px; cursor: pointer; }
 .toast {
-  position: fixed; left: 50%; bottom: calc(88px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px);
+  position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px);
   z-index: 60; max-width: 92vw; background: #0f172a; color: #fff; padding: 12px 16px; border-radius: 12px;
   font-weight: 600; opacity: 0; pointer-events: none; transition: .2s; border: 2px solid #0f172a;
 }
