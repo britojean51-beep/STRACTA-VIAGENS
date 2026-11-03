@@ -33,24 +33,24 @@ const titulo = p => p.textContent('#titulo');
   ok((await titulo(page)).includes('CB-12'), 'marcou a lubrificação do CB-12');
   await page.click('#btnVoltar');
   await page.waitForSelector('[data-sv="e2"]');
-  ok((await titulo(page)).includes('LUBRIFICAÇÃO'), 'voltou para a lista de equipamentos');
+  ok((await titulo(page)).includes('Lubrificação'), 'voltou para a lista de equipamentos');
   await page.click('[data-sv="e2"]');
   ok((await titulo(page)).includes('CB-20'), 'abriu o outro equipamento');
 
   console.log('2. botão voltar do celular');
   await page.goBack();
   await page.waitForSelector('[data-sv="e1"]');
-  ok((await titulo(page)).includes('LUBRIFICAÇÃO'), 'voltar do celular: lista de equipamentos');
+  ok((await titulo(page)).includes('Lubrificação'), 'voltar do celular: lista de equipamentos');
   await page.goBack();
   await page.waitForSelector('[data-ir="cad-equip"]');
-  ok((await titulo(page)).includes('CADASTROS'), 'mais um voltar: Cadastros');
+  ok((await titulo(page)).includes('Cadastros'), 'mais um voltar: Cadastros');
 
   console.log('3. voltar do celular com janela aberta só fecha a janela');
   await page.click('[data-ir="conta"]'); await page.click('#ctSair');
   await page.waitForSelector('.mdl-fundo');
   await page.goBack();
   await page.waitForTimeout(200);
-  ok(!(await page.$('.mdl-fundo')) && (await titulo(page)).includes('CONTA'), 'janela fechada, continua na Conta');
+  ok(!(await page.$('.mdl-fundo')) && (await titulo(page)).includes('conta'), 'janela fechada, continua na Conta');
 
   ok(erros.length === 0, 'nenhum erro de JavaScript' + (erros.length ? ': ' + erros.join(' | ') : ''));
   await browser.close();
