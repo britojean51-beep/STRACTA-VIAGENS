@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck44";
+const VERSAO = "ck45";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -507,7 +507,9 @@ function titulo(t, sub, o = {}) {
   if (o.progresso != null) barra.firstElementChild.style.width = Math.round(Math.min(1, Math.max(0, o.progresso)) * 100) + "%";
   const quem = $("#quem");
   quem.hidden = !o.quem;
-  if (o.quem) quem.innerHTML = `${I("usuario")}<span>${h(o.quem)}</span>`;
+  // a bolinha da conexão fica no nome: verde piscando online, amarela parada sem sinal
+  if (o.quem) quem.innerHTML = `<i class="quem-sinal" aria-hidden="true"></i><span>${h(o.quem)}</span>`;
+  quem.classList.toggle("off", !navigator.onLine);
 }
 /* etiqueta da situação do equipamento para o topo */
 function tagSituacao(e) {
@@ -526,6 +528,9 @@ async function atualizarRede() {
   el.className = "rede " + (navigator.onLine ? (n ? "fila" : "on") : "off");
   el.textContent = navigator.onLine ? (n ? n + " na fila" : "") : "sem sinal" + (n ? " · " + n : "");
   el.setAttribute("aria-label", navigator.onLine ? (n ? n + " arquivo(s) enviando" : "Conectado") : "Sem sinal");
+  const quem = $("#quem");
+  quem.classList.toggle("off", !navigator.onLine);
+  quem.setAttribute("aria-label", "Minha conta · " + (navigator.onLine ? "conectado" : "sem sinal"));
   el.title = navigator.onLine ? (n ? n + " arquivo(s) enviando" : "Conectado") : "Sem sinal — tudo fica guardado";
   const c = document.querySelector("[data-pendentes]");
   if (c) c.textContent = n ? n + " foto(s)/vídeo(s) aguardando envio" : "Tudo enviado.";

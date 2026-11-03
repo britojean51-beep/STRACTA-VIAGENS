@@ -58,7 +58,16 @@ body[data-tela="inicio"] .topo .logo { display: flex; }
 /* Início: quem está usando (toque abre a Conta) */
 .quem { display: flex; align-items: center; gap: 6px; max-width: 46%; flex: 0 1 auto; padding: 6px 12px 6px 8px;
   background: var(--card-2); color: var(--text); border: 1px solid var(--line); border-radius: 99px; font-size: 14px; font-weight: 700; cursor: pointer; }
-.quem svg { width: 20px; height: 20px; flex: 0 0 20px; }
+.quem-sinal { position: relative; width: 10px; height: 10px; flex: 0 0 10px; margin: 0 2px; border-radius: 50%; background: #16a34a; }
+/* online: onda verde saindo da bolinha */
+.quem-sinal::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: #16a34a; animation: sinal 1.6s ease-out infinite; }
+@keyframes sinal { from { transform: scale(1); opacity: .7; } to { transform: scale(2.8); opacity: 0; } }
+/* sem sinal: amarela, parada */
+.quem.off .quem-sinal { background: #eab308; box-shadow: 0 0 0 1px #a16207 inset; }
+.quem.off .quem-sinal::after { display: none; }
+@media (prefers-reduced-motion: reduce) { .quem-sinal::after { animation: none; opacity: 0; } }
+/* no Início a conexão aparece no nome; o aviso de fila continua ao lado */
+body[data-tela="inicio"] .rede.on, body[data-tela="inicio"] .rede.off { display: none; }
 .quem span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* checklist: o pé do topo vira a barra de progresso */
 .topo-barra { position: absolute; left: 0; right: 0; bottom: -3px; height: 4px; background: #e2e8f0; }
