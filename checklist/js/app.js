@@ -1,7 +1,7 @@
 /* ============================================================
    Checklist de Máquinas e Caminhões · telas
    ============================================================ */
-const VERSAO = "ck42";
+const VERSAO = "ck43";
 const RASCUNHO_KEY = "ck_rascunho";     // + ":" + email — cada pessoa tem o seu
 const HISTORICO_KEY = "ck_historico";   // + ":" + email
 /* chave por usuário: no mesmo celular, um motorista não vê o checklist do outro */
@@ -464,7 +464,13 @@ const Telas = {
     const soGestao = ["painel"], soResolve = ["servicos"], soAdmin = ["cadastros", "cad-equip", "cad-modelos", "cad-modelo", "cad-usuarios"];
     if ((soGestao.includes(nome) && !Dados.veTodos()) || (soResolve.includes(nome) && !Dados.ehGestao()) || (soAdmin.includes(nome) && !Dados.ehGestao())
       || (nome === "empresas" && !Dados.ehDono())) nome = "inicio";
-    if (!semPilha && this.atual && this.atual.nome !== nome) this.pilha.push(this.atual);
+    // da lista de equipamentos da lubrificação para um equipamento: o voltar retorna à lista
+    const daLista = nome === "servicos" && arg && this.atual && this.atual.nome === nome && !this.atual.arg;
+    if (!semPilha && this.atual && (this.atual.nome !== nome || daLista)) {
+      this.pilha.push(this.atual);
+      // o botão voltar do celular também volta uma tela (em vez de sair do app)
+      try { history.pushState({ ck: this.pilha.length }, ""); } catch (e) {}
+    }
     if (["inicio", "painel", "cadastros", "conta"].includes(nome)) this.pilha = [];
     this.atual = { nome, arg };
     this.render();
@@ -2098,7 +2104,16 @@ function entrouNoApp() {
 }
 
 async function iniciar() {
-  $("#btnVoltar").onclick = () => Telas.voltar();
+  $("#btnVoltar").onclick = () => { if (history.state && history.state.ck) history.back(); else Telas.voltar(); };
+  window.addEventListener("popstate", () => {
+    if (!Dados.usuario || !Telas.atual) return;
+    const aberta = document.querySelector(".mdl-fundo, .doc-fundo, .visor");
+    if (aberta) {   // janela aberta: o voltar só fecha ela (pelo botão dela, que avisa quem abriu)
+      const bt = aberta.querySelector("#mdlCancel, [data-fechar], .fechar");
+      return bt ? bt.click() : aberta.remove();
+    }
+    Telas.voltar();
+  });
   document.querySelectorAll(".aba[data-ir]").forEach(b => { const sp = b.querySelector("span"); if (sp && ICONES[b.dataset.ir]) sp.innerHTML = ICONES[b.dataset.ir]; });
   const lg = document.querySelector("#topo .logo"); if (lg) lg.innerHTML = LOGO;
   $("#abas").onclick = ev => {
